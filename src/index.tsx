@@ -1576,9 +1576,6 @@ export default function AUTClock() {
                   <div className="text-sm text-zinc-300">Segment</div>
                   <div className="text-lg font-medium">{data.segmentLabel}</div>
                 </div>
-                <div className={`text-xs ${isRetroTheme ? "retro-subtext" : "text-zinc-500"}`}>
-                  Solar mode: {data.mode}
-                </div>
                 <div className={`text-sm ${isRetroTheme ? "retro-muted" : "text-zinc-400"}`}>
                   {pct}% through this segment
                 </div>
@@ -2238,8 +2235,17 @@ export default function AUTClock() {
           </>
         )}
 
-        <footer className="text-center text-xs text-zinc-500 mt-2">
-          ✨ Atlas Island | AUT Live Clock | Ray‑aligned circadian time ✨
+        <div className="flex justify-center py-4">
+          <img
+            src="/AtlasIslandLOGO.png"
+            alt="Atlas Island radiant emblem"
+            className="max-w-full w-[420px] drop-shadow-[0_12px_35px_rgba(59,130,246,0.35)]"
+            loading="lazy"
+          />
+        </div>
+
+        <footer className="text-center text-xs text-zinc-500 mt-2 whitespace-pre-wrap">
+          Atlas Island ✨ www.atlasisalnd.co 🏝️💚💫
         </footer>
       </div>
     </div>
