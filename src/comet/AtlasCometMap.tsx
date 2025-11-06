@@ -74,6 +74,7 @@ const CANVAS_SIZE = 560;
 const MOON_VIS_MIN_PX = 10;
 const MOON_VIS_MAX_PX = 28;
 const LERP_SOFTEN_PX = 6;
+const GEO_SCALE_FACTOR = 0.22;
 const DEG2RAD = Math.PI / 180;
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
@@ -92,6 +93,10 @@ const ZODIAC_SIGNS = [
 const ZODIAC_RING_RADIUS_AU = 44;
 const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
 const GEO_BASE_RADIUS_AU = ZODIAC_RING_RADIUS_AU * 0.97;
+const DEFAULT_SCALE: Record<ViewMode, number> = {
+  heliocentric: 0.85,
+  geocentric: 2.6,
+};
 
 type Placement = {
   body: BodyName;
@@ -155,9 +160,10 @@ function geocentricWorld(lon: number, lat: number): Vec2 {
   const rad = lon * DEG2RAD;
   const latFactor = clamp(lat / 40, -1.5, 1.5);
   const radius = GEO_BASE_RADIUS_AU * (1 + latFactor * 0.12);
+  const scaledRadius = radius * GEO_SCALE_FACTOR;
   return {
-    x: radius * Math.cos(rad),
-    y: radius * Math.sin(rad),
+    x: scaledRadius * Math.cos(rad),
+    y: scaledRadius * Math.sin(rad),
   };
 }
 
@@ -211,7 +217,7 @@ function sampleOrbit(planet: Planet): Vec2[] {
 function HeartlightSystemMap() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<Vec2>({ x: 0, y: 0 });
-  const scaleRef = useRef(0.6);
+  const scaleRef = useRef(DEFAULT_SCALE["heliocentric"]);
   const timeRef = useRef(INITIAL_DATE.getTime());
   const runningRef = useRef(false);
   const timeScaleRef = useRef(4);
@@ -393,13 +399,26 @@ function HeartlightSystemMap() {
 
   const resetView = () => {
     cameraRef.current = { x: 0, y: 0 };
-    scaleRef.current = 0.6;
+    scaleRef.current = DEFAULT_SCALE[viewMode];
   };
 
   const zoomWholeSystem = () => {
     cameraRef.current = { x: 0, y: 0 };
     scaleRef.current = SCALE_MIN;
   };
+
+  const nudgeZoom = (direction: "in" | "out") => {
+    const factor = direction === "in" ? 1.35 : 1 / 1.35;
+    const before = scaleRef.current;
+    const after = clamp(before * factor, SCALE_MIN, SCALE_MAX);
+    if (after !== before) {
+      scaleRef.current = after;
+    }
+  };
+
+  useEffect(() => {
+    resetView();
+  }, [viewMode]);
 
   const formattedDate = useMemo(() => when.toISOString().slice(0, 10), [when]);
   const heliocentricButtonClass = `px-3 py-1 text-xs font-semibold transition ${
@@ -507,6 +526,22 @@ function HeartlightSystemMap() {
             onClick={resetView}
           >
             Reset View
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+            onClick={() => nudgeZoom("in")}
+            aria-label="Zoom in"
+          >
+            Zoom In
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+            onClick={() => nudgeZoom("out")}
+            aria-label="Zoom out"
+          >
+            Zoom Out
           </button>
           <button
             type="button"
