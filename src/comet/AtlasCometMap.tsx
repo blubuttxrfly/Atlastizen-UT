@@ -74,7 +74,7 @@ const CANVAS_SIZE = 560;
 const MOON_VIS_MIN_PX = 10;
 const MOON_VIS_MAX_PX = 28;
 const LERP_SOFTEN_PX = 6;
-const GEO_SCALE_FACTOR = 0.22;
+const GEO_SCALE_FACTOR = 0.28;
 const DEG2RAD = Math.PI / 180;
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
@@ -633,6 +633,10 @@ function drawScene(
     drawZodiacRing(ctx, worldToScreen, scale);
   }
 
+  if (overlays.viewMode === "geocentric") {
+    drawGeocentricAlignmentRays(ctx, placements, worldToScreen, scale);
+  }
+
   if (overlays.viewMode === "heliocentric") {
     orbitCache.forEach((points) => {
       if (points.length === 0) return;
@@ -927,6 +931,33 @@ function drawHeliocentricMoonSystem(
   drawPlanetGlyph(ctx, moonScreen, moonRadius, MOON);
   ctx.fillStyle = "#e2e8f0";
   ctx.fillText(MOON.name, moonScreen.x + moonRadius + 4, moonScreen.y);
+}
+
+function drawGeocentricAlignmentRays(
+  ctx: CanvasRenderingContext2D,
+  placements: Placement[],
+  worldToScreen: (point: Vec2) => Vec2,
+  scale: number
+) {
+  const lineWidth = clamp(scale * 0.4, 0.45, 1.4);
+  ctx.save();
+  ctx.strokeStyle = "rgba(56,189,248,0.32)";
+  ctx.lineWidth = lineWidth;
+  placements.forEach((placement) => {
+    if (placement.mode !== "geocentric" || placement.body === "Earth") return;
+    const angle = Math.atan2(placement.world.y, placement.world.x);
+    const inner = worldToScreen(placement.world);
+    const outerWorld = {
+      x: Math.cos(angle) * ZODIAC_RING_RADIUS_AU * GEO_SCALE_FACTOR,
+      y: Math.sin(angle) * ZODIAC_RING_RADIUS_AU * GEO_SCALE_FACTOR,
+    };
+    const outer = worldToScreen(outerWorld);
+    ctx.beginPath();
+    ctx.moveTo(inner.x, inner.y);
+    ctx.lineTo(outer.x, outer.y);
+    ctx.stroke();
+  });
+  ctx.restore();
 }
 
 function lerp(a: number, b: number, t: number) {
