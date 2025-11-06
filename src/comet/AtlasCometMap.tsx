@@ -74,7 +74,7 @@ const CANVAS_SIZE = 560;
 const MOON_VIS_MIN_PX = 10;
 const MOON_VIS_MAX_PX = 28;
 const LERP_SOFTEN_PX = 6;
-const GEO_SCALE_FACTOR = 0.28;
+const GEO_SCALE_FACTOR = 0.34;
 const DEG2RAD = Math.PI / 180;
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
@@ -95,7 +95,12 @@ const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", 
 const GEO_BASE_RADIUS_AU = ZODIAC_RING_RADIUS_AU * 0.97;
 const DEFAULT_SCALE: Record<ViewMode, number> = {
   heliocentric: 0.85,
-  geocentric: 2.6,
+  geocentric: 1.85,
+};
+
+const FULL_SYSTEM_SCALE: Record<ViewMode, number> = {
+  heliocentric: SCALE_MIN,
+  geocentric: 0.9,
 };
 
 type Placement = {
@@ -404,7 +409,7 @@ function HeartlightSystemMap() {
 
   const zoomWholeSystem = () => {
     cameraRef.current = { x: 0, y: 0 };
-    scaleRef.current = SCALE_MIN;
+    scaleRef.current = clamp(FULL_SYSTEM_SCALE[viewMode], SCALE_MIN, SCALE_MAX);
   };
 
   const nudgeZoom = (direction: "in" | "out") => {
@@ -815,8 +820,15 @@ function drawBodies(
   scale: number,
   overlays: OverlayOptions
 ) {
-  const radiusPx = clamp(ICON_BASE * Math.pow(scale, SCALE_EXP), ICON_MIN, ICON_MAX);
-  const fontPx = overlays.scaleLabels ? clamp(FONT_BASE * Math.pow(scale, SCALE_EXP), FONT_MIN, FONT_MAX) : FONT_BASE;
+  const isGeocentric = overlays.viewMode === "geocentric";
+  const radiusMultiplier = isGeocentric ? 1.55 : 1;
+  const minRadius = isGeocentric ? ICON_MIN * 2 : ICON_MIN;
+  const maxRadius = isGeocentric ? ICON_MAX * 1.15 : ICON_MAX;
+  const radiusPx = clamp(ICON_BASE * radiusMultiplier * Math.pow(scale, SCALE_EXP), minRadius, maxRadius);
+  const fontMultiplier = overlays.scaleLabels ? (isGeocentric ? 1.2 : 1) : 1;
+  const fontPx = overlays.scaleLabels
+    ? clamp(FONT_BASE * fontMultiplier * Math.pow(scale, SCALE_EXP), FONT_MIN, FONT_MAX * (isGeocentric ? 1.1 : 1))
+    : FONT_BASE;
 
   ctx.textBaseline = "middle";
   ctx.font = `${fontPx}px 'JetBrains Mono', ui-monospace, monospace`;
