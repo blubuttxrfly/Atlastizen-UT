@@ -396,6 +396,11 @@ function HeartlightSystemMap() {
     scaleRef.current = 0.6;
   };
 
+  const zoomWholeSystem = () => {
+    cameraRef.current = { x: 0, y: 0 };
+    scaleRef.current = SCALE_MIN;
+  };
+
   const formattedDate = useMemo(() => when.toISOString().slice(0, 10), [when]);
   const heliocentricButtonClass = `px-3 py-1 text-xs font-semibold transition ${
     viewMode === "heliocentric" ? "bg-sky-500 text-sky-950" : "text-sky-100 hover:bg-sky-500/20"
@@ -502,6 +507,13 @@ function HeartlightSystemMap() {
             onClick={resetView}
           >
             Reset View
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+            onClick={zoomWholeSystem}
+          >
+            Full System
           </button>
         </div>
         <div className="flex w-full flex-wrap items-center gap-3 border-t border-sky-500/20 pt-3 text-[0.65rem] uppercase tracking-wide text-sky-200/80">
