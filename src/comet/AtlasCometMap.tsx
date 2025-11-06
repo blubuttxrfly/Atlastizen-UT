@@ -129,6 +129,18 @@ function toEcliptic(vector: Astronomy.Vector) {
 
 function heliocentricPlacement(body: BodyName, when: Date): Placement {
   const time = asTime(when);
+  if (body === "Sun") {
+    const vector = new Astronomy.Vector(0, 0, 0, time);
+    return {
+      body,
+      lon: 0,
+      lat: 0,
+      dist: 0,
+      vector,
+      world: { x: 0, y: 0 },
+      mode: "heliocentric",
+    };
+  }
   const vector = Astronomy.HelioVector(body as Astronomy.Body, time);
   const { lon, lat, dist } = toEcliptic(vector);
   const rad = lon * DEG2RAD;
