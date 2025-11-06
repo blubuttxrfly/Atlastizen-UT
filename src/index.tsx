@@ -699,7 +699,7 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     // pre-sunrise: yesterday's sunset → today's sunrise (lift tUTC by +1440)
     const tCont = tUTC + 1440;
     const nightLen = spanBefore(sunriseToday, sunsetYest);
-    const ratio = (tCont - (sunsetYest + 1440)) / nightLen;
+    const ratio = (tCont - sunsetYest) / nightLen;
     autHours = 12 + 12 * ratio;
     segmentLabel = "Night (Umbra)";
     segLenMin = nightLen;
