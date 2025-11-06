@@ -2245,7 +2245,7 @@ export default function AUTClock() {
         </div>
 
         <footer className="text-center text-xs text-zinc-500 mt-2 whitespace-pre-wrap">
-          Atlas Island ✨ www.atlasisalnd.co 🏝️💚💫
+          Atlas Island ✨ www.atlasisalnd.co
         </footer>
       </div>
     </div>
