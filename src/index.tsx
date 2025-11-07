@@ -80,9 +80,27 @@ type TimeZoneInfo = {
   offsetMinutes?: number;
 };
 
+type AtmosphereSample = {
+  temperatureC?: number;
+  temperatureF?: number;
+  seaLevelPressure?: number;
+  ozone?: number;
+  updated?: Date;
+};
+
+type AtmosphereStatus = "idle" | "loading" | "ready" | "error";
+
 type CompassStatus = "idle" | "active" | "denied" | "unsupported";
 type UITheme = "normal" | "retro";
-type PanelId = "clock" | "sol" | "luna" | "compass" | "heartlight" | "ray" | "postal";
+type PanelId =
+  | "clock"
+  | "sol"
+  | "luna"
+  | "compass"
+  | "heartlight"
+  | "ray"
+  | "atmosphere"
+  | "postal";
 
 const FALLBACK_PLACE_LABEL = "Charlotte, NC";
 const PLACE_CACHE_PREFIX = "aut-place:";
@@ -100,6 +118,7 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "compass", label: "Gyro Compass" },
   { id: "heartlight", label: "Heartlight System Map" },
   { id: "ray", label: "Ray Dial" },
+  { id: "atmosphere", label: "Atmosphere Panel" },
   { id: "postal", label: "Postal Lookup" },
 ];
 
@@ -833,6 +852,54 @@ function useReverseGeocode(
   return { placeLabel, placeStatus, retry };
 }
 
+function useAtmosphereSnapshot(coords: Coordinates) {
+  const [status, setStatus] = useState<AtmosphereStatus>("idle");
+  const [sample, setSample] = useState<AtmosphereSample | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    controllerRef.current?.abort();
+    controllerRef.current = controller;
+    setStatus("loading");
+    setError(null);
+    const url = new URL("https://api.open-meteo.com/v1/forecast");
+    url.searchParams.set("latitude", coords.lat.toFixed(4));
+    url.searchParams.set("longitude", coords.lon.toFixed(4));
+    url.searchParams.set("current", "temperature_2m,pressure_msl,ozone");
+    url.searchParams.set("timezone", "auto");
+    fetch(url.toString(), { signal: controller.signal })
+      .then(async (resp) => {
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+      })
+      .then((json) => {
+        const c = json?.current;
+        if (!c) throw new Error("No current data");
+        const next: AtmosphereSample = {
+          temperatureC: typeof c.temperature_2m === "number" ? c.temperature_2m : undefined,
+          temperatureF:
+            typeof c.temperature_2m === "number" ? c.temperature_2m * (9 / 5) + 32 : undefined,
+          seaLevelPressure: typeof c.pressure_msl === "number" ? c.pressure_msl : undefined,
+          ozone: typeof c.ozone === "number" ? c.ozone : undefined,
+          updated: c.time ? new Date(c.time) : new Date(),
+        };
+        setSample(next);
+        setStatus("ready");
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setStatus("error");
+      });
+    return () => controller.abort();
+  }, [coords.lat, coords.lon, nonce]);
+
+  return { status, sample, error, refetch: () => setNonce((n) => n + 1) };
+}
+
 // Alice font loader + PWA (manifest + SW) registration
 function useAliceAndPWA() {
   useEffect(() => {
@@ -936,6 +1003,7 @@ export default function AUTClock() {
   const panelSelectId = useId();
   const themeSelectId = useId();
   const isRetroTheme = uiTheme === "retro";
+  const atmosphere = useAtmosphereSnapshot(coords);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -1145,6 +1213,7 @@ export default function AUTClock() {
   }, [locationTimeZoneId]);
   const formatSolTime = (date?: Date) => (date ? formatShortTime(date) : "—");
   const formatMoonTime = (date?: Date) => (date ? formatShortTime(date) : "—");
+  const nowLocalTime = formatShortTime(now);
   const solDeclStr = sol ? `${sol.decDeg >= 0 ? "+" : ""}${sol.decDeg.toFixed(2)}°` : "—";
   const solAltStr = sol ? `${sol.altDeg >= 0 ? "+" : ""}${sol.altDeg.toFixed(1)}°` : "—";
   const solAzStr = sol ? `${sol.azDeg.toFixed(1)}°` : "—";
@@ -1304,6 +1373,33 @@ export default function AUTClock() {
 
   // Use a stable, wrapped AUT hour value
   const autH = ((Number(data.autHours) % 24) + 24) % 24;
+  const autHoursToLocalDate = useCallback(
+    (hour: number): Date | null => {
+      if (!data.sunriseLocal || !data.sunsetLocal) return null;
+      const dayLen = data.dayLenMin ?? 0;
+      const nightLen = data.nightLenMin ?? 0;
+      const isFullCycle = hour >= 24;
+      const normalized =
+        hour >= 24 || hour < 0 ? ((hour % 24) + 24) % 24 + (isFullCycle ? 24 : 0) : hour;
+      if (normalized < 12) {
+        const ratio = Math.max(0, Math.min(1, normalized / 12));
+        return new Date(data.sunriseLocal.getTime() + ratio * dayLen * 60_000);
+      }
+      const nightHours = normalized === 24 ? 12 : normalized - 12;
+      const ratio = Math.max(0, Math.min(1, nightHours / 12));
+      return new Date(data.sunsetLocal.getTime() + ratio * nightLen * 60_000);
+    },
+    [data.dayLenMin, data.nightLenMin, data.sunriseLocal, data.sunsetLocal]
+  );
+  const formatAutWindow = useCallback(
+    (hour: number) => {
+      const aut = formatClock(hour);
+      const localDate = autHoursToLocalDate(hour);
+      const local = localDate ? formatShortTime(localDate) : "—";
+      return { aut, local };
+    },
+    [autHoursToLocalDate, formatShortTime]
+  );
 
   // Active Ray window + progress within that window
   const rayIndex = rayIndexForAUT(autH);
@@ -1350,6 +1446,12 @@ export default function AUTClock() {
     });
   }, [segmentAngle]);
   const activeSegment = dialSegments[rayIndex];
+  const rayWindowTimes = activeRay
+    ? {
+        start: formatAutWindow(activeRay.start),
+        end: formatAutWindow(activeRay.end),
+      }
+    : null;
   const pointerAngle = activeSegment
     ? activeSegment.startAngle + rayProgress * segmentAngle
     : -Math.PI / 2;
@@ -1364,6 +1466,37 @@ export default function AUTClock() {
           activeSegment.startAngle + segmentAngle * Math.min(rayProgress, 1)
         )
       : null;
+  const atmosphereSample = atmosphere.sample;
+  const atmosphereStatusLine = (() => {
+    switch (atmosphere.status) {
+      case "loading":
+        return "Fetching latest readings…";
+      case "error":
+        return atmosphere.error ? `Error: ${atmosphere.error}` : "Unable to fetch readings.";
+      case "ready":
+        return atmosphereSample?.updated
+          ? `Updated ${formatLongTime(atmosphereSample.updated)}`
+          : "Fresh snapshot ready.";
+      default:
+        return "Awaiting snapshot…";
+    }
+  })();
+  const temperatureDisplay =
+    typeof atmosphereSample?.temperatureC === "number" &&
+    typeof atmosphereSample?.temperatureF === "number"
+      ? `${atmosphereSample.temperatureC.toFixed(1)} °C / ${atmosphereSample.temperatureF.toFixed(
+          1
+        )} °F`
+      : "—";
+  const pressureDisplay =
+    typeof atmosphereSample?.seaLevelPressure === "number"
+      ? `${atmosphereSample.seaLevelPressure.toFixed(1)} hPa`
+      : "—";
+  const ozoneDisplay =
+    typeof atmosphereSample?.ozone === "number" ? `${Math.round(atmosphereSample.ozone)} DU` : "—";
+  const atmosphereLocalTime =
+    atmosphereSample?.updated ? formatShortTime(atmosphereSample.updated) : null;
+
   const lookupZip = useCallback(async () => {
     const raw = zipInput.trim();
     if (!raw) {
@@ -1631,6 +1764,9 @@ export default function AUTClock() {
               <div className="text-sm text-zinc-300">
                 Alt {solAltStr} • Az {solAzStr}
               </div>
+              <div className="text-xs text-amber-200/80">
+                AUT {data.autClock} • Local {nowLocalTime}
+              </div>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -1790,6 +1926,9 @@ export default function AUTClock() {
               </div>
               <div className="text-sm text-zinc-300">
                 Alt {moonAltStr} • Az {moonAzStr}
+              </div>
+              <div className="text-xs text-emerald-200/80">
+                AUT {data.autClock} • Local {nowLocalTime}
               </div>
             </div>
             <div className="flex items-center justify-end gap-4">
@@ -2109,6 +2248,12 @@ export default function AUTClock() {
               <div className="text-lg font-semibold text-zinc-100">
                 Active Window: <span className="underline decoration-dotted">{activeRay.name}</span>
               </div>
+              {rayWindowTimes ? (
+                <div className="text-xs text-zinc-400">
+                  AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut} • Local{" "}
+                  {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
+                </div>
+              ) : null}
             </div>
             <div className={`text-sm text-zinc-300 ${PRESENT_ONLY ? "" : "text-right"}`}>
               <div>{progressPct}% through this window</div>
@@ -2182,6 +2327,50 @@ export default function AUTClock() {
             </div>
           </div>
 
+        </section>
+          </>
+        )}
+
+        {activePanel === "atmosphere" && (
+          <>
+        {/* Atmosphere Panel */}
+        <section className="rounded-2xl p-6 bg-gradient-to-br from-slate-900/60 via-sky-900/30 to-emerald-900/20 border border-slate-700 space-y-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm uppercase tracking-wide text-sky-200/80">Atmosphere Panel</div>
+              <p className="text-xs text-slate-300">
+                Sea-level pressure, ozone column, and near-surface temperature at your selected location.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="self-start rounded-xl border border-sky-500/50 px-4 py-2 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/10"
+              onClick={atmosphere.refetch}
+              disabled={atmosphere.status === "loading"}
+            >
+              {atmosphere.status === "loading" ? "Refreshing…" : "Refresh Snapshot"}
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-600 bg-slate-900/50 p-4 text-slate-100">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Temperature</div>
+              <div className="text-2xl font-semibold">{temperatureDisplay}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-600 bg-slate-900/50 p-4 text-slate-100">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Sea-Level Pressure</div>
+              <div className="text-2xl font-semibold">{pressureDisplay}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-600 bg-slate-900/50 p-4 text-slate-100">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Ozone Column</div>
+              <div className="text-2xl font-semibold">{ozoneDisplay}</div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4 text-xs text-slate-300">
+            <div>{atmosphereStatusLine}</div>
+            {atmosphereLocalTime ? <div>Local snapshot {atmosphereLocalTime}</div> : null}
+          </div>
         </section>
           </>
         )}
