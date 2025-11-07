@@ -336,7 +336,7 @@ const RAY_WINDOWS = [
   { name: "Orange", start: 2, end: 4, tint: "bg-orange-500" },
   { name: "Yellow", start: 4, end: 6, tint: "bg-yellow-400" },
   { name: "Green", start: 6, end: 8, tint: "bg-green-500" },
-  { name: "Teal", start: 8, end: 10, tint: "bg-teal-500" },
+  { name: "Turquoise", start: 8, end: 10, tint: "bg-cyan-400" },
   { name: "Blue", start: 10, end: 12, tint: "bg-blue-500" },
   { name: "Indigo", start: 12, end: 14, tint: "bg-indigo-500" },
   { name: "Violet", start: 14, end: 16, tint: "bg-violet-500" },
@@ -671,7 +671,7 @@ if (typeof window !== "undefined" && RUN_TESTS) {
     probe.progress
   );
 
-  // Ray mapping sanity checks (updated for Teal insertion and Orichalcum removal)
+  // Ray mapping sanity checks (updated for Turquoise insertion and Orichalcum removal)
   const idx1 = rayIndexForAUT(0.5); // Red
   const idx2 = rayIndexForAUT(19.0); // Omni now 18–20
   const idx3 = rayIndexForAUT(23.9); // Infinite of ALL

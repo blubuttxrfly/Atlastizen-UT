@@ -153,3 +153,84 @@ textarea {
   background-color: rgba(3, 28, 14, 0.94) !important;
   background-image: none !important;
 }
+
+@keyframes larbFloat {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes larbPulse {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes larbAuraDrift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.larb-orb {
+  animation-name: larbFloat;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+.larb-aura-shell {
+  animation: larbPulse 14s ease-in-out infinite;
+}
+
+.larb-gradient-sheen {
+  animation: larbAuraDrift 18s ease-in-out infinite;
+  background-size: 200% 200%;
+}
+
+@keyframes larbStatic {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85) rotate(0deg);
+    opacity: 0.25;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1) rotate(8deg);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.9) rotate(-6deg);
+    opacity: 0.35;
+  }
+}
+
+.larb-static-crackle {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+  filter: blur(3px);
+  animation-name: larbStatic;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
