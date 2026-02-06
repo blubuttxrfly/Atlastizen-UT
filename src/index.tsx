@@ -3208,7 +3208,6 @@ export default function AUTClock() {
   const panelSelectId = useId();
   const themeSelectId = useId();
   const isRetroTheme = uiTheme === "retro";
-  const isAtlasTheme = uiTheme === "atlas";
   const atmosphere = useAtmosphereSnapshot(coords);
   const [climateNonce, setClimateNonce] = useState(0);
   const todayKey = useMemo(
