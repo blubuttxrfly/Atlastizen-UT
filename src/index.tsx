@@ -16,6 +16,7 @@ import { ZIP_LOOKUP_ENDPOINT, ZIP_LOOKUP_USER_AGENT } from "./config/geocode";
 import { LunaRuntime } from "./lib/lunaRuntime";
 import { SolRuntime } from "./lib/solRuntime";
 import { AtlasCometMap } from "./comet/AtlasCometMap";
+import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 
 /**
  * Alastizen Universal Time (AUT) — Live Clock ✨
@@ -105,7 +106,6 @@ type HistoricalTempSample = {
 };
 
 type CompassStatus = "idle" | "active" | "denied" | "unsupported";
-type UITheme = "normal" | "retro";
 type PanelId =
   | "clock"
   | "sol"
@@ -113,13 +113,31 @@ type PanelId =
   | "compass"
   | "heartlight"
   | "ray"
+  | "weekrays"
+  | "rayreading"
   | "atmosphere"
-  | "postal";
+  | "postal"
+  | "settings";
 type RayWindow = { name: string; start: number; end: number; color: string; labelColor?: string };
 type RayWindowTimes = {
   start: { aut: string; local: string };
   end: { aut: string; local: string };
 };
+type WeeklyRayCycle = {
+  id: string;
+  dayIndex: number; // JS day: 0 = Sunday, ... 6 = Saturday
+  dayLabel: string;
+  dayAbbrev: string;
+  cycle: 1 | 2;
+  name: string;
+  code: string;
+  description: string;
+  color: string;
+  labelColor?: string;
+};
+type WeekRayWindowTimes = { start: string; end: string };
+type RayReading = { title: string; core: string; gifts: string; ideal: string; affirmation: string };
+type WeekRayReading = { title: string; body: string };
 
 const FALLBACK_PLACE_LABEL = "Charlotte, NC";
 const PLACE_CACHE_PREFIX = "aut-place:";
@@ -137,8 +155,11 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "compass", label: "Gyro Compass" },
   { id: "heartlight", label: "Heartlight System Map" },
   { id: "ray", label: "Ray Dial" },
+  { id: "weekrays", label: "Rays of the Week" },
+  { id: "rayreading", label: "Ray Reading" },
   { id: "atmosphere", label: "Atmosphere Panel" },
   { id: "postal", label: "Postal Lookup" },
+  { id: "settings", label: "Settings" },
 ];
 const CORS_PROXY = "https://cors.isomorphic-git.org/";
 const TEMIS_ENDPOINT = "https://services.temis.nl/api/tco3/";
@@ -240,7 +261,7 @@ const RAY_NAME_TO_LARB_ID: Record<string, LarbRayId | undefined> = {
 };
 
 const LARB_STORAGE_KEY = "aut-larb-archives";
-const LARB_MAX_RAY_SLOTS = 3;
+const LARB_MAX_RAY_SLOTS = 9;
 const LARB_TOTAL_ORBS = 12; // 1 head + 2 eyes + 9 aura orbs
 const LARB_HEAD_INDEX = 0;
 const LARB_EYE_INDICES: [number, number] = [1, 2];
@@ -337,7 +358,7 @@ function readStoredTheme(): UITheme {
   if (typeof window === "undefined") return "normal";
   try {
     const stored = window.localStorage.getItem(UI_THEME_STORAGE_KEY);
-    return stored === "retro" || stored === "normal" ? stored : "normal";
+    return stored === "retro" || stored === "normal" || stored === "atlas" ? stored : "normal";
   } catch {
     return "normal";
   }
@@ -353,6 +374,8 @@ function persistTheme(theme: UITheme): void {
 }
 
 function extractPlaceName(response: any): string | undefined {
+  const sanitize = (label?: string) =>
+    typeof label === "string" ? label.replace(/\s*\(the\)/gi, "").trim() : label;
   if (!response || typeof response !== "object") return undefined;
   const locality = typeof response.city === "string" && response.city.trim().length > 0
     ? response.city.trim()
@@ -367,12 +390,14 @@ function extractPlaceName(response: any): string | undefined {
     typeof response.countryName === "string" && response.countryName.trim().length > 0
       ? response.countryName.trim()
       : undefined;
+  const cleanCountry =
+    country && /\(the\)$/i.test(country) ? country.replace(/\s*\(the\)$/i, "") : country;
 
   const parts: string[] = [];
   if (locality) parts.push(locality);
   if (region && !parts.includes(region)) parts.push(region);
-  if (country && !parts.includes(country)) parts.push(country);
-  return parts.length > 0 ? parts.join(", ") : undefined;
+  if (cleanCountry && !parts.includes(cleanCountry)) parts.push(cleanCountry);
+  return sanitize(parts.length > 0 ? parts.join(", ") : undefined);
 }
 
 function polarToCartesian(radius: number, angle: number): { x: number; y: number } {
@@ -699,6 +724,38 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeHexColor(hex: string): string | null {
+  const stripped = hex.replace("#", "").trim();
+  if (stripped.length === 6) return stripped.toLowerCase();
+  if (stripped.length === 3) {
+    return stripped
+      .split("")
+      .map((ch) => ch + ch)
+      .join("")
+      .toLowerCase();
+  }
+  return null;
+}
+
+function averageHexColor(colors: string[], fallback: string): string {
+  const palette = colors.length > 0 ? colors : [fallback];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (const hex of palette) {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) continue;
+    r += parseInt(normalized.slice(0, 2), 16);
+    g += parseInt(normalized.slice(2, 4), 16);
+    b += parseInt(normalized.slice(4, 6), 16);
+    count += 1;
+  }
+  if (count === 0) return fallback;
+  const toHex = (value: number) => value.toString(16).padStart(2, "0");
+  return `#${toHex(Math.round(r / count))}${toHex(Math.round(g / count))}${toHex(Math.round(b / count))}`;
 }
 
 function clampClusterOffset(offset: LarbClusterOffset): LarbClusterOffset {
@@ -1342,6 +1399,11 @@ function useReverseGeocode(
   const abortRef = useRef<AbortController | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string>(fallbackLabel);
   const [placeStatus, setPlaceStatus] = useState<PlaceStatus>("idle");
+  const sanitize = useCallback(
+    (label?: string) =>
+      typeof label === "string" ? label.replace(/\s*\(the\)/gi, "").trim() : label,
+    []
+  );
 
   const lookup = useCallback(
     (force = false) => {
@@ -1365,8 +1427,9 @@ function useReverseGeocode(
           cacheRef.current.get(key) ??
           readSession(PLACE_CACHE_PREFIX + key);
         if (cached) {
-          cacheRef.current.set(key, cached);
-          setPlaceLabel(cached);
+          const cleaned = sanitize(cached) ?? "Current location";
+          cacheRef.current.set(key, cleaned);
+          setPlaceLabel(cleaned);
           setPlaceStatus("ready");
           return;
         }
@@ -1389,9 +1452,10 @@ function useReverseGeocode(
         .then((data) => {
           if (controller.signal.aborted) return;
           const resolved = extractPlaceName(data) ?? "Current location";
-          cacheRef.current.set(key, resolved);
-          writeSession(PLACE_CACHE_PREFIX + key, resolved);
-          setPlaceLabel(resolved);
+          const cleaned = sanitize(resolved) ?? "Current location";
+          cacheRef.current.set(key, cleaned);
+          writeSession(PLACE_CACHE_PREFIX + key, cleaned);
+          setPlaceLabel(cleaned);
           setPlaceStatus("ready");
         })
         .catch(() => {
@@ -1832,6 +1896,330 @@ const RAY_WINDOWS: RayWindow[] = [
   { name: "Infinite of ALL", start: 22, end: 24, color: "#7dd3fc", labelColor: "#f8fafc" },
 ];
 
+// Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
+const WEEK_RAY_DAY_ORDER = [6, 0, 1, 2, 3, 4, 5]; // Saturday first
+const WEEK_RAY_TOP_INDEX = 0; // Place Saturday cycle 1 at 12 o'clock
+const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
+  {
+    id: "sat-c1",
+    dayIndex: 6,
+    dayLabel: "Saturday",
+    dayAbbrev: "Sat",
+    cycle: 1,
+    name: "Carbon Red",
+    code: "CR",
+    description: "Emerging Carbon (black hue) into Red (CR) opens Saturday.",
+    color: "#0f0a0a",
+    labelColor: "#f8fafc",
+  },
+  {
+    id: "sat-c2",
+    dayIndex: 6,
+    dayLabel: "Saturday",
+    dayAbbrev: "Sat",
+    cycle: 2,
+    name: "True Red",
+    code: "RR",
+    description: "True Red (RR) carries the second Saturday cycle.",
+    color: "#e02828",
+  },
+  {
+    id: "sun-c1",
+    dayIndex: 0,
+    dayLabel: "Sunday",
+    dayAbbrev: "Sun",
+    cycle: 1,
+    name: "Red Orange",
+    code: "OR",
+    description: "Red Orange (OR) opens Sunday with a red-forward glow.",
+    color: "#e14b2b",
+  },
+  {
+    id: "sun-c2",
+    dayIndex: 0,
+    dayLabel: "Sunday",
+    dayAbbrev: "Sun",
+    cycle: 2,
+    name: "True Orange",
+    code: "OO",
+    description: "True Orange (OO) completes Sunday.",
+    color: "#f3741c",
+  },
+  {
+    id: "mon-c1",
+    dayIndex: 1,
+    dayLabel: "Monday",
+    dayAbbrev: "Mon",
+    cycle: 1,
+    name: "True Yellow",
+    code: "YY",
+    description: "True Yellow (YY) leads Monday morning.",
+    color: "#facc15",
+  },
+  {
+    id: "mon-c2",
+    dayIndex: 1,
+    dayLabel: "Monday",
+    dayAbbrev: "Mon",
+    cycle: 2,
+    name: "Yellow Green",
+    code: "YG",
+    description: "Yellow Green (YG) hues Monday evening.",
+    color: "#a3e635",
+  },
+  {
+    id: "tue-c1",
+    dayIndex: 2,
+    dayLabel: "Tuesday",
+    dayAbbrev: "Tue",
+    cycle: 1,
+    name: "True Green",
+    code: "GG",
+    description: "True Green (GG) anchors Tuesday's first cycle.",
+    color: "#22c55e",
+  },
+  {
+    id: "tue-c2",
+    dayIndex: 2,
+    dayLabel: "Tuesday",
+    dayAbbrev: "Tue",
+    cycle: 2,
+    name: "True Green",
+    code: "GG",
+    description: "True Green (GG) repeats for Tuesday's second cycle.",
+    color: "#16a34a",
+  },
+  {
+    id: "wed-c1",
+    dayIndex: 3,
+    dayLabel: "Wednesday",
+    dayAbbrev: "Wed",
+    cycle: 1,
+    name: "Green Turquoise Blue",
+    code: "GTB",
+    description: "Green Turquoise Blue (GTB) ushers in Wednesday.",
+    color: "#14b8a6",
+  },
+  {
+    id: "wed-c2",
+    dayIndex: 3,
+    dayLabel: "Wednesday",
+    dayAbbrev: "Wed",
+    cycle: 2,
+    name: "Turquoise Blue",
+    code: "TB",
+    description: "Turquoise Blue carries Wednesday's second arc.",
+    color: "#0ea5e9",
+  },
+  {
+    id: "thu-c1",
+    dayIndex: 4,
+    dayLabel: "Thursday",
+    dayAbbrev: "Thu",
+    cycle: 1,
+    name: "Blue Indigo",
+    code: "BI",
+    description: "Blue Indigo (BI) sets the tone for Thursday.",
+    color: "#2563eb",
+  },
+  {
+    id: "thu-c2",
+    dayIndex: 4,
+    dayLabel: "Thursday",
+    dayAbbrev: "Thu",
+    cycle: 2,
+    name: "Indigo Violet",
+    code: "IV",
+    description: "Indigo Violet (IV) deepens Thursday night.",
+    color: "#6d28d9",
+  },
+  {
+    id: "fri-c1",
+    dayIndex: 5,
+    dayLabel: "Friday",
+    dayAbbrev: "Fri",
+    cycle: 1,
+    name: "Violet Magenta",
+    code: "VM",
+    description: "Violet Magenta (VM) opens Friday.",
+    color: "#c026d3",
+  },
+  {
+    id: "fri-c2",
+    dayIndex: 5,
+    dayLabel: "Friday",
+    dayAbbrev: "Fri",
+    cycle: 2,
+    name: "Magenta to Omni",
+    code: "MO",
+    description: "Magenta to Omni (White) closes the weekly ray wheel.",
+    color: "#f5e1ff",
+    labelColor: "#0f172a",
+  },
+];
+
+const WEEK_RAY_READINGS: Record<string, WeekRayReading> = {
+  "sat-c1": {
+    title: "Cycle 1 — Carbon Red (CR)",
+    body:
+      "Primordial grounding: the deep “root of roots.” This current stabilizes the nervous system, fortifies boundaries, and anchors choices into the body. Excellent for safety rituals, practical steps, and devotion to embodied integrity.",
+  },
+  "sat-c2": {
+    title: "Cycle 2 — True Red (RR)",
+    body:
+      "Vital force, courage, and momentum. This current amplifies action, movement, and survival-to-thrive power. Great for workouts, decisive conversations, protection work, and reclaiming personal sovereignty.",
+  },
+  "sun-c1": {
+    title: "Cycle 1 — Red Orange (OR)",
+    body:
+      "Desire meets devotion. This current stirs creativity through the body—sensuality, play, inspiration, and magnetic confidence. Powerful for art-making, social warmth, and transmuting intensity into creation.",
+  },
+  "sun-c2": {
+    title: "Cycle 2 — True Orange (OO)",
+    body:
+      "Joyful flow, emotional alchemy, and pleasure with presence. This current supports healing through expression—dance, voice, intimacy with life, and inner-child reconnection. Great for letting the heart laugh and the spirit glow.",
+  },
+  "mon-c1": {
+    title: "Cycle 1 — True Yellow (YY)",
+    body:
+      "Clarity, will, and empowered focus. This current strengthens decision-making, self-respect, and clean direction. Perfect for planning, leadership, money moves, and aligning daily structure with purpose.",
+  },
+  "mon-c2": {
+    title: "Cycle 2 — Yellow Green (YG)",
+    body:
+      "Heart-mind coherence: wisdom that grows through kindness. This current supports collaboration, forgiveness, learning, and gentle evolution. Great for community building, relationship healing, and creating sustainable rhythms.",
+  },
+  "tue-c1": {
+    title: "Cycle 1 — True Green (GG)",
+    body:
+      "Abundance in motion. This current expands manifestation through gratitude, generosity, and grounded optimism. Ideal for building offers, tending home and body, nurturing friendships, and letting prosperity feel safe.",
+  },
+  "tue-c2": {
+    title: "Cycle 2 — True Green (GG)",
+    body:
+      "Deep-rooted growth: maturity, stamina, and long-game blessings. This current supports discipline that feels loving, steady devotion, and projects that want longevity. Perfect for systems, savings, health routines, and tending what matters most.",
+  },
+  "wed-c1": {
+    title: "Cycle 1 — Green Turquoise Blue (GTB)",
+    body:
+      "Heart-to-voice bridge. This current helps feelings become language, art, and honest expression. Powerful for poetry, healing conversations, creative communication, and speaking truth with tenderness.",
+  },
+  "wed-c2": {
+    title: "Cycle 2 — Turquoise Blue (TB)",
+    body:
+      "Flow-state communication and cleansing clarity. This current supports emotional release through water, breath, and sound—tears as medicine, laughter as liberation, voice as channel. Great for writing, sharing, singing, and ocean-minded recalibration.",
+  },
+  "thu-c1": {
+    title: "Cycle 1 — Blue Indigo (BI)",
+    body:
+      "Truth with depth. This current sharpens discernment, integrity, and clear boundaries in communication. Great for study, research, proposals, accountability, and saying what you mean with clean energetic posture.",
+  },
+  "thu-c2": {
+    title: "Cycle 2 — Indigo Violet (IV)",
+    body:
+      "Vision opens into mystic knowing. This current supports dreams, intuition, symbols, and spiritual study—messages through synchronicities, ritual, and inner sight. Perfect for divination, shadow integration, and receiving lucid guidance.",
+  },
+  "fri-c1": {
+    title: "Cycle 1 — Violet Magenta (VM)",
+    body:
+      "Transmutation through love. This current elevates artistry, forgiveness, and spiritual glamour—beauty as blessing, devotion as power. Great for ceremonies, performance, sacred aesthetics, and letting the soul shine outward.",
+  },
+  "fri-c2": {
+    title: "Cycle 2 — Magenta to Omni (MO)",
+    body:
+      "Integration, completion, and unity. This current gathers the week’s lessons into wholeness—restoration, blessing, and gentle expansion into the wider field. Beautiful for gratitude, closure rituals, healing baths, and calling in the next cycle with reverence.",
+  },
+};
+
+const RAY_READINGS: Record<string, RayReading> = {
+  "Crystalline-Carbon": {
+    title: "Crystalline Carbon",
+    core: "Ancient remembrance + crystalline-clarity.",
+    gifts: "Stability, deep nervous-system settling, “truth in the bones,” clean energetic containment.",
+    ideal: "Grounding, boundaries, decluttering, closing loops, body care, sacred minimalism.",
+    affirmation: "I hold the pattern that holds me.",
+  },
+  "Infinite of ALL": {
+    title: "Infinite of ALL",
+    core: "Cosmogenesis + vast permission.",
+    gifts: "Unity-awareness, timeline softening, synchronicity threads revealing themselves.",
+    ideal: "Prayer, big vision downloads, blessings, wide-angle perspective, sacred surrender.",
+    affirmation: "ALL-ways lead back to our Heartlight.",
+  },
+  Red: {
+    title: "Red",
+    core: "Embodiment + sovereignty.",
+    gifts: "Courage, protection, stamina, decisive movement, life-force ignition.",
+    ideal: "Action steps, workouts, survival-to-thrive power, claiming space.",
+    affirmation: "I choose. I move. I live.",
+  },
+  Orange: {
+    title: "Orange",
+    core: "Joy + creative lifeblood.",
+    gifts: "Play, sensual alchemy, emotional flow, art through the body.",
+    ideal: "Creating, dancing, connecting, pleasure with presence, inner-child medicine.",
+    affirmation: "My joy creates worlds.",
+  },
+  Yellow: {
+    title: "Yellow",
+    core: "Clarity + empowered will.",
+    gifts: "Focus, leadership, confidence, clean direction, radiant self-respect.",
+    ideal: "Plans, money moves, structure, decisions, speaking with authority.",
+    affirmation: "My will blesses my path.",
+  },
+  Green: {
+    title: "Green",
+    core: "Manifestation + heart ecology.",
+    gifts: "Abundance, growth, devotion, nourishment, relational harmony.",
+    ideal: "Building long-term, tending home/body, community weaving, prosperity rituals.",
+    affirmation: "What I nurture, flourishes.",
+  },
+  Turquoise: {
+    title: "Turquoise",
+    core: "Flow + heart-to-voice bridge.",
+    gifts: "Emotional clarity, gentle truth, soothing communication, cleansing movement.",
+    ideal: "Writing, sharing, water rituals, breathwork, compassionate conversations.",
+    affirmation: "My voice flows from my heart.",
+  },
+  Blue: {
+    title: "Blue",
+    core: "Truth + integrity.",
+    gifts: "Discernment, precision, boundaries in speech, calm strength.",
+    ideal: "Study, proposals, commitments, honest conversations, clean alignment.",
+    affirmation: "I speak what is real.",
+  },
+  Indigo: {
+    title: "Indigo",
+    core: "Dreams + inner sight.",
+    gifts: "Intuition, symbolism, lucid knowing, subconscious communication, sacred pattern recognition.",
+    ideal: "Dreamwork, divination, ritual study, shadow integration, receiving messages.",
+    affirmation: "My dreams guide my becoming.",
+  },
+  Violet: {
+    title: "Violet",
+    core: "Transmutation + higher harmony.",
+    gifts: "Spiritual refinement, energetic cleansing, ceremony, artistry as blessing.",
+    ideal: "Altar work, prayer, forgiveness, energetic upgrades, devotion to beauty.",
+    affirmation: "I transmute through love.",
+  },
+  Magenta: {
+    title: "Magenta",
+    core: "Red life-force rising + Violet spirit descending, meeting in the Heart and ascending as sovereign love.",
+    gifts:
+      "Transmutation of desire into devotion • Magnetic authenticity • Heart-wings (love with altitude) • Embodied spirituality through voice, art, and aligned boundaries.",
+    ideal:
+      "Heart-led creation • Sacred sensuality • Relationship healing through truth • Broadcasting your message • Choosing boundaries that protect joy • Rituals that turn intensity into beauty.",
+    affirmation: "My Heartlight is the bridge.",
+  },
+  Omni: {
+    title: "Omni",
+    core: "Integration + completion.",
+    gifts: "Wholeness, synthesis, embodied peace, quiet mastery, sacred closure.",
+    ideal: "Endings, gratitude, integration, restorative stillness, blessing the next cycle.",
+    affirmation: "I am whole. I am ready.",
+  },
+};
+
 const TOP_RAY_INDEX = (() => {
   const idx = RAY_WINDOWS.findIndex((r) => r.name === "Infinite of ALL");
   return idx === -1 ? 0 : idx;
@@ -1850,6 +2238,15 @@ function rayIndexForAUT(hours: number): number {
     if (h >= start && h < end) return i;
   }
   return 0; // fallback
+}
+
+function weekRayIndexForDate(date: Date): number {
+  const day = date.getDay();
+  const dayOrderIndex = WEEK_RAY_DAY_ORDER.indexOf(day);
+  if (dayOrderIndex === -1) return 0;
+  const hours = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+  const cycleOffset = hours >= 12 ? 1 : 0;
+  return dayOrderIndex * 2 + cycleOffset;
 }
 
 function SecretLarbSanctum({
@@ -1978,10 +2375,11 @@ function SecretLarbSanctum({
   }, []);
   const fallbackPalette = ["#c084fc", "#38bdf8", "#34d399"];
   const auraPalette = chordPalette.length > 0 ? chordPalette : fallbackPalette;
+  const sliderAccentComposite = averageHexColor(chordPalette, fallbackPalette[0]);
   const auraGradient = `radial-gradient(circle at 50% 20%, ${auraPalette
     .map((color, idx) => `${color} ${Math.min(95, 18 + idx * 28)}%`)
     .join(", ")})`;
-  const sliderAccent = auraPalette[0] ?? activeRayWindow?.color ?? "#c084fc";
+  const sliderAccent = sliderAccentComposite ?? auraPalette[0] ?? activeRayWindow?.color ?? "#c084fc";
   const activeLarbRay = activeLarbRayId ? LARB_RAY_LOOKUP[activeLarbRayId] : undefined;
   const resonanceScore = computeResonanceScore(selectedRayIds, activeLarbRayId, eyeSettings);
   const chordLabel = describeChord(selectedRayIds);
@@ -1991,7 +2389,7 @@ function SecretLarbSanctum({
       : "Moments until the next window";
   const canSave = selectedRayIds.length > 0;
   const energySynced = activeLarbRayId ? selectedRayIds.includes(activeLarbRayId) : false;
-  const eyeColorPrimary = auraPalette[0] ?? "#c084fc";
+  const eyeColorPrimary = auraPalette[0] ?? sliderAccent;
   const eyeColorSecondary = auraPalette[1] ?? eyeColorPrimary;
   const glowRadius = 8 + (eyeSettings.glow / 100) * 22;
   const shimmerRadius = 4 + (eyeSettings.shimmer / 100) * 18;
@@ -2291,13 +2689,14 @@ function SecretLarbSanctum({
           </button>
         </div>
 
-        <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/50 to-zinc-950/70 p-5 shadow-inner shadow-black/30">
-          <div
-            ref={clusterRef}
-            className="relative h-[460px] overflow-hidden rounded-[2.25rem] border border-white/10 bg-gradient-to-b from-zinc-950/85 via-zinc-900/40 to-zinc-950/85 shadow-[0_0_90px_rgba(8,8,15,0.9)]"
-            role="button"
-            tabIndex={0}
+        <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/50 to-zinc-950/70 p-5 shadow-inner shadow-black/30 space-y-6">
+              <div
+                ref={clusterRef}
+                className="relative h-[460px] overflow-hidden rounded-[2.25rem] border border-white/10 bg-gradient-to-b from-zinc-950/85 via-zinc-900/40 to-zinc-950/85 shadow-[0_0_90px_rgba(8,8,15,0.9)]"
+                role="button"
+                tabIndex={0}
             aria-label="Living Aura Ray Being"
+            style={{ touchAction: "none" }}
             onPointerDown={handleClusterPointerDown}
             onPointerMove={handleClusterPointerMove}
             onPointerUp={handleClusterPointerUp}
@@ -2421,11 +2820,13 @@ function SecretLarbSanctum({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Chord</p>
               <p className="mt-2 text-sm font-semibold text-white">{chordLabel}</p>
-              <p className="text-xs text-emerald-200">{energySynced ? "In sync with the live Ray." : "Add the live Ray to sync energy."}</p>
+                <p className="text-xs text-emerald-200">
+                  {energySynced ? "In sync with the live Ray." : "Add the live Ray to sync energy."}
+                </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between">
@@ -2437,7 +2838,7 @@ function SecretLarbSanctum({
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Window</p>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Cycle</p>
               <p className="mt-2 text-sm font-semibold text-white">
                 {activeRayWindow ? activeRayWindow.name : "Awaiting Ray"}
               </p>
@@ -2452,7 +2853,7 @@ function SecretLarbSanctum({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Ray Wheel</p>
-                  <p className="text-sm text-zinc-300">Tap up to three Rays to weave your chord.</p>
+                  <p className="text-sm text-zinc-300">Connect with any Rays you resonate with.</p>
                 </div>
                 <button
                   type="button"
@@ -2535,7 +2936,9 @@ function SecretLarbSanctum({
                   )}
                 </div>
                 <p className="mt-2 text-xs text-emerald-200">
-                  {energySynced ? "In resonance with the current window." : "Add the live Ray to sync energy."}
+                  {energySynced
+                    ? "In resonance with the current window."
+                    : "Add the live Ray to sync energy."}
                 </p>
               </div>
             </section>
@@ -2572,13 +2975,13 @@ function SecretLarbSanctum({
                   type="range"
                   min={0}
                   max={100}
-                  value={eyeSettings.glow}
-                  onChange={(event) =>
-                    setEyeSettings((prev) => ({ ...prev, glow: Number(event.target.value) }))
-                  }
-                  className="w-full"
-                  style={{ accentColor: sliderAccent }}
-                />
+                value={eyeSettings.glow}
+                onChange={(event) =>
+                  setEyeSettings((prev) => ({ ...prev, glow: Number(event.target.value) }))
+                }
+                className="w-full"
+                style={{ accentColor: sliderAccent }}
+              />
               </div>
               <div className="space-y-3">
                 <label className="flex justify-between text-xs uppercase tracking-[0.35em] text-zinc-400">
@@ -2707,7 +3110,7 @@ function SecretLarbSanctum({
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-zinc-400">
                 <span>Ray Wheel Sync</span>
                 <span className="text-zinc-100">
-                  {activeRayWindow ? `${activeRayWindow.name} Window` : "Awaiting Ray"}
+                  {activeRayWindow ? `${activeRayWindow.name} Cycle` : "Awaiting Ray"}
                 </span>
               </div>
               <div className="mt-3 space-y-1 text-sm text-zinc-300">
@@ -2778,10 +3181,34 @@ export default function AUTClock() {
   const [compassRoll, setCompassRoll] = useState<number | null>(null);
   const [compassAbsolute, setCompassAbsolute] = useState(false);
   const [uiTheme, setUiTheme] = useState<UITheme>(() => readStoredTheme());
+  const [sparkleEnabled, setSparkleEnabled] = useState(true);
+  const [atlasTone, setAtlasTone] = useState<"lux" | "umbra">("umbra");
+  const [atlasHueA, setAtlasHueA] = useState("#f6c453");
+  const [atlasHueB, setAtlasHueB] = useState("#b98cff");
+  const [atlasHueBorder, setAtlasHueBorder] = useState("#f6c453");
+  const [atlasHuePanel, setAtlasHuePanel] = useState("#0f172a");
+  const [atlasHueBg, setAtlasHueBg] = useState("#0b1220");
+  const [atlasHueText, setAtlasHueText] = useState("#fffbef");
+  const [atlasThemeName, setAtlasThemeName] = useState("");
+  const [savedAtlasThemes, setSavedAtlasThemes] = useState<
+    Array<{
+      id: string;
+      name: string;
+      tone: "lux" | "umbra";
+      hueA: string;
+      hueB: string;
+      hueBorder: string;
+      huePanel: string;
+      hueBg?: string;
+      hueText?: string;
+    }>
+  >([]);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
+  const [showCoords, setShowCoords] = useState(false);
   const panelSelectId = useId();
   const themeSelectId = useId();
   const isRetroTheme = uiTheme === "retro";
+  const isAtlasTheme = uiTheme === "atlas";
   const atmosphere = useAtmosphereSnapshot(coords);
   const [climateNonce, setClimateNonce] = useState(0);
   const todayKey = useMemo(
@@ -2827,10 +3254,78 @@ export default function AUTClock() {
 
   useEffect(() => {
     persistTheme(uiTheme);
-    if (typeof document !== "undefined" && document.body) {
+    if (typeof document !== "undefined") {
+      const presetBase = THEME_PRESETS[uiTheme];
+      const tonePreset =
+        uiTheme === "atlas"
+          ? atlasTone === "lux"
+            ? { ...presetBase, ...(presetBase.lux ?? {}) }
+            : { ...presetBase, ...(presetBase.umbra ?? {}) }
+          : presetBase;
+
+      const preset =
+        uiTheme === "atlas"
+          ? (() => {
+              const accentSoft = hexToRgba(atlasHueA, 0.22);
+              const buttonBorder = hexToRgba(atlasHueA, 0.65);
+              const inputBorder = hexToRgba(atlasHueA, 0.45);
+              const panelBorder = hexToRgba(atlasHueBorder, 0.78);
+              const panel = `linear-gradient(160deg, ${hexToRgba(atlasHuePanel, 0.9)}, ${hexToRgba(
+                atlasHuePanel,
+                0.72
+              )})`;
+              const background = atlasHueBg;
+              const backgroundSoft = hexToRgba(atlasHueBg, 0.65);
+              const baseButtonBg = tonePreset.buttonBg ?? "";
+              const buttonBg = baseButtonBg
+                ? baseButtonBg.replace("#f6c453", atlasHueA).replace("#b98cff", atlasHueB)
+                : `linear-gradient(145deg, ${hexToRgba(atlasHueA, 0.9)}, ${hexToRgba(atlasHueB, 0.78)})`;
+              const textColor = atlasHueText;
+              const muted = hexToRgba(atlasHueText, 0.75);
+              return {
+                ...tonePreset,
+                accent: atlasHueA,
+                accent2: atlasHueB,
+                accentSoft,
+                buttonBg,
+                buttonBorder,
+                inputBorder,
+                panel,
+                background,
+                backgroundSoft,
+                panelBorder,
+                panelShadow: tonePreset.panelShadow?.replace(/rgba\(\s*255\s*,\s*223\s*,\s*128[^)]*\)/g, hexToRgba(atlasHueBorder, 0.45)) ?? tonePreset.panelShadow,
+                text: textColor,
+                muted,
+              };
+            })()
+          : tonePreset;
+
+      const root = document.documentElement;
+      root.dataset.theme = uiTheme;
+      const vars: Record<string, string> = {
+        "--bg": preset.background,
+        "--bg-soft": preset.backgroundSoft ?? preset.background,
+        "--bg-overlay": preset.backgroundOverlay ?? "none",
+        "--panel": preset.panel,
+        "--panel-border": preset.panelBorder,
+        "--panel-shadow": preset.panelShadow,
+        "--text": preset.text,
+        "--muted": preset.muted,
+        "--accent": preset.accent,
+        "--accent-soft": preset.accentSoft,
+        "--accent-2": preset.accent2,
+        "--button-bg": preset.buttonBg,
+        "--button-border": preset.buttonBorder,
+        "--input-bg": preset.inputBg,
+        "--input-border": preset.inputBorder,
+        "--font-body": preset.fontFamily,
+      };
+      Object.entries(vars).forEach(([key, value]) => root.style.setProperty(key, value));
       document.body.dataset.autTheme = uiTheme;
     }
-  }, [uiTheme]);
+  }, [uiTheme, atlasTone, atlasHueA, atlasHueB, atlasHueBorder, atlasHuePanel, atlasHueBg, atlasHueText]);
+
 
   useEffect(() => {
     return () => {
@@ -3259,6 +3754,164 @@ export default function AUTClock() {
     ? data.dayLenMin / 12
     : data.nightLenMin / 12;
   const remainingRealMin = Math.max(0, remainingAUTHours * minutesPerAutHour);
+
+  // Atlas theme sparkle click effect (Ray-hued accent)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!sparkleEnabled) return;
+
+    const styleId = "atlas-sparkle-styles";
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      styleEl.textContent = `
+        .atlas-sparkle {
+          position: fixed;
+          pointer-events: none;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.9), transparent 65%);
+          mix-blend-mode: screen;
+          animation: atlas-sparkle-bloom 520ms ease-out forwards;
+          filter: drop-shadow(0 0 6px var(--atlas-ray, #a855f7));
+          z-index: 9999;
+        }
+        .atlas-sparkle::after {
+          content: "";
+          position: absolute;
+          inset: 2px;
+          background: conic-gradient(from 0deg, var(--atlas-ray, #a855f7), rgba(255,255,255,0.75), var(--atlas-ray, #a855f7));
+          mask: radial-gradient(circle, transparent 35%, black 36%);
+          border-radius: 50%;
+          opacity: 0.85;
+        }
+        .atlas-dust {
+          position: fixed;
+          pointer-events: none;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 45% 45%, rgba(255,255,255,0.9), rgba(255,255,255,0.6) 30%, var(--atlas-ray, #d946ef) 60%, rgba(0,0,0,0) 78%);
+          mix-blend-mode: screen;
+          animation: atlas-dust-drift 620ms ease-out forwards;
+          z-index: 9999;
+          filter: drop-shadow(0 0 8px var(--atlas-ray, #d946ef));
+        }
+        @keyframes atlas-dust-drift {
+          0% { transform: translate(var(--dx,0), var(--dy,0)) scale(0.5); opacity: 0.85; }
+          40% { opacity: 0.9; }
+          100% { transform: translate(calc(var(--dx,0) * 1.4), calc(var(--dy,0) * 1.6 - 6px)) scale(0.2); opacity: 0; }
+        }
+        .atlas-trail {
+          position: fixed;
+          pointer-events: none;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 40% 40%, #ffffff 0%, #ffffff 15%, rgba(255,255,255,0.65) 28%, var(--atlas-ray, #d946ef) 55%, rgba(0,0,0,0) 75%);
+          box-shadow:
+            0 0 10px rgba(255,255,255,0.7),
+            0 0 16px var(--atlas-ray, #d946ef),
+            0 0 28px rgba(255,255,255,0.25);
+          animation: atlas-trail-drift 820ms ease-out forwards;
+          opacity: 0.9;
+          z-index: 9998;
+          transform: translate(-50%, -50%) scale(0.9);
+          mix-blend-mode: screen;
+        }
+        .atlas-trail::after {
+          content: "";
+          position: absolute;
+          inset: 2px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(255,255,255,0.8), transparent 70%);
+          filter: blur(4px);
+          opacity: 0.85;
+        }
+        @keyframes atlas-trail-drift {
+          0% { transform: translate(-50%, -50%) scale(0.9) rotate(0deg); opacity: 0.95; }
+          35% { opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--dx, 6px)), calc(-50% + var(--dy, -10px))) scale(0.3) rotate(25deg); opacity: 0; }
+        }
+        @keyframes atlas-sparkle-bloom {
+          0% { transform: translate(-50%, -50%) scale(0.65); opacity: 0.9; }
+          40% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+          100% { transform: translate(-50%, calc(-50% - 8px)) scale(0.9); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+
+    const handler = (ev: MouseEvent) => {
+      if (uiTheme !== "atlas") return;
+      if (!activeRay) return;
+      // Ignore synthetic or zeroed coordinates (avoid top-left flashes)
+      if (ev.clientX === 0 && ev.clientY === 0) return;
+      const hue = activeRay.color;
+
+      const spawnDust = (count: number) => {
+        for (let i = 0; i < count; i++) {
+          const dust = document.createElement("span");
+          dust.className = "atlas-dust";
+          const angle = Math.random() * Math.PI * 2;
+          const radius = 6 + Math.random() * 10;
+          const dx = Math.cos(angle) * radius;
+          const dy = Math.sin(angle) * radius;
+          dust.style.left = `${ev.clientX}px`;
+          dust.style.top = `${ev.clientY}px`;
+          dust.style.setProperty("--dx", `${dx}px`);
+          dust.style.setProperty("--dy", `${dy}px`);
+          dust.style.filter = `drop-shadow(0 0 5px ${hue})`;
+          document.body.appendChild(dust);
+          setTimeout(() => dust.remove(), 700);
+        }
+      };
+
+      const spark = document.createElement("span");
+      spark.className = "atlas-sparkle";
+      spark.style.left = `${ev.clientX}px`;
+      spark.style.top = `${ev.clientY}px`;
+      spark.style.setProperty("--atlas-ray", hue);
+      document.body.appendChild(spark);
+      spawnDust(5);
+      setTimeout(() => spark.remove(), 560);
+    };
+
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [uiTheme, activeRay?.color, sparkleEnabled]);
+
+  // Atlas pointer trail (sparkle dust following mouse)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!sparkleEnabled) return;
+    const lastSpawn = { t: 0 };
+    const onMove = (ev: PointerEvent) => {
+      if (uiTheme !== "atlas") return;
+      if (!activeRay) return;
+      if (ev.pointerType !== "mouse") return;
+      if (ev.clientX === 0 && ev.clientY === 0) return;
+      const nowMs = performance.now();
+      if (nowMs - lastSpawn.t < 28) return; // throttle
+      lastSpawn.t = nowMs;
+
+      const hue = activeRay.color;
+      const trail = document.createElement("span");
+      trail.className = "atlas-trail";
+      trail.style.left = `${ev.clientX}px`;
+      trail.style.top = `${ev.clientY}px`;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 6 + Math.random() * 10;
+      trail.style.setProperty("--dx", `${Math.cos(angle) * radius}px`);
+      trail.style.setProperty("--dy", `${Math.sin(angle) * radius - 4}px`);
+      trail.style.setProperty("--atlas-ray", hue);
+      document.body.appendChild(trail);
+      setTimeout(() => trail.remove(), 900);
+    };
+    document.addEventListener("pointermove", onMove);
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [uiTheme, activeRay?.color, sparkleEnabled]);
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
   const ringSizeClass = PRESENT_ONLY
@@ -3268,6 +3921,105 @@ export default function AUTClock() {
   const rayHeaderClass = PRESENT_ONLY
     ? "flex flex-col items-center gap-2 text-center"
     : "flex flex-wrap items-end justify-between gap-3";
+  const weekRingSizeClass =
+    "h-[18rem] w-[18rem] sm:h-[21rem] sm:w-[21rem] lg:h-[23rem] lg:w-[23rem]";
+  const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
+  const weekHeaderClass = "flex flex-wrap items-start justify-between gap-3";
+
+  // Rays of the Week: active cycle + progress within current 12h band
+  const weekSegmentAngle = (2 * Math.PI) / WEEK_RAY_CYCLES.length;
+  const weekDialSegments = useMemo(() => {
+    const count = WEEK_RAY_CYCLES.length;
+    const offset = -Math.PI / 2;
+    return WEEK_RAY_CYCLES.map((cycle, index) => {
+      const dialPosition = ((index - WEEK_RAY_TOP_INDEX + count) % count + count) % count;
+      const startAngle = offset + dialPosition * weekSegmentAngle;
+      const endAngle = startAngle + weekSegmentAngle;
+      const midAngle = startAngle + weekSegmentAngle / 2;
+      const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
+      const labelPosition = polarToCartesian(LABEL_RADIUS, midAngle);
+      const labelLines = [`${cycle.dayAbbrev}`, cycle.code];
+      return {
+        cycle,
+        index,
+        dialPosition,
+        startAngle,
+        endAngle,
+        path,
+        labelX: labelPosition.x,
+        labelY: labelPosition.y,
+        labelLines,
+      };
+    });
+  }, [weekSegmentAngle]);
+  const weekRayIndex = weekRayIndexForDate(now);
+  const weekActiveCycle = WEEK_RAY_CYCLES[weekRayIndex] ?? WEEK_RAY_CYCLES[0];
+  const weekCycleStart = useMemo(() => {
+    const start = new Date(now);
+    start.setHours(now.getHours() >= 12 ? 12 : 0, 0, 0, 0);
+    return start;
+  }, [now]);
+  const weekCycleEnd = useMemo(
+    () => new Date(weekCycleStart.getTime() + 12 * 60 * 60 * 1000),
+    [weekCycleStart]
+  );
+  const weekRayRangeMs = Math.max(1, weekCycleEnd.getTime() - weekCycleStart.getTime());
+  const weekRayProgress = Math.min(
+    1,
+    Math.max(0, (now.getTime() - weekCycleStart.getTime()) / weekRayRangeMs)
+  );
+  const weekProgressPct = Math.round(weekRayProgress * 100);
+  const weekRemainingMinutes = Math.max(0, (weekCycleEnd.getTime() - now.getTime()) / 60000);
+  const weekRayWindowTimes: WeekRayWindowTimes = useMemo(
+    () => ({
+      start: formatShortTime(weekCycleStart),
+      end: formatShortTime(weekCycleEnd),
+    }),
+    [formatShortTime, weekCycleEnd, weekCycleStart]
+  );
+  const weekActiveSegment = weekDialSegments[weekRayIndex] ?? weekDialSegments[0];
+  const weekPointerAngle = weekActiveSegment
+    ? weekActiveSegment.startAngle + weekRayProgress * weekSegmentAngle
+    : -Math.PI / 2;
+  const weekPointerCoord = polarToCartesian(POINTER_RADIUS, weekPointerAngle);
+  const weekPointerInner = polarToCartesian(RING_INNER_RADIUS - 6, weekPointerAngle);
+  const weekReading = WEEK_RAY_READINGS[weekActiveCycle.id];
+  const rayReading = RAY_READINGS[activeRay?.name ?? ""];
+  const weekCyclesByDay = useMemo(() => {
+    const buckets = WEEK_RAY_DAY_ORDER.map((dayIndex) => ({
+      dayIndex,
+      dayLabel: WEEK_RAY_CYCLES.find((c) => c.dayIndex === dayIndex)?.dayLabel ?? "Day",
+      cycles: WEEK_RAY_CYCLES.filter((c) => c.dayIndex === dayIndex).sort((a, b) => a.cycle - b.cycle),
+    }));
+    return buckets;
+  }, []);
+  const [openWeekDayIdx, setOpenWeekDayIdx] = useState(() => {
+    const todayIdx = WEEK_RAY_DAY_ORDER.indexOf(now.getDay());
+    return todayIdx === -1 ? 0 : todayIdx;
+  });
+  const activeWeekDay = useMemo(
+    () => weekCyclesByDay.find((d) => d.dayIndex === weekActiveCycle.dayIndex),
+    [weekCyclesByDay, weekActiveCycle.dayIndex]
+  );
+  const activeWeekGradient = useMemo(() => {
+    const c1 = activeWeekDay?.cycles[0]?.color ?? "#475569";
+    const c2 = activeWeekDay?.cycles[1]?.color ?? c1;
+    return `linear-gradient(90deg, ${c1} 0%, ${c1} 50%, ${c2} 50%, ${c2} 100%)`;
+  }, [activeWeekDay]);
+  const rayWindowsDetailed = useMemo(
+    () =>
+      RAY_WINDOWS.map((win, idx) => ({
+        ...win,
+        idx,
+        window: {
+          start: formatAutWindow(win.start),
+          end: formatAutWindow(win.end),
+        },
+        reading: RAY_READINGS[win.name],
+      })),
+    [formatAutWindow]
+  );
+  const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
     const offset = -Math.PI / 2;
@@ -3304,15 +4056,6 @@ export default function AUTClock() {
     : -Math.PI / 2;
   const pointerCoord = polarToCartesian(POINTER_RADIUS, pointerAngle);
   const pointerInner = polarToCartesian(RING_INNER_RADIUS - 6, pointerAngle);
-  const progressPath =
-    activeSegment && rayProgress > 0
-      ? describeWedge(
-          RING_OUTER_RADIUS,
-          RING_INNER_RADIUS,
-          activeSegment.startAngle,
-          activeSegment.startAngle + segmentAngle * Math.min(rayProgress, 1)
-        )
-      : null;
   const atmosphereSample = atmosphere.sample;
   const atmosphereStatusLine = (() => {
     switch (atmosphere.status) {
@@ -3452,100 +4195,290 @@ export default function AUTClock() {
     [lookupZip]
   );
 
+  const themePreset = THEME_PRESETS[uiTheme];
+  const backdropClass = themePreset.backdropClass ?? "";
+  const panelClass = themePreset.panelClass ?? "";
+
   return (
     <div
-      className={`min-h-screen w-full text-zinc-100 flex items-center justify-center p-6 ${
-        isRetroTheme ? "retro-theme" : "bg-zinc-900"
-      }`}
-      style={{
-        fontFamily: isRetroTheme ? "'JetBrains Mono', ui-monospace, monospace" : "'Alice', ui-sans-serif",
-      }}
+      className={`min-h-screen w-full flex items-center justify-center p-6 theme-shell ${backdropClass}`}
+      style={{ fontFamily: themePreset.fontFamily }}
     >
       <div
-        className={`w-full max-w-4xl rounded-2xl shadow-xl p-6 md:p-8 space-y-6 ${
-          isRetroTheme ? "retro-panel" : "bg-zinc-800"
-        }`}
+      className={`w-full max-w-5xl rounded-2xl shadow-xl p-6 md:p-7 space-y-5 panel-surface ${panelClass}`}
       >
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-              Atlastizen Universal Time
+        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+              Atlastizen Universal
+              <br />
+              Time & Tools
             </h1>
-            <p className="text-zinc-300">
-              Sunrise → 00:00 AUT • Sunset → 12:00 AUT • Next Sunrise → 24:00 AUT
-            </p>
           </div>
-          <div className="flex flex-col gap-4 md:items-end">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
-              <div className="flex flex-col gap-1 text-xs uppercase tracking-wide text-zinc-400">
-                <label htmlFor={panelSelectId}>Dashboard Panel</label>
-                <select
-                  id={panelSelectId}
-                  className="rounded-lg border border-zinc-600 bg-zinc-800 px-2 py-1 text-xs uppercase tracking-wide text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={activePanel}
-                  onChange={(event) => setActivePanel(event.target.value as PanelId)}
-                >
-                  {PANEL_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+            <div className="flex flex-col gap-1 text-xs uppercase tracking-wide text-zinc-400">
+              <label htmlFor={panelSelectId}>Dashboard Panel</label>
+              <select
+                id={panelSelectId}
+                className="themed-input rounded-lg px-2 py-1 text-xs uppercase tracking-wide shadow-sm"
+                value={activePanel}
+                onChange={(event) => setActivePanel(event.target.value as PanelId)}
+              >
+                {PANEL_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className="themed-button rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide"
+              onClick={() => setActivePanel("settings")}
+            >
+              Settings
+            </button>
+          </div>
+        </header>
+
+        {activePanel === "settings" && (
+          <section className="themed-card p-5 space-y-4">
+            <div className="flex flex-col gap-1">
+              <div className="text-sm uppercase tracking-wide text-zinc-400">Interface Settings</div>
+              <p className="text-xs text-zinc-400">
+                Choose a theme and toggle the Atlas sparkles without leaving the dashboard.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1 text-xs uppercase tracking-wide text-zinc-400">
                 <label htmlFor={themeSelectId}>UI Mode</label>
                 <select
                   id={themeSelectId}
-                  className="rounded-lg border border-zinc-600 bg-zinc-800 px-2 py-1 text-xs uppercase tracking-wide text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="themed-input rounded-lg px-2 py-2 text-sm shadow-sm"
                   value={uiTheme}
                   onChange={(event) => setUiTheme(event.target.value as UITheme)}
                 >
                   <option value="normal">Normal</option>
                   <option value="retro">Retro Sci-Fi</option>
+                  <option value="atlas">Atlas Island</option>
                 </select>
               </div>
+              <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200">
+                <span>Atlas Sparkles</span>
+                <button
+                  type="button"
+                  className="themed-button rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+                  onClick={() => setSparkleEnabled((v) => !v)}
+                >
+                  {sparkleEnabled ? "On" : "Off"}
+                </button>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm uppercase text-zinc-400">AUT Now</div>
-              <div className="text-xl md:text-2xl font-medium">{data.autClock}</div>
-              <div className="text-xs text-zinc-400">Local {formatLongTime(now)}</div>
-            </div>
-          </div>
-        </header>
+            {uiTheme === "atlas" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                  <span className="text-sm text-zinc-200 flex items-center gap-2">
+                    <span role="img" aria-label="mode">🌙</span>
+                    <label className="text-xs uppercase tracking-wide text-zinc-400">Umbra / Lux</label>
+                  </span>
+                  <div className="flex-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={`themed-button px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${atlasTone === "umbra" ? "opacity-100" : "opacity-70"}`}
+                      onClick={() => setAtlasTone("umbra")}
+                    >
+                      Umbra
+                    </button>
+                    <button
+                      type="button"
+                      className={`themed-button px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${atlasTone === "lux" ? "opacity-100" : "opacity-70"}`}
+                      onClick={() => setAtlasTone("lux")}
+                    >
+                      Lux
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Hue A</span>
+                      <input
+                        type="color"
+                        value={atlasHueA}
+                        onChange={(e) => setAtlasHueA(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Hue B</span>
+                      <input
+                        type="color"
+                        value={atlasHueB}
+                        onChange={(e) => setAtlasHueB(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Panel Border Hue</span>
+                      <input
+                        type="color"
+                        value={atlasHueBorder}
+                        onChange={(e) => setAtlasHueBorder(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Panel Hue</span>
+                      <input
+                        type="color"
+                        value={atlasHuePanel}
+                        onChange={(e) => setAtlasHuePanel(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Background Hue</span>
+                      <input
+                        type="color"
+                        value={atlasHueBg}
+                        onChange={(e) => setAtlasHueBg(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                    <div className="flex flex-col text-xs uppercase tracking-wide text-zinc-400">
+                      <span>Text Hue</span>
+                      <input
+                        type="color"
+                        value={atlasHueText}
+                        onChange={(e) => setAtlasHueText(e.target.value)}
+                        className="w-16 h-10 rounded-md border border-white/20 bg-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    <label className="text-xs uppercase tracking-wide text-zinc-400 sm:min-w-[92px]">
+                      Theme Name
+                    </label>
+                    <input
+                      type="text"
+                      value={atlasThemeName}
+                      onChange={(e) => setAtlasThemeName(e.target.value)}
+                      placeholder="e.g. Aurora Lagoon"
+                      className="themed-input w-full rounded-lg px-3 py-2 text-sm shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      className="themed-button sm:ml-auto rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide whitespace-nowrap"
+                      onClick={() => {
+                        const trimmed = atlasThemeName.trim();
+                        const name =
+                          trimmed ||
+                          `Atlas ${atlasTone === "lux" ? "Lux" : "Umbra"} ${new Date().toLocaleTimeString()}`;
+                        setSavedAtlasThemes((list) => [
+                          ...list,
+                          {
+                            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+                            name,
+                            tone: atlasTone,
+                            hueA: atlasHueA,
+                            hueB: atlasHueB,
+                            hueBorder: atlasHueBorder,
+                            huePanel: atlasHuePanel,
+                            hueBg: atlasHueBg,
+                            hueText: atlasHueText,
+                          },
+                        ]);
+                        setAtlasThemeName("");
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {uiTheme === "atlas" && savedAtlasThemes.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Saved Atlas Themes</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {savedAtlasThemes.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="themed-subcard text-left px-3 py-2 text-sm text-zinc-100 flex items-center justify-between"
+                      style={{ background: `linear-gradient(135deg, ${t.hueA}20, ${t.hueB}30)` }}
+                      onClick={() => {
+                        setAtlasTone(t.tone);
+                        setAtlasHueA(t.hueA);
+                        setAtlasHueB(t.hueB);
+                        setAtlasHueBorder(t.hueBorder ?? t.hueA);
+                        setAtlasHuePanel(t.huePanel ?? "#0f172a");
+                        setAtlasHueBg(t.hueBg ?? "#0b1220");
+                        setAtlasHueText(t.hueText ?? "#fffbef");
+                        setUiTheme("atlas");
+                        setAtlasThemeName(t.name);
+                      }}
+                    >
+                      <span className="font-semibold">{t.name}</span>
+                      <span className="text-xs uppercase tracking-wide text-zinc-300">{t.tone}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {["clock", "sol", "luna", "ray", "postal"].includes(activePanel) && (
-          <section className="flex flex-col gap-2">
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div>
+          <section className="themed-card p-5 space-y-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-4">
+              <div className="max-w-3xl leading-tight">
                 <div className="text-sm text-zinc-400">Location</div>
-                <div className="text-lg font-medium">{locationPrimary}</div>
+                <div className="text-lg md:text-xl font-medium leading-snug break-words">{locationPrimary}</div>
               </div>
+              {activePanel !== "clock" ? (
+                <div className="text-right shrink-0 leading-tight">
+                  <div className="text-xs md:text-sm uppercase text-zinc-400">AUT</div>
+                  <div className="text-xl md:text-2xl font-semibold text-white">{data.autClock}</div>
+                  <div className="text-[11px] md:text-xs text-zinc-400">Local {formatLongTime(now)}</div>
+                </div>
+              ) : null}
+            </div>
+            <div className={`text-xs ${timeZoneTone} break-words`}>{timeZoneLine}</div>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
               <button
-                className="self-start rounded-xl bg-zinc-700 px-3 py-2 shadow transition hover:bg-zinc-600 md:self-center"
-                onClick={() => {
-                  if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                      (pos: GeolocationPosition) =>
-                        setCoords({
-                          lat: pos.coords.latitude,
-                          lon: pos.coords.longitude,
-                        }),
-                      () => setCoords(fallback),
-                      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
-                    );
-                  }
-                }}
+                className="themed-button rounded-lg px-2 py-1 text-xs uppercase tracking-wide"
+                onClick={() => setShowCoords((v) => !v)}
               >
-                Recenter
+                {showCoords ? "Hide" : "Show"}
               </button>
+              <span className="break-words">
+                Latitude and Longitude:{" "}
+                {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
+              </span>
             </div>
-            <div className="text-sm text-zinc-400">
-              lat {coords.lat.toFixed(4)}°, lon {coords.lon.toFixed(4)}°
-            </div>
-            <div className={`text-xs ${timeZoneTone}`}>{timeZoneLine}</div>
+            <button
+              className="themed-button self-start rounded-xl px-3 py-2 text-sm shadow"
+              onClick={() => {
+                if (navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(
+                    (pos: GeolocationPosition) =>
+                      setCoords({
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude,
+                      }),
+                    () => setCoords(fallback),
+                    { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+                  );
+                }
+              }}
+            >
+              Recenter
+            </button>
             {locationHint ? (
-              <div className={`flex items-center gap-2 text-xs ${locationHintTone}`}>
-                <span>{locationHint}</span>
+              <div className={`flex flex-wrap items-center gap-2 text-xs ${locationHintTone}`}>
+                <span className="break-words">{locationHint}</span>
                 {status === "granted" && placeStatus === "error" ? (
                   <button
                     className="rounded-lg px-2 py-1 text-xs text-emerald-300 transition hover:text-emerald-200"
@@ -3566,9 +4499,13 @@ export default function AUTClock() {
                 <div className="text-sm uppercase tracking-wide text-zinc-300">
                   AUT (Alastizen Universal Time)
                 </div>
+                <div className="text-xs text-zinc-400">
+                  Sunrise → 00:00 AUT • Sunset → 12:00 AUT • Next Sunrise → 24:00/00:00 AUT
+                </div>
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
                   {data.autClock}
                 </div>
+                <div className="text-sm text-zinc-300">Local {formatLongTime(now)}</div>
               </div>
               <div className="flex flex-col items-end gap-2 text-right">
                 <div>
@@ -3620,7 +4557,7 @@ export default function AUTClock() {
         {activePanel === "sol" && (
           <>
         {/* Sol Panel */}
-        <section className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-700 space-y-6">
+        <section className="themed-card p-5 space-y-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="text-sm uppercase tracking-wide text-zinc-400">Sol (Sun)</div>
@@ -3632,26 +4569,6 @@ export default function AUTClock() {
               </div>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-              <div className="uppercase tracking-wide text-amber-200/70">Sunrise</div>
-              <div className="text-2xl font-semibold text-amber-100">{solRiseAut}</div>
-              <div className="text-xs text-amber-100/80">Local {solRiseLocal}</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-              <div className="uppercase tracking-wide text-amber-200/70">Solar Noon</div>
-              <div className="text-2xl font-semibold text-amber-100">{solTransitAut}</div>
-              <div className="text-xs text-amber-100/80">
-                Local {solTransitLocal} • Alt {solTransitAltStr}
-              </div>
-            </div>
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-              <div className="uppercase tracking-wide text-amber-200/70">Sunset</div>
-              <div className="text-2xl font-semibold text-amber-100">{solSetAut}</div>
-              <div className="text-xs text-amber-100/80">Local {solSetLocal}</div>
-            </div>
-          </div>
-
           {solArc ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-400">
@@ -3773,6 +4690,26 @@ export default function AUTClock() {
               Solar track unavailable for this location/time.
             </div>
           )}
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <div className="uppercase tracking-wide text-amber-200/70">Sunrise</div>
+              <div className="text-2xl font-semibold text-amber-100">{solRiseAut}</div>
+              <div className="text-xs text-amber-100/80">Local {solRiseLocal}</div>
+            </div>
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <div className="uppercase tracking-wide text-amber-200/70">Solar Noon</div>
+              <div className="text-2xl font-semibold text-amber-100">{solTransitAut}</div>
+              <div className="text-xs text-amber-100/80">
+                Local {solTransitLocal} • Alt {solTransitAltStr}
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <div className="uppercase tracking-wide text-amber-200/70">Sunset</div>
+              <div className="text-2xl font-semibold text-amber-100">{solSetAut}</div>
+              <div className="text-xs text-amber-100/80">Local {solSetLocal}</div>
+            </div>
+          </div>
         </section>
           </>
         )}
@@ -3809,25 +4746,6 @@ export default function AUTClock() {
                   <span className="text-xs text-zinc-400">|δₘ| &lt; 23.44°</span>
                 )}
               </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-              <div className="text-sm text-zinc-400">Moonrise</div>
-              <div className="text-2xl font-semibold">{moonRiseAut}</div>
-              <div className="text-xs text-zinc-400">Local {moonRiseLocal}</div>
-            </div>
-            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-              <div className="text-sm text-zinc-400">Transit</div>
-              <div className="text-2xl font-semibold">{moonTransitAut}</div>
-              <div className="text-xs text-zinc-400">Local {moonTransitLocal}</div>
-              <div className="text-xs text-zinc-400">Alt {moonTransitAltStr}</div>
-            </div>
-            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-              <div className="text-sm text-zinc-400">Moonset</div>
-              <div className="text-2xl font-semibold">{moonSetAut}</div>
-              <div className="text-xs text-zinc-400">Local {moonSetLocal}</div>
             </div>
           </div>
 
@@ -3952,6 +4870,25 @@ export default function AUTClock() {
               Lunar track unavailable for this location/time.
             </div>
           )}
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+              <div className="text-sm text-zinc-400">Moonrise</div>
+              <div className="text-2xl font-semibold">{moonRiseAut}</div>
+              <div className="text-xs text-zinc-400">Local {moonRiseLocal}</div>
+            </div>
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+              <div className="text-sm text-zinc-400">Transit</div>
+              <div className="text-2xl font-semibold">{moonTransitAut}</div>
+              <div className="text-xs text-zinc-400">Local {moonTransitLocal}</div>
+              <div className="text-xs text-zinc-400">Alt {moonTransitAltStr}</div>
+            </div>
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+              <div className="text-sm text-zinc-400">Moonset</div>
+              <div className="text-2xl font-semibold">{moonSetAut}</div>
+              <div className="text-xs text-zinc-400">Local {moonSetLocal}</div>
+            </div>
+          </div>
         </section>
           </>
         )}
@@ -4103,10 +5040,10 @@ export default function AUTClock() {
           <div className={rayHeaderClass}>
             <div>
               <div className="text-sm uppercase text-zinc-400 tracking-wide">
-                Ray Wheel & Window
+                Ray Dial Cycles
               </div>
               <div className="text-lg font-semibold text-zinc-100">
-                Active Window: <span className="underline decoration-dotted">{activeRay.name}</span>
+                Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
               </div>
               {rayWindowTimes ? (
                 <div className="text-xs text-zinc-400">
@@ -4116,7 +5053,7 @@ export default function AUTClock() {
               ) : null}
             </div>
             <div className={`text-sm text-zinc-300 ${PRESENT_ONLY ? "" : "text-right"}`}>
-              <div>{progressPct}% through this window</div>
+              <div>{progressPct}% through this cycle</div>
               <div>
                 ≈ {Math.ceil(remainingAUTHours * 60)} AUT min left • ≈ {Math.ceil(remainingRealMin)} real min
               </div>
@@ -4126,7 +5063,7 @@ export default function AUTClock() {
           <div className={ringLayoutClass}>
             <div className="relative">
               <svg
-                viewBox="-64 -64 128 128"
+                viewBox="-70 -70 140 140"
                 className={`${ringSizeClass} text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]`}
               >
                 <circle
@@ -4145,7 +5082,7 @@ export default function AUTClock() {
                       <path
                         d={segment.path}
                         fill={segment.ray.color}
-                        fillOpacity={isActive ? 0.95 : 0.78}
+                        fillOpacity={isActive ? 1 : 0.78}
                         stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
                         strokeWidth={isActive ? 1.6 : 0.6}
                       />
@@ -4170,9 +5107,6 @@ export default function AUTClock() {
                     </g>
                   );
                 })}
-                {progressPath ? (
-                  <path d={progressPath} fill="rgba(248,250,252,0.28)" stroke="none" pointerEvents="none" />
-                ) : null}
                 <line
                   x1={pointerInner.x.toFixed(3)}
                   y1={pointerInner.y.toFixed(3)}
@@ -4187,6 +5121,558 @@ export default function AUTClock() {
             </div>
           </div>
 
+          <div className="themed-subcard p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div
+                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
+                style={{ backgroundColor: activeRay.color }}
+              />
+              <div className="space-y-2">
+                <div className="text-base font-semibold text-zinc-50">
+                  {rayReading?.title ?? activeRay.name}
+                </div>
+                {rayReading ? (
+                  <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                    <div><span className="font-semibold text-zinc-100">Core Energetic Signature: </span>{rayReading.core}</div>
+                    <div><span className="font-semibold text-zinc-100">Gifts: </span>{rayReading.gifts}</div>
+                    <div><span className="font-semibold text-zinc-100">Ideal For: </span>{rayReading.ideal}</div>
+                    <div><span className="font-semibold text-zinc-100">Affirmation: </span>{rayReading.affirmation}</div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-zinc-200">
+                    Ray reading unavailable for this cycle.
+                  </p>
+                )}
+                <div className="text-xs text-zinc-400">
+                  AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {rayWindowsDetailed.map((win) => {
+              const isOpen = openRayIdx === win.idx;
+              const isActive = win.idx === rayIndex;
+              const pillStyle: CSSProperties = { ["--pill-accent" as string]: win.color };
+              return (
+                <div key={win.idx} className="themed-subcard overflow-hidden p-0">
+                  <button
+                    type="button"
+                    className="ray-pill text-left"
+                    onClick={() => setOpenRayIdx(isOpen ? -1 : win.idx)}
+                    aria-expanded={isOpen}
+                    style={pillStyle}
+                  >
+                    <div className="ray-pill-header">
+                      <div className="ray-pill-dot" style={{ backgroundColor: win.color }} aria-hidden="true" />
+                      <div className="flex flex-col leading-tight">
+                        <span className="ray-pill-title">{win.name}</span>
+                        <span className="ray-pill-time">
+                          AUT {win.window.start.aut} → {win.window.end.aut} • Local {win.window.start.local} → {win.window.end.local}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isActive ? (
+                        <span className="ray-pill-show" aria-live="polite">
+                          Active now
+                        </span>
+                      ) : null}
+                      <span className="ray-pill-show">{isOpen ? "Hide" : "Show"}</span>
+                    </div>
+                  </button>
+                  {isOpen ? (
+                    <div className="border-t border-zinc-700/40 bg-black/10 px-4 py-4 space-y-2">
+                      {win.reading ? (
+                        <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                          <div>
+                            <span className="font-semibold text-zinc-100">Core Energetic Signature: </span>
+                            {win.reading.core}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Gifts: </span>
+                            {win.reading.gifts}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Ideal For: </span>
+                            {win.reading.ideal}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Affirmation: </span>
+                            {win.reading.affirmation}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-zinc-200">Ray reading unavailable for this cycle.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+        </section>
+          </>
+        )}
+
+        {activePanel === "weekrays" && (
+          <>
+        {/* Rays of the Week */}
+        <section className="themed-card p-6 space-y-6">
+          <div className={weekHeaderClass}>
+            <div className="space-y-1">
+              <div className="text-sm uppercase tracking-wide text-indigo-200/80">
+                Rays of the Week
+              </div>
+              <div className="text-lg font-semibold text-slate-100">
+                {weekActiveCycle.dayLabel} • Cycle {weekActiveCycle.cycle} —{" "}
+                <span className="underline decoration-dotted">{weekActiveCycle.name}</span>
+              </div>
+              <p className="text-xs text-indigo-100/90">{weekActiveCycle.description}</p>
+              <div className="text-xs text-slate-400">
+                Local {weekRayWindowTimes.start} → {weekRayWindowTimes.end}
+              </div>
+            </div>
+            <div className="text-sm text-slate-100 text-right">
+              <div>{weekProgressPct}% through this 12h shift</div>
+              <div>≈ {Math.ceil(weekRemainingMinutes)} min left</div>
+            </div>
+          </div>
+
+          <div className={weekRingLayoutClass}>
+            <div className="relative">
+              <svg
+                viewBox="-70 -70 140 140"
+                className={`${weekRingSizeClass} text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]`}
+                role="img"
+                aria-label="Rays of the Week dial"
+              >
+                <circle
+                  cx="0"
+                  cy="0"
+                  r={RING_OUTER_RADIUS + 4}
+                  fill="#0f172a"
+                  fillOpacity="0.32"
+                  stroke="#312e81"
+                  strokeWidth="0.8"
+                />
+                {weekDialSegments.map((segment) => {
+                  const isActive = segment.index === weekRayIndex;
+                  return (
+                    <g key={segment.cycle.id}>
+                      <path
+                        d={segment.path}
+                        fill={segment.cycle.color}
+                        fillOpacity={isActive ? 1 : 0.78}
+                        stroke={isActive ? "#f8fafc" : "rgba(12,17,31,0.55)"}
+                        strokeWidth={isActive ? 1.6 : 0.75}
+                      />
+                      <text
+                        x={segment.labelX.toFixed(3)}
+                        y={segment.labelY.toFixed(3)}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="3.6"
+                        fill={segment.cycle.labelColor ?? "#e2e8f0"}
+                        letterSpacing="0.02em"
+                      >
+                        {segment.labelLines.map((line, lineIdx) => (
+                          <tspan
+                            key={`${segment.cycle.id}-${lineIdx}`}
+                            x={segment.labelX.toFixed(3)}
+                            dy={lineIdx === 0 ? "-0.2em" : "1.05em"}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
+                      </text>
+                    </g>
+                  );
+                })}
+                <line
+                  x1={weekPointerInner.x.toFixed(3)}
+                  y1={weekPointerInner.y.toFixed(3)}
+                  x2={weekPointerCoord.x.toFixed(3)}
+                  y2={weekPointerCoord.y.toFixed(3)}
+                  stroke="#f8fafc"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <circle cx="0" cy="0" r="6" fill="#0b1120" stroke="#f1f5f9" strokeWidth="1" />
+              </svg>
+            </div>
+            <div className="text-xs text-slate-300 text-center max-w-2xl">
+              12-hour ray shifts at local midnight and noon, flowing in order from Saturday dawn through
+              Friday night.
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {weekCyclesByDay.map((day, idx) => {
+              const isOpen = idx === openWeekDayIdx;
+              const c1 = day.cycles[0];
+              const c2 = day.cycles[1];
+              const headerBg = `linear-gradient(120deg, ${c1?.color ?? "#334155"} 0%, ${c1?.color ?? "#334155"} 35%, ${c2?.color ?? "#475569"} 100%)`;
+              const pillStyle: CSSProperties = { ["--pill-accent" as string]: c1?.color ?? "#c084fc" };
+              const isToday = day.dayIndex === weekActiveCycle.dayIndex;
+              return (
+                <div key={day.dayIndex} className="themed-subcard overflow-hidden p-0">
+                  <button
+                    type="button"
+                    className="ray-pill text-left"
+                    onClick={() => setOpenWeekDayIdx(isOpen ? -1 : idx)}
+                    aria-expanded={isOpen}
+                    style={{ ...pillStyle, backgroundImage: headerBg }}
+                  >
+                    <div className="ray-pill-header">
+                      <div className="ray-pill-dot" style={{ background: headerBg }} aria-hidden="true" />
+                      <div className="flex flex-col leading-tight">
+                        <span className="ray-pill-title">{day.dayLabel}</span>
+                        <span className="ray-pill-time">00:00 → 12:00 • 12:00 → 24:00 local</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isToday ? <span className="ray-pill-show">Current day</span> : null}
+                      <span className="ray-pill-show">{isOpen ? "Hide" : "Show"}</span>
+                    </div>
+                  </button>
+                  {isOpen ? (
+                    <div className="border-t border-slate-700/40 bg-black/10 px-4 py-4 space-y-3">
+                      {day.cycles.map((cycle) => {
+                        const reading = WEEK_RAY_READINGS[cycle.id];
+                        const isActive = cycle.id === weekActiveCycle.id;
+                        return (
+                          <div
+                            key={cycle.id}
+                            className={`themed-subcard px-3 py-3 space-y-2 ${
+                              isActive ? "ring-1 ring-[var(--accent-2)]" : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                                Cycle {cycle.cycle}
+                              </span>
+                              <span className="text-xs text-slate-300">{cycle.dayLabel}</span>
+                              {isActive ? (
+                                <span className="ml-auto text-[11px] rounded-full bg-indigo-500/25 px-2 py-0.5 text-indigo-100">
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-start gap-3">
+                              <div
+                                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
+                                style={{ backgroundColor: cycle.color }}
+                              />
+                              <div className="space-y-1">
+                                <div className="text-sm font-semibold text-slate-100">
+                                  {cycle.name} ({cycle.code})
+                                </div>
+                                <p className="text-sm text-slate-200">
+                                  {reading?.body ?? cycle.description}
+                                </p>
+                                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                  Local {cycle.cycle === 1 ? "00:00 → 12:00" : "12:00 → 24:00"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="themed-subcard p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div
+                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/30"
+                style={{ backgroundColor: weekActiveCycle.color }}
+              />
+              <div className="space-y-2">
+                <div className="text-base font-semibold text-slate-50">
+                  {weekReading?.title ?? "Current cycle"}
+                </div>
+                <p className="text-sm leading-relaxed text-slate-200">
+                  {weekReading?.body ?? "Rays of the Week reading unavailable for this cycle."}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <span className="uppercase tracking-wide">Cycle</span>
+              <span className="text-slate-200">
+                Local {weekRayWindowTimes.start} → {weekRayWindowTimes.end}
+              </span>
+            </div>
+          </div>
+
+          <div className="themed-subcard p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div
+                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/30"
+                style={{ backgroundColor: activeRay.color }}
+              />
+              <div className="space-y-2">
+                <div className="text-base font-semibold text-slate-50">
+                  {rayReading?.title ?? activeRay.name}
+                </div>
+                {rayReading ? (
+                  <div className="space-y-1 text-sm leading-relaxed text-slate-200">
+                    <div><span className="font-semibold text-slate-100">Core Energetic Signature: </span>{rayReading.core}</div>
+                    <div><span className="font-semibold text-slate-100">Gifts: </span>{rayReading.gifts}</div>
+                    <div><span className="font-semibold text-slate-100">Ideal For: </span>{rayReading.ideal}</div>
+                    <div><span className="font-semibold text-slate-100">Affirmation: </span>{rayReading.affirmation}</div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-slate-200">
+                    Ray reading unavailable for this cycle.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <span className="uppercase tracking-wide">Ray Dial Cycle</span>
+              <span className="text-slate-200">
+                AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
+              </span>
+            </div>
+          </div>
+        </section>
+          </>
+        )}
+
+        {activePanel === "rayreading" && (
+          <>
+        {/* Ray Reading */}
+        <section className="themed-card p-6 space-y-5">
+          <div className="flex flex-col gap-1">
+            <div className="text-sm uppercase tracking-wide text-indigo-200/80">Ray Reading</div>
+            <div className="flex items-center gap-3 text-base font-semibold text-slate-100">
+              <div
+                className="h-4 w-4 rounded-full ring-2 ring-white/40"
+                style={{ backgroundColor: activeRay.color }}
+              />
+              <span>Ray Dial: {activeRay.name}</span>
+            </div>
+            <div className="flex items-center gap-3 text-base font-semibold text-slate-100">
+              <div
+                className="h-4 w-4 rounded-full ring-2 ring-white/40"
+                style={{ background: activeWeekGradient }}
+              />
+              <span>
+                Ray of the Week: {weekActiveCycle.dayLabel} — {weekActiveCycle.name}
+              </span>
+            </div>
+            <p className="text-sm text-slate-300">
+              The AUT Ray Dial follows the flow of the Ray frequencies throughout our Sun's solar cycle.
+            </p>
+          </div>
+
+          <div className="themed-subcard p-5 space-y-3">
+            <div className="flex items-start gap-4">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-lg font-semibold text-white">Ray Dial</div>
+                  <div
+                    className="h-10 w-10 rounded-full ring-2 ring-white/40 shrink-0"
+                    style={{ backgroundColor: activeRay.color }}
+                  />
+                </div>
+                <div className="text-base font-semibold text-slate-50">
+                  {rayReading?.title ?? activeRay.name}
+                </div>
+                {rayReading ? (
+                  <div className="space-y-1 text-sm leading-relaxed text-slate-200">
+                    <div><span className="font-semibold text-slate-100">Core Energetic Signature: </span>{rayReading.core}</div>
+                    <div><span className="font-semibold text-slate-100">Gifts: </span>{rayReading.gifts}</div>
+                    <div><span className="font-semibold text-slate-100">Ideal For: </span>{rayReading.ideal}</div>
+                    <div><span className="font-semibold text-slate-100">Affirmation: </span>{rayReading.affirmation}</div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-slate-200">
+                    Ray reading unavailable for this cycle.
+                  </p>
+                )}
+                <div className="text-xs text-slate-400">
+                  AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {rayWindowsDetailed.map((win) => {
+              const isOpen = openRayIdx === win.idx;
+              const isActive = win.idx === rayIndex;
+              return (
+                <div key={win.idx} className="themed-subcard overflow-hidden">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-4 py-3 text-left gap-3"
+                    onClick={() => setOpenRayIdx(isOpen ? -1 : win.idx)}
+                    aria-expanded={isOpen}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-8 w-8 rounded-full ring-2 ring-white/40 shrink-0"
+                        style={{ backgroundColor: win.color }}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-zinc-100">{win.name}</div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">
+                          AUT {win.window.start.aut} → {win.window.end.aut} • Local {win.window.start.local} → {win.window.end.local}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-zinc-300">
+                      {isActive ? (
+                        <span className="rounded-full bg-emerald-600/30 px-2 py-1 text-[11px]">
+                          Active now
+                        </span>
+                      ) : null}
+                      <span className="text-zinc-400">{isOpen ? "Hide" : "Show"}</span>
+                    </div>
+                  </button>
+                  {isOpen ? (
+                    <div className="border-t border-zinc-700/40 bg-black/10 px-4 py-4 space-y-2">
+                      {win.reading ? (
+                        <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                          <div>
+                            <span className="font-semibold text-zinc-100">Core Energetic Signature: </span>
+                            {win.reading.core}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Gifts: </span>
+                            {win.reading.gifts}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Ideal For: </span>
+                            {win.reading.ideal}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-100">Affirmation: </span>
+                            {win.reading.affirmation}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-zinc-200">Ray reading unavailable for this window.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="themed-subcard p-5 space-y-3">
+            <div className="flex items-start gap-4">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-lg font-semibold text-white">Rays of the Week</div>
+                  <div
+                    className="h-10 w-10 rounded-full ring-2 ring-white/35 shrink-0"
+                    style={{ background: activeWeekGradient }}
+                  />
+                </div>
+                <div className="text-base font-semibold text-slate-50">
+                  {weekReading?.title ?? "Current cycle"}
+                </div>
+                <p className="text-sm leading-relaxed text-slate-200">
+                  {weekReading?.body ?? "Rays of the Week reading unavailable for this cycle."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-xs uppercase tracking-wide text-indigo-200/80">Weekly Day Accordions</div>
+          <div className="space-y-3">
+            {weekCyclesByDay.map((day, idx) => {
+              const isOpen = idx === openWeekDayIdx;
+              const c1 = day.cycles[0];
+              const c2 = day.cycles[1];
+              const headerBg = `linear-gradient(90deg, ${c1?.color ?? "#334155"} 0%, ${c1?.color ?? "#334155"} 50%, ${c2?.color ?? "#475569"} 50%, ${c2?.color ?? "#475569"} 100%)`;
+              const isToday = day.dayIndex === weekActiveCycle.dayIndex;
+              return (
+                <div key={day.dayIndex} className="themed-subcard overflow-hidden">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-4 py-3 text-left gap-3"
+                    onClick={() => setOpenWeekDayIdx(isOpen ? -1 : idx)}
+                    aria-expanded={isOpen}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-8 w-8 rounded-full ring-2 ring-white/40 shrink-0"
+                        style={{ background: headerBg }}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">{day.dayLabel}</div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                          00:00 → 12:00 • 12:00 → 24:00 local
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-300">
+                      {isToday ? <span className="rounded-full bg-indigo-600/40 px-2 py-1 text-[11px]">Current day</span> : null}
+                      <span className="text-slate-400">{isOpen ? "Hide" : "Show"}</span>
+                    </div>
+                  </button>
+                  {isOpen ? (
+                    <div className="border-t border-slate-700/40 bg-black/10 px-4 py-4 space-y-3">
+                      {day.cycles.map((cycle) => {
+                        const reading = WEEK_RAY_READINGS[cycle.id];
+                        const isActive = cycle.id === weekActiveCycle.id;
+                        return (
+                          <div
+                            key={cycle.id}
+                            className={`themed-subcard px-3 py-3 space-y-2 ${
+                              isActive ? "ring-1 ring-[var(--accent-2)]" : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                                Cycle {cycle.cycle}
+                              </span>
+                              <span className="text-xs text-slate-300">{cycle.dayLabel}</span>
+                              {isActive ? (
+                                <span className="ml-auto text-[11px] rounded-full bg-indigo-500/25 px-2 py-0.5 text-indigo-100">
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-start gap-3">
+                              <div
+                                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
+                                style={{ backgroundColor: cycle.color }}
+                              />
+                              <div className="space-y-1">
+                                <div className="text-sm font-semibold text-slate-100">
+                                  {cycle.name} ({cycle.code})
+                                </div>
+                                <p className="text-sm text-slate-200">
+                                  {reading?.body ?? cycle.description}
+                                </p>
+                                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                  Local {cycle.cycle === 1 ? "00:00 → 12:00" : "12:00 → 24:00"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </section>
           </>
         )}
@@ -4336,8 +5822,17 @@ export default function AUTClock() {
           />
         </div>
 
-        <footer className="text-center text-xs text-zinc-500 mt-2 whitespace-pre-wrap">
-          Atlas Island ✨ www.atlasisland.co
+        <footer className="text-center text-xs text-zinc-400 mt-2 whitespace-pre-wrap">
+          Atlas Island ✨{" "}
+          <a
+            className="text-zinc-300 underline decoration-dotted hover:text-white"
+            href="https://www.atlasisland.co"
+            target="_blank"
+            rel="noreferrer"
+          >
+            www.atlasisland.co
+          </a>{" "}
+          • v2.8.6
         </footer>
       </div>
       {secretOpen && (

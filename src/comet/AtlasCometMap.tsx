@@ -71,6 +71,7 @@ const FONT_MAX = 20;
 const SCALE_MIN = 0.03;
 const SCALE_MAX = 18;
 const CANVAS_SIZE = 560;
+const SPREAD_FACTOR = 1.8;
 const MOON_VIS_MIN_PX = 10;
 const MOON_VIS_MAX_PX = 28;
 const LERP_SOFTEN_PX = 6;
@@ -84,9 +85,9 @@ const ZODIAC_SIGNS = [
   { name: "Leo", symbol: "♌︎" },
   { name: "Virgo", symbol: "♍︎" },
   { name: "Libra", symbol: "♎︎" },
-  { name: "Scorpius", symbol: "♏︎" },
+  { name: "Scorpio", symbol: "♏︎" },
   { name: "Sagittarius", symbol: "♐︎" },
-  { name: "Capricornus", symbol: "♑︎" },
+  { name: "Capricorn", symbol: "♑︎" },
   { name: "Aquarius", symbol: "♒︎" },
   { name: "Pisces", symbol: "♓︎" },
 ];
@@ -234,10 +235,13 @@ function HeartlightSystemMap() {
   const [running, setRunning] = useState(false);
   const [timeScale] = useState(4);
   const [viewMode, setViewMode] = useState<ViewMode>("heliocentric");
+  const [gyroEnabled, setGyroEnabled] = useState(false);
+  const [gyroHeading, setGyroHeading] = useState(0);
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [showMoon, setShowMoon] = useState(true);
   const [scaleLabels, setScaleLabels] = useState(true);
+  const [distanceMode, setDistanceMode] = useState<"scaled" | "accurate">("scaled");
 
   const orbitCache = useMemo(() => {
     const cache = new Map<string, Vec2[]>();
@@ -258,9 +262,13 @@ function HeartlightSystemMap() {
   const worldToScreen = (point: Vec2): Vec2 => {
     const pxPerAU = scaleRef.current / AU_PER_PX_AT_1X;
     const { width, height } = sizeRef.current;
+    const adjusted =
+      distanceMode === "scaled"
+        ? { x: point.x * SPREAD_FACTOR, y: point.y * SPREAD_FACTOR }
+        : point;
     return {
-      x: (point.x - cameraRef.current.x) * pxPerAU + width / 2,
-      y: height / 2 - (point.y - cameraRef.current.y) * pxPerAU,
+      x: (adjusted.x - cameraRef.current.x) * pxPerAU + width / 2,
+      y: height / 2 - (adjusted.y - cameraRef.current.y) * pxPerAU,
     };
   };
 
@@ -272,6 +280,33 @@ function HeartlightSystemMap() {
       y: (height / 2 - point.y) / pxPerAU + cameraRef.current.y,
     };
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!gyroEnabled || viewMode !== "geocentric") return;
+
+    const handler = (event: DeviceOrientationEvent) => {
+      if (typeof event.alpha === "number") {
+        setGyroHeading(event.alpha);
+      }
+    };
+
+    const enable = async () => {
+      const perm = (DeviceOrientationEvent as any)?.requestPermission;
+      if (typeof perm === "function") {
+        try {
+          const res = await perm();
+          if (res !== "granted") return;
+        } catch {
+          return;
+        }
+      }
+      window.addEventListener("deviceorientation", handler, true);
+    };
+
+    enable();
+    return () => window.removeEventListener("deviceorientation", handler, true);
+  }, [gyroEnabled, viewMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -323,7 +358,7 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, viewMode]);
+  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, viewMode, distanceMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -555,6 +590,23 @@ function HeartlightSystemMap() {
           >
             Full System
           </button>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+            onClick={() => setDistanceMode((m) => (m === "scaled" ? "accurate" : "scaled"))}
+            aria-pressed={distanceMode === "accurate"}
+          >
+            {distanceMode === "accurate" ? "Accurate distances" : "Scaled spacing"}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20 disabled:opacity-50"
+            disabled={viewMode !== "geocentric"}
+            onClick={() => setGyroEnabled((v) => !v)}
+            aria-pressed={gyroEnabled}
+          >
+            Gyro (Gaian)
+          </button>
         </div>
         <div className="flex w-full flex-wrap items-center gap-3 border-t border-sky-500/20 pt-3 text-[0.65rem] uppercase tracking-wide text-sky-200/80">
           <label className="flex items-center gap-2">
@@ -597,12 +649,19 @@ function HeartlightSystemMap() {
       </div>
 
       <div className="relative mx-auto flex w-full max-w-[640px] flex-col items-center gap-3 rounded-2xl border border-sky-500/30 bg-slate-900/70 p-4">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_SIZE}
-          height={CANVAS_SIZE}
-          className="block aspect-square w-full max-w-[560px]"
-        />
+        <div className="relative aspect-square w-full max-w-[560px] rounded-full overflow-hidden border border-sky-500/50 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 shadow-inner">
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_SIZE}
+            height={CANVAS_SIZE}
+            className="absolute inset-0 h-full w-full rounded-full"
+            style={
+              gyroEnabled && viewMode === "geocentric"
+                ? { transform: `rotate(${gyroHeading.toFixed(1)}deg)` }
+                : undefined
+            }
+          />
+        </div>
       </div>
 
       <p className="text-xs text-slate-300">
@@ -631,11 +690,15 @@ function drawScene(
 
   const placements = getPlacements(overlays.viewMode, time);
 
+  // Circular viewport clip for the system
+  const radius = Math.min(width, height) / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+  ctx.clip();
+
   if (overlays.showEclipticGrid) {
     drawEclipticGrid(ctx, worldToScreen, scale);
-  }
-  if (overlays.showZodiac) {
-    drawZodiacRing(ctx, worldToScreen, scale);
   }
 
   if (overlays.viewMode === "geocentric") {
@@ -660,36 +723,57 @@ function drawScene(
   }
 
   drawBodies(ctx, placements, worldToScreen, scale, overlays);
+  ctx.restore(); // end clip
+
+  if (overlays.showZodiac) {
+    drawZodiacRing(ctx, worldToScreen, scale);
+  }
+
+  // Outline circular viewport
+  ctx.strokeStyle = "rgba(56,189,248,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(width / 2, height / 2, radius - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
 }
 
 function drawZodiacRing(
   ctx: CanvasRenderingContext2D,
-  worldToScreen: (point: Vec2) => Vec2,
+  _worldToScreen: (point: Vec2) => Vec2,
   scale: number
 ) {
-  const center = worldToScreen({ x: 0, y: 0 });
-  const radiusPoint = worldToScreen({ x: ZODIAC_RING_RADIUS_AU, y: 0 });
-  const radiusPx = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y);
+  // Draw a static ring that hugs the outer edge of the viewport circle,
+  // independent of panning/zooming mechanics.
+  const dpr = window.devicePixelRatio ?? 1;
+  const width = ctx.canvas.width / dpr;
+  const height = ctx.canvas.height / dpr;
+  const center = { x: width / 2, y: height / 2 };
+  const viewportRadius = Math.min(width, height) / 2;
+  // Bring the ring close to the canvas edge while keeping labels inside the viewport.
+  const edgePadding = 12; // tighter margin but avoids clipping
+  const ringRadius = Math.max(18, viewportRadius - edgePadding);
+  const tickInner = ringRadius - 10;
+  const tickOuter = ringRadius + 6;
 
   ctx.save();
   ctx.strokeStyle = "rgba(56,189,248,0.28)";
-  ctx.lineWidth = clamp(scale * 0.4, 0.6, 1.6);
+  ctx.lineWidth = clamp(scale * 0.35, 0.6, 1.4);
   ctx.beginPath();
-  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
   ctx.stroke();
   ctx.textAlign = "center";
 
   for (let i = 0; i < 12; i += 1) {
     const angle = (i / 12) * Math.PI * 2;
-    const lineInner = worldToScreen({
-      x: Math.cos(angle) * (ZODIAC_RING_RADIUS_AU * 0.94),
-      y: Math.sin(angle) * (ZODIAC_RING_RADIUS_AU * 0.94),
-    });
-    const lineOuter = worldToScreen({
-      x: Math.cos(angle) * (ZODIAC_RING_RADIUS_AU * 1.02),
-      y: Math.sin(angle) * (ZODIAC_RING_RADIUS_AU * 1.02),
-    });
+    const lineInner = {
+      x: center.x + Math.cos(angle) * (tickInner - 4),
+      y: center.y - Math.sin(angle) * (tickInner - 4),
+    };
+    const lineOuter = {
+      x: center.x + Math.cos(angle) * (tickOuter + 2),
+      y: center.y - Math.sin(angle) * (tickOuter + 2),
+    };
     ctx.beginPath();
     ctx.moveTo(lineInner.x, lineInner.y);
     ctx.lineTo(lineOuter.x, lineOuter.y);
@@ -697,16 +781,22 @@ function drawZodiacRing(
 
     const sign = ZODIAC_SIGNS[i];
     const midAngle = angle + Math.PI / 12;
-    const symbolPx = clamp(18 * Math.pow(scale, SCALE_EXP * 0.9), 14, 34);
-    const namePx = clamp(10 * Math.pow(scale, SCALE_EXP * 0.7), 8, 16);
-    const labelPoint = worldToScreen({
-      x: Math.cos(midAngle) * (ZODIAC_RING_RADIUS_AU * 1.07),
-      y: Math.sin(midAngle) * (ZODIAC_RING_RADIUS_AU * 1.07),
-    });
-    const namePoint = worldToScreen({
-      x: Math.cos(midAngle) * (ZODIAC_RING_RADIUS_AU * 1.14),
-      y: Math.sin(midAngle) * (ZODIAC_RING_RADIUS_AU * 1.14),
-    });
+    const symbolPx = clamp(14 * Math.pow(scale, SCALE_EXP * 0.7), 11, 22);
+    const namePx = clamp(10 * Math.pow(scale, SCALE_EXP * 0.6), 9, 14);
+    // Push labels inward so they no longer spill outside the circular viewport.
+    const symbolOffsetPx = clamp(18 * Math.pow(scale, SCALE_EXP * 0.6), 12, 24);
+    // Pull the name farther inward than the symbol to avoid overlap (e.g., Virgo vs Aries).
+    const nameOffsetPx = clamp(44 * Math.pow(scale, SCALE_EXP * 0.6), 32, 72);
+    const labelRadiusPx = ringRadius - symbolOffsetPx;
+    const nameRadiusPx = ringRadius - nameOffsetPx;
+    const labelPoint = {
+      x: center.x + Math.cos(midAngle) * labelRadiusPx,
+      y: center.y - Math.sin(midAngle) * labelRadiusPx,
+    };
+    const namePoint = {
+      x: center.x + Math.cos(midAngle) * nameRadiusPx,
+      y: center.y - Math.sin(midAngle) * nameRadiusPx,
+    };
 
     ctx.font = `${symbolPx}px 'JetBrains Mono', ui-monospace, monospace`;
     ctx.textBaseline = "middle";
@@ -720,16 +810,16 @@ function drawZodiacRing(
   for (let deg = 0; deg < 360; deg += 10) {
     const rad = deg * DEG2RAD;
     const isMajor = deg % 30 === 0;
-    const innerFactor = isMajor ? 0.92 : 0.97;
-    const outerFactor = 1.0;
-    const innerPoint = worldToScreen({
-      x: Math.cos(rad) * (ZODIAC_RING_RADIUS_AU * innerFactor),
-      y: Math.sin(rad) * (ZODIAC_RING_RADIUS_AU * innerFactor),
-    });
-    const outerPoint = worldToScreen({
-      x: Math.cos(rad) * (ZODIAC_RING_RADIUS_AU * outerFactor),
-      y: Math.sin(rad) * (ZODIAC_RING_RADIUS_AU * outerFactor),
-    });
+    const innerR = isMajor ? ringRadius - 10 : ringRadius - 6;
+    const outerR = ringRadius + 6;
+    const innerPoint = {
+      x: center.x + Math.cos(rad) * innerR,
+      y: center.y - Math.sin(rad) * innerR,
+    };
+    const outerPoint = {
+      x: center.x + Math.cos(rad) * outerR,
+      y: center.y - Math.sin(rad) * outerR,
+    };
     ctx.beginPath();
     ctx.strokeStyle = isMajor ? "rgba(56,189,248,0.35)" : "rgba(56,189,248,0.18)";
     ctx.lineWidth = isMajor ? clamp(scale * 0.35, 0.5, 1.4) : clamp(scale * 0.25, 0.4, 1.0);
