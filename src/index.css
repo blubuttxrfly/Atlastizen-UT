@@ -84,7 +84,9 @@ body {
   background: var(--bg-soft);
   color: var(--text);
   transition: background 320ms ease, color 320ms ease;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .theme-shell::before {

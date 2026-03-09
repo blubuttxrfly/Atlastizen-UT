@@ -11,12 +11,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { PRESENT_ONLY } from "./config/rays";
 import { ZIP_LOOKUP_ENDPOINT, ZIP_LOOKUP_USER_AGENT } from "./config/geocode";
 import { LunaRuntime } from "./lib/lunaRuntime";
 import { SolRuntime } from "./lib/solRuntime";
 import { AtlasCometMap } from "./comet/AtlasCometMap";
 import { THEME_PRESETS, type UITheme } from "./config/themePresets";
+import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
+import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 
 /**
  * Alastizen Universal Time (AUT) — Live Clock ✨
@@ -108,10 +111,13 @@ type HistoricalTempSample = {
 type CompassStatus = "idle" | "active" | "denied" | "unsupported";
 type PanelId =
   | "clock"
+  | "cosmic"
   | "sol"
   | "luna"
   | "compass"
   | "heartlight"
+  | "coreSignature"
+  | "community"
   | "ray"
   | "weekrays"
   | "rayreading"
@@ -138,6 +144,29 @@ type WeeklyRayCycle = {
 type WeekRayWindowTimes = { start: string; end: string };
 type RayReading = { title: string; core: string; gifts: string; ideal: string; affirmation: string };
 type WeekRayReading = { title: string; body: string };
+type CoreSignatureProfile = {
+  name: string;
+  code: string;
+  photoData?: string;
+  photoName?: string;
+  adminCes?: string;
+  updatedAt?: number;
+  uiTheme?: UITheme;
+  theme?: UITheme;
+};
+type CommunityPost = {
+  id: string;
+  name: string;
+  code: string;
+  message: string;
+  createdAt: number;
+  photoData?: string;
+  photoName?: string;
+  imageData?: string;
+  imageName?: string;
+};
+
+const MAX_POST_IMAGE_BYTES = 2_000_000; // ≈2 MB guardrail for attached images
 
 const FALLBACK_PLACE_LABEL = "Charlotte, NC";
 const PLACE_CACHE_PREFIX = "aut-place:";
@@ -150,20 +179,45 @@ const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 const UI_THEME_STORAGE_KEY = "aut-ui-theme";
 const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "clock", label: "AUT Clock" },
+  { id: "cosmic", label: "Cosmic Calendar" },
   { id: "sol", label: "Sol Panel" },
   { id: "luna", label: "Luna Panel" },
   { id: "compass", label: "Gyro Compass" },
-  { id: "heartlight", label: "Heartlight System Map" },
+  { id: "heartlight", label: "Zodiac Alignment" },
+  { id: "community", label: "Community" },
   { id: "ray", label: "Ray Dial" },
   { id: "weekrays", label: "Rays of the Week" },
   { id: "rayreading", label: "Ray Reading" },
   { id: "atmosphere", label: "Atmosphere Panel" },
   { id: "postal", label: "Postal Lookup" },
+  { id: "coreSignature", label: "CES Profile" },
   { id: "settings", label: "Settings" },
 ];
+const CORE_DIGIT_COLORS: Record<string, string> = {
+  "0": "#0b0b0f",
+  "1": "#ef4444",
+  "2": "#fb923c",
+  "3": "#facc15",
+  "4": "#22c55e",
+  "5": "#14b8a6",
+  "6": "#3b82f6",
+  "7": "#4338ca",
+  "8": "#8b5cf6",
+  "9": "#d946ef",
+};
+const CORE_SPECIAL_GRADIENT = "conic-gradient(#ff0000, #ff7f00, #ffee00, #22c55e, #14b8a6, #3b82f6, #4338ca, #8b5cf6, #d946ef, #ff0000)";
 const CORS_PROXY = "https://cors.isomorphic-git.org/";
 const TEMIS_ENDPOINT = "https://services.temis.nl/api/tco3/";
 const HISTORICAL_START_YEAR = 1993;
+const DEVICE_ID_STORAGE_KEY = "aut-device-id";
+const CES_PROFILE_STORAGE_KEY = "aut-ces-profile";
+
+function generateDeviceId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `dev-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
 
 const LARB_RAYS = [
   {
@@ -758,6 +812,59 @@ function averageHexColor(colors: string[], fallback: string): string {
   return `#${toHex(Math.round(r / count))}${toHex(Math.round(g / count))}${toHex(Math.round(b / count))}`;
 }
 
+function normalizeSignatureCode(raw: string): string {
+  return (raw ?? "").replace(/\D/g, "").slice(0, 9);
+}
+
+function deriveSignatureSegments(code: string): {
+  sanitized: string;
+  colors: string[];
+  special: "white" | "diamond" | "rainbow" | null;
+  lastTwo: number | null;
+} {
+  const sanitized = normalizeSignatureCode(code);
+  const padded = sanitized.padEnd(9, "0").slice(0, 9);
+  const colors = padded.split("").map((digit) => CORE_DIGIT_COLORS[digit] ?? CORE_DIGIT_COLORS["0"]);
+  const lastTwoStr = padded.slice(-2);
+  const lastTwo = lastTwoStr ? Number.parseInt(lastTwoStr, 10) : null;
+  let special: "white" | "diamond" | "rainbow" | null = null;
+  if (lastTwo === 10) special = "white";
+  if (lastTwo === 11) special = "diamond";
+  if (lastTwo === 12) special = "rainbow";
+  if (special) {
+    colors[colors.length - 1] =
+      special === "white" ? "#ffffff" : special === "diamond" ? "#e5e7eb" : "#f472b6";
+  }
+  return { sanitized: padded, colors, special, lastTwo };
+}
+
+function buildSignatureGradient(colors: string[], special: "white" | "diamond" | "rainbow" | null): string {
+  const stops = colors
+    .map((color, index) => {
+      const start = (index / colors.length) * 100;
+      const end = ((index + 1) / colors.length) * 100;
+      return `${color} ${start}% ${end}%`;
+    })
+    .join(", ");
+  const base = `conic-gradient(${stops})`;
+  if (special === "diamond") {
+    return `${base}, repeating-conic-gradient(from 45deg, rgba(255,255,255,0.5) 0deg 8deg, rgba(255,255,255,0.08) 8deg 16deg)`;
+  }
+  if (special === "rainbow") {
+    return `${base}, ${CORE_SPECIAL_GRADIENT}`;
+  }
+  if (special === "white") {
+    return `${base}, radial-gradient(circle, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 65%)`;
+  }
+  return base;
+}
+
+function formatSignatureDisplay(code: string): string {
+  const digits = normalizeSignatureCode(code);
+  if (digits.length === 0) return "—";
+  return digits.padEnd(9, "•").replace(/(.{3})/g, "$1 ").trim();
+}
+
 function clampClusterOffset(offset: LarbClusterOffset): LarbClusterOffset {
   return {
     x: clamp(offset.x, -LARB_CLUSTER_LIMIT.x, LARB_CLUSTER_LIMIT.x),
@@ -1213,7 +1320,7 @@ function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC:
   if (astMin >= dayStart && astMin < dayEnd) {
     const ratio = (astMin - dayStart) / 720; // 12h day
     autHours = 12 * ratio; // 0..12
-    segmentLabel = "Daylight (Lux, Equilux)";
+    segmentLabel = "Daylight // Lux";
     progress = ratio;
     segLenMin = 720;
   } else {
@@ -1222,7 +1329,7 @@ function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC:
     const delta = astMin >= dayEnd ? astMin - dayEnd : astMin + (1440 - dayEnd);
     const ratio = delta / 720;
     autHours = 12 + 12 * ratio; // 12..24
-    segmentLabel = "Night (Umbra, Equilux)";
+    segmentLabel = "Nighttime // Umbra";
     progress = ratio;
     segLenMin = 720;
   }
@@ -1324,14 +1431,14 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     const dayLen = sunsetToday - sunriseToday;
     const ratio = (tUTC - sunriseToday) / dayLen;
     autHours = 12 * ratio;
-    segmentLabel = "Daylight (Lux)";
+    segmentLabel = "Daylight // Lux";
     segLenMin = dayLen;
     progress = ratio;
   } else if (tUTC >= sunsetToday) {
     const nightLen = spanAfter(sunriseTom, sunsetToday);
     const ratio = (tUTC - sunsetToday) / nightLen;
     autHours = 12 + 12 * ratio;
-    segmentLabel = "Night (Umbra)";
+    segmentLabel = "Nighttime // Umbra";
     segLenMin = nightLen;
     progress = ratio;
   } else {
@@ -1340,7 +1447,7 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     const nightLen = spanBefore(sunriseToday, sunsetYest);
     const ratio = (tCont - sunsetYest) / nightLen;
     autHours = 12 + 12 * ratio;
-    segmentLabel = "Night (Umbra)";
+    segmentLabel = "Nighttime // Umbra";
     segLenMin = nightLen;
     progress = ratio;
     sunsetLocal = utcMinutesToLocalDate(sunsetYest, yesterdayUTC);
@@ -1856,7 +1963,26 @@ function useAliceAndPWA() {
       display: "standalone",
       background_color: "#0a0a0a",
       theme_color: "#16a34a",
-      icons: [],
+      icons: [
+        {
+          src: "/icons/aut-icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/icons/aut-icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/icons/aut-icon-maskable-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable",
+        },
+      ],
     };
     const manifestBlob = new Blob([JSON.stringify(manifest)], {
       type: "application/json",
@@ -1899,6 +2025,25 @@ const RAY_WINDOWS: RayWindow[] = [
 // Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
 const WEEK_RAY_DAY_ORDER = [6, 0, 1, 2, 3, 4, 5]; // Saturday first
 const WEEK_RAY_TOP_INDEX = 0; // Place Saturday cycle 1 at 12 o'clock
+const WEEK_RAY_SEQUENCE_LABELS = [
+  "0-1",
+  "1-2",
+  "2-3",
+  "3-4",
+  "4-5",
+  "5-6",
+  "6-7",
+  "7-8",
+  "8-9",
+  "9-10",
+  "10-11",
+  "11-12",
+];
+
+function toLocalISODate(date: Date): string {
+  const dt = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return dt.toISOString().slice(0, 10);
+}
 const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
   {
     id: "sat-c1",
@@ -2240,11 +2385,12 @@ function rayIndexForAUT(hours: number): number {
   return 0; // fallback
 }
 
-function weekRayIndexForDate(date: Date): number {
-  const day = date.getDay();
+// Rays of the Week (preview) — use civil/local time so the flow matches local day boundaries.
+function weekRayIndexForDateLocal(now: Date): number {
+  const day = now.getDay();
   const dayOrderIndex = WEEK_RAY_DAY_ORDER.indexOf(day);
   if (dayOrderIndex === -1) return 0;
-  const hours = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+  const hours = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
   const cycleOffset = hours >= 12 ? 1 : 0;
   return dayOrderIndex * 2 + cycleOffset;
 }
@@ -3203,10 +3349,42 @@ export default function AUTClock() {
       hueText?: string;
     }>
   >([]);
+  const [coreProfile, setCoreProfile] = useState<CoreSignatureProfile>({
+    name: "",
+    code: "",
+    photoData: undefined,
+    photoName: undefined,
+    adminCes: undefined,
+    updatedAt: undefined,
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [passkeyStatus, setPasskeyStatus] = useState<string | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeySignedIn, setPasskeySignedIn] = useState(false);
+  const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSnapshot = useRef<string>("");
+  const refreshCoreProfileRef = useRef<(() => Promise<void>) | null>(null);
+  const [posts, setPosts] = useState<CommunityPost[]>(() => {
+    return [];
+  });
+  const [draftPost, setDraftPost] = useState<{ message: string; imageData?: string; imageName?: string }>({
+    message: "",
+  });
+  const [postImageError, setPostImageError] = useState<string | null>(null);
+  const postImageInputRef = useRef<HTMLInputElement | null>(null);
+  const postFormRef = useRef<HTMLFormElement | null>(null);
+  const [profileSavedAt, setProfileSavedAt] = useState<number | null>(null);
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+  const [showPostRequirement, setShowPostRequirement] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
   const [showCoords, setShowCoords] = useState(false);
   const panelSelectId = useId();
   const themeSelectId = useId();
+  const messageInputId = useId();
   const isRetroTheme = uiTheme === "retro";
   const atmosphere = useAtmosphereSnapshot(coords);
   const [climateNonce, setClimateNonce] = useState(0);
@@ -3226,6 +3404,53 @@ export default function AUTClock() {
     last: number;
     timer: ReturnType<typeof setTimeout> | null;
   }>({ count: 0, last: 0, timer: null });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let storedId = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (!storedId) {
+      storedId = generateDeviceId();
+      localStorage.setItem(DEVICE_ID_STORAGE_KEY, storedId);
+    }
+    setDeviceId(storedId);
+
+    const localProfileRaw = localStorage.getItem(CES_PROFILE_STORAGE_KEY);
+    if (localProfileRaw) {
+      try {
+        const parsed = JSON.parse(localProfileRaw) as Partial<CoreSignatureProfile>;
+        const localProfile: CoreSignatureProfile = {
+          name: typeof parsed.name === "string" ? parsed.name : "",
+          code: typeof parsed.code === "string" ? parsed.code : "",
+          photoData: typeof parsed.photoData === "string" ? parsed.photoData : undefined,
+          photoName: typeof parsed.photoName === "string" ? parsed.photoName : undefined,
+          adminCes: typeof parsed.adminCes === "string" ? parsed.adminCes : undefined,
+          updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : undefined,
+        };
+        setCoreProfile(localProfile);
+      } catch {
+        // ignore parse errors; continue with defaults
+      }
+    }
+
+    // restore theme from cached profile if present
+    try {
+      const parsed = localProfileRaw ? (JSON.parse(localProfileRaw) as any) : null;
+      if (parsed?.uiTheme && THEME_PRESETS[parsed.uiTheme as UITheme]) {
+        setUiTheme(parsed.uiTheme as UITheme);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(coreProfile));
+    } catch {
+      // ignore storage errors
+    }
+  }, [coreProfile]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -3520,7 +3745,7 @@ export default function AUTClock() {
   const pct = Math.max(0, Math.min(100, Math.round(data.progress * 100)));
 
   const locationTimeZoneId = timeZoneInfo?.timeZone;
-  const { formatShortTime, formatLongTime } = useMemo(() => {
+  const { formatShortTime, formatLongTime, formatDate } = useMemo(() => {
     if (locationTimeZoneId) {
       const shortFmt = new Intl.DateTimeFormat(undefined, {
         hour: "2-digit",
@@ -3533,9 +3758,16 @@ export default function AUTClock() {
         second: "2-digit",
         timeZone: locationTimeZoneId,
       });
+      const dateFmt = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        timeZone: locationTimeZoneId,
+      });
       return {
         formatShortTime: (date: Date) => shortFmt.format(date),
         formatLongTime: (date: Date) => longFmt.format(date),
+        formatDate: (date: Date) => dateFmt.format(date),
       };
     }
     return {
@@ -3547,10 +3779,24 @@ export default function AUTClock() {
           minute: "2-digit",
           second: "2-digit",
         }),
+      formatDate: (date: Date) =>
+        date.toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" }),
     };
   }, [locationTimeZoneId]);
   const formatSolTime = (date?: Date) => (date ? formatShortTime(date) : "—");
   const formatMoonTime = (date?: Date) => (date ? formatShortTime(date) : "—");
+  const autDateLabel = formatDate(data.sunriseLocal);
+  const localDateLabel = formatDate(now);
+  const autEarthSolarCycles = useMemo(() => {
+    const yearsSinceEarthFormation = EARTH_FORMATION_YEARS_AGO;
+    const cycles = Math.floor(yearsSinceEarthFormation); // one orbit per Earth year
+    return cycles.toLocaleString("en-US");
+  }, []);
+  const autLunarCycles = useMemo(() => {
+    const daysSinceMoonFormation = MOON_FORMATION_YEARS_AGO * DAYS_PER_YEAR_APPROX;
+    const cycles = Math.floor(daysSinceMoonFormation / SYNODIC_MONTH_DAYS);
+    return cycles.toLocaleString("en-US");
+  }, []);
   const solDeclStr = sol ? `${sol.decDeg >= 0 ? "+" : ""}${sol.decDeg.toFixed(2)}°` : "—";
   const solAltStr = sol ? `${sol.altDeg >= 0 ? "+" : ""}${sol.altDeg.toFixed(1)}°` : "—";
   const solAzStr = sol ? `${sol.azDeg.toFixed(1)}°` : "—";
@@ -3708,8 +3954,30 @@ export default function AUTClock() {
   const locationHintTone =
     status === "granted" && placeStatus === "error" ? "text-amber-300" : "text-zinc-400";
 
+  const signatureDetails = useMemo(() => deriveSignatureSegments(coreProfile.code), [coreProfile.code]);
+  const signatureGradient = useMemo(
+    () => buildSignatureGradient(signatureDetails.colors, signatureDetails.special),
+    [signatureDetails.colors, signatureDetails.special]
+  );
+  const signatureRingStyle: CSSProperties = useMemo(
+    () => ({
+      background: signatureGradient,
+      padding: "5px",
+      borderRadius: "9999px",
+      boxShadow:
+        "0 12px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15), 0 0 0 1px rgba(255,255,255,0.06)",
+    }),
+    [signatureGradient]
+  );
+  const profileImageSrc = coreProfile.photoData;
+
   // Use a stable, wrapped AUT hour value
   const autH = ((Number(data.autHours) % 24) + 24) % 24;
+  const [weekPickerDate, setWeekPickerDate] = useState(() => toLocalISODate(new Date()));
+  const [weekPickerLocalHour, setWeekPickerLocalHour] = useState<number>(() => {
+    const nowLocal = new Date();
+    return nowLocal.getHours() + nowLocal.getMinutes() / 60;
+  });
   const autHoursToLocalDate = useCallback(
     (hour: number): Date | null => {
       if (!data.sunriseLocal || !data.sunsetLocal) return null;
@@ -3726,7 +3994,7 @@ export default function AUTClock() {
       const ratio = Math.max(0, Math.min(1, nightHours / 12));
       return new Date(data.sunsetLocal.getTime() + ratio * nightLen * 60_000);
     },
-    [data.dayLenMin, data.nightLenMin, data.sunriseLocal, data.sunsetLocal]
+    [data]
   );
   const formatAutWindow = useCallback(
     (hour: number) => {
@@ -3753,6 +4021,7 @@ export default function AUTClock() {
     ? data.dayLenMin / 12
     : data.nightLenMin / 12;
   const remainingRealMin = Math.max(0, remainingAUTHours * minutesPerAutHour);
+  const rayProgressPct = Math.round(rayProgress * 100);
 
   // Atlas theme sparkle click effect (Ray-hued accent)
   useEffect(() => {
@@ -3914,9 +4183,9 @@ export default function AUTClock() {
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
   const ringSizeClass = PRESENT_ONLY
-    ? "h-[18rem] w-[18rem] sm:h-[22rem] sm:w-[22rem] xl:h-[24rem] xl:w-[24rem]"
-    : "h-[20rem] w-[20rem] sm:h-[24rem] sm:w-[24rem] lg:h-[28rem] lg:w-[28rem] xl:h-[30rem] xl:w-[30rem]";
-  const ringLayoutClass = "flex flex-col items-center justify-center gap-8";
+    ? "h-[15rem] w-[15rem] sm:h-[19rem] sm:w-[19rem] xl:h-[22rem] xl:w-[22rem]"
+    : "h-[16rem] w-[16rem] sm:h-[20rem] sm:w-[20rem] lg:h-[24rem] lg:w-[24rem] xl:h-[26rem] xl:w-[26rem]";
+  const ringLayoutClass = "flex flex-col items-center justify-center gap-5";
   const rayHeaderClass = PRESENT_ONLY
     ? "flex flex-col items-center gap-2 text-center"
     : "flex flex-wrap items-end justify-between gap-3";
@@ -3926,6 +4195,10 @@ export default function AUTClock() {
   const weekHeaderClass = "flex flex-wrap items-start justify-between gap-3";
 
   // Rays of the Week: active cycle + progress within current 12h band
+  const weekBaseDate = useMemo(() => {
+    const candidate = new Date(`${weekPickerDate}T00:00:00`);
+    return Number.isNaN(candidate.getTime()) ? new Date() : candidate;
+  }, [weekPickerDate]);
   const weekSegmentAngle = (2 * Math.PI) / WEEK_RAY_CYCLES.length;
   const weekDialSegments = useMemo(() => {
     const count = WEEK_RAY_CYCLES.length;
@@ -3937,7 +4210,8 @@ export default function AUTClock() {
       const midAngle = startAngle + weekSegmentAngle / 2;
       const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
       const labelPosition = polarToCartesian(LABEL_RADIUS, midAngle);
-      const labelLines = [`${cycle.dayAbbrev}`, cycle.code];
+      const sequenceLabel = WEEK_RAY_SEQUENCE_LABELS[index] ?? `${index}-${index + 1}`;
+      const labelLines = [cycle.dayLabel, sequenceLabel];
       return {
         cycle,
         index,
@@ -3951,31 +4225,56 @@ export default function AUTClock() {
       };
     });
   }, [weekSegmentAngle]);
-  const weekRayIndex = weekRayIndexForDate(now);
+  const weekSelectedLocal = useMemo(() => {
+    const d = new Date(weekBaseDate);
+    const hours = Math.floor(weekPickerLocalHour);
+    const minutes = Math.round((weekPickerLocalHour - hours) * 60);
+    d.setHours(hours, minutes, 0, 0);
+    return d;
+  }, [weekBaseDate, weekPickerLocalHour]);
+  const weekRayIndex = weekRayIndexForDateLocal(weekSelectedLocal);
   const weekActiveCycle = WEEK_RAY_CYCLES[weekRayIndex] ?? WEEK_RAY_CYCLES[0];
-  const weekCycleStart = useMemo(() => {
-    const start = new Date(now);
-    start.setHours(now.getHours() >= 12 ? 12 : 0, 0, 0, 0);
-    return start;
-  }, [now]);
+  const weekCycleStart = useMemo(
+    () => {
+      const start = new Date(weekSelectedLocal);
+      start.setHours(weekPickerLocalHour < 12 ? 0 : 12, 0, 0, 0);
+      return start;
+    },
+    [weekPickerLocalHour, weekSelectedLocal]
+  );
   const weekCycleEnd = useMemo(
     () => new Date(weekCycleStart.getTime() + 12 * 60 * 60 * 1000),
     [weekCycleStart]
   );
-  const weekRayRangeMs = Math.max(1, weekCycleEnd.getTime() - weekCycleStart.getTime());
+  const weekRayRangeMs = Math.max(
+    1,
+    weekCycleStart && weekCycleEnd ? weekCycleEnd.getTime() - weekCycleStart.getTime() : 12 * 60 * 60 * 1000
+  );
   const weekRayProgress = Math.min(
     1,
-    Math.max(0, (now.getTime() - weekCycleStart.getTime()) / weekRayRangeMs)
+    Math.max(
+      0,
+      weekCycleStart && weekCycleEnd && weekSelectedLocal
+        ? (weekSelectedLocal.getTime() - weekCycleStart.getTime()) / weekRayRangeMs
+        : 0
+    )
   );
   const weekProgressPct = Math.round(weekRayProgress * 100);
-  const weekRemainingMinutes = Math.max(0, (weekCycleEnd.getTime() - now.getTime()) / 60000);
+  const weekRemainingMinutes = Math.max(
+    0,
+    weekCycleEnd && weekSelectedLocal
+      ? (weekCycleEnd.getTime() - weekSelectedLocal.getTime()) / 60000
+      : 0
+  );
   const weekRayWindowTimes: WeekRayWindowTimes = useMemo(
     () => ({
-      start: formatShortTime(weekCycleStart),
-      end: formatShortTime(weekCycleEnd),
+      start: weekCycleStart ? formatShortTime(weekCycleStart) : "—",
+      end: weekCycleEnd ? formatShortTime(weekCycleEnd) : "—",
     }),
     [formatShortTime, weekCycleEnd, weekCycleStart]
   );
+  const weekPickerLocalClock = formatClock(weekPickerLocalHour);
+  const weekSelectedLocalLabel = weekSelectedLocal ? formatShortTime(weekSelectedLocal) : "—";
   const weekActiveSegment = weekDialSegments[weekRayIndex] ?? weekDialSegments[0];
   const weekPointerAngle = weekActiveSegment
     ? weekActiveSegment.startAngle + weekRayProgress * weekSegmentAngle
@@ -4194,17 +4493,360 @@ export default function AUTClock() {
     [lookupZip]
   );
 
+  const computeProfileSnapshot = useCallback(
+    (profile: CoreSignatureProfile) =>
+      JSON.stringify({
+        name: profile.name.trim(),
+        code: normalizeSignatureCode(profile.code),
+        photoData: profile.photoData ?? "",
+        photoName: profile.photoName ?? "",
+      }),
+    []
+  );
+
+  const startPasskeyRegistration = useCallback(async () => {
+    const cleanCode = normalizeSignatureCode(coreProfile.code);
+    if (cleanCode.length !== 9) {
+      setPasskeyStatus("Enter your 9-digit CES first.");
+      return;
+    }
+    const displayName = coreProfile.name.trim() || `CES ${cleanCode}`;
+    if (!deviceId) {
+      setPasskeyStatus("Device ID missing; reload the app.");
+      return;
+    }
+    setPasskeyBusy(true);
+    setPasskeyStatus("Starting passkey setup…");
+    try {
+      const optRes = await fetch("/api/passkey-register-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ces: cleanCode, deviceId, name: displayName }),
+      });
+      const optJson = await optRes.json().catch(() => null);
+      if (!optRes.ok) throw new Error(optJson?.error || `Options failed (${optRes.status})`);
+      const attestation = await startRegistration(optJson.options);
+      const verifyRes = await fetch("/api/passkey-register-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ces: cleanCode, deviceId, attestation, name: displayName }),
+      });
+      const verifyJson = await verifyRes.json().catch(() => null);
+      if (!verifyRes.ok) throw new Error(verifyJson?.error || `Verify failed (${verifyRes.status})`);
+      if (verifyJson?.verified) {
+        setPasskeyStatus("Passkey saved — you can now sign in with it.");
+        setPasskeySignedIn(true);
+      } else {
+        setPasskeyStatus("Passkey verification did not complete.");
+      }
+    } catch (err: any) {
+      setPasskeyStatus(err?.message ?? "Passkey setup failed.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }, [coreProfile.code, coreProfile.name, deviceId]);
+
+  const startPasskeyAuth = useCallback(async () => {
+    const cleanCode = normalizeSignatureCode(coreProfile.code);
+    if (cleanCode.length !== 9) {
+      setPasskeyStatus("Enter your 9-digit CES to select the account.");
+      return;
+    }
+    if (!deviceId) {
+      setPasskeyStatus("Device ID missing; reload the app.");
+      return;
+    }
+    setPasskeyBusy(true);
+    setPasskeyStatus("Waiting for passkey…");
+    try {
+      const optRes = await fetch("/api/passkey-auth-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ces: cleanCode, deviceId }),
+      });
+      const optJson = await optRes.json().catch(() => null);
+      if (!optRes.ok) throw new Error(optJson?.error || `Options failed (${optRes.status})`);
+      const assertion = await startAuthentication(optJson.options);
+      const verifyRes = await fetch("/api/passkey-auth-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ces: cleanCode, deviceId, assertion }),
+      });
+      const verifyJson = await verifyRes.json().catch(() => null);
+      if (!verifyRes.ok) throw new Error(verifyJson?.error || `Verify failed (${verifyRes.status})`);
+      if (verifyJson?.verified) {
+        setPasskeyStatus("Signed in with passkey.");
+        setPasskeySignedIn(true);
+        setCoreProfile((prev) => ({ ...prev, code: cleanCode }));
+        refreshCoreProfileRef.current?.();
+      } else {
+        setPasskeyStatus("Passkey verification did not complete.");
+      }
+    } catch (err: any) {
+      setPasskeyStatus(err?.message ?? "Passkey sign-in failed.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }, [coreProfile.code, deviceId]);
+
+  const refreshCoreProfile = useCallback(async () => {
+    if (typeof fetch === "undefined") return;
+    if (!deviceId) return;
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const cleanCode = normalizeSignatureCode(coreProfile.code);
+      const query = cleanCode.length === 9 ? `ces=${encodeURIComponent(cleanCode)}` : `deviceId=${encodeURIComponent(deviceId)}`;
+      const res = await fetch(`/api/ces-profile?${query}`);
+      if (!res.ok) throw new Error(`CES profile fetch failed (${res.status})`);
+      const data = (await res.json()) as Partial<CoreSignatureProfile> | null;
+      if (!data) {
+        return;
+      }
+      const loadedProfile: CoreSignatureProfile = {
+        name: typeof data.name === "string" ? data.name : "",
+        code: typeof data.code === "string" ? data.code : "",
+        photoData: typeof data.photoData === "string" && data.photoData.length > 0 ? data.photoData : undefined,
+        photoName: typeof data.photoName === "string" && data.photoName.length > 0 ? data.photoName : undefined,
+        adminCes: typeof data.adminCes === "string" ? data.adminCes : undefined,
+        updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : undefined,
+      };
+      setCoreProfile(loadedProfile);
+      lastSavedSnapshot.current = computeProfileSnapshot(loadedProfile);
+      if (typeof data.updatedAt === "number") {
+        setProfileSavedAt(data.updatedAt);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
+        } catch {
+          // ignore storage errors
+        }
+      }
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Could not load CES profile.");
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [computeProfileSnapshot, deviceId, coreProfile.code, uiTheme]);
+
+  refreshCoreProfileRef.current = refreshCoreProfile;
+
+  useEffect(() => {
+    void refreshCoreProfile();
+  }, [refreshCoreProfile]);
+
+  const saveProfileToVercel = useCallback(
+    async (profile: CoreSignatureProfile) => {
+      const cleanCode = normalizeSignatureCode(profile.code);
+      if (cleanCode.length !== 9) {
+        setProfileError("Core Energetic Signature must be exactly 9 digits to sync.");
+        return;
+      }
+      if (typeof fetch === "undefined") return;
+      if (!deviceId) {
+        setProfileError("Device ID missing; please reload the app.");
+        return;
+      }
+      try {
+        setProfileSaving(true);
+        setProfileError(null);
+        const res = await fetch("/api/ces-profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...profile, code: cleanCode, deviceId, ces: cleanCode }),
+        });
+        if (!res.ok) throw new Error(`CES profile save failed (${res.status})`);
+        const saved = (await res.json()) as Partial<CoreSignatureProfile>;
+        const updatedAt = typeof saved?.updatedAt === "number" ? saved.updatedAt : Date.now();
+        const normalizedProfile: CoreSignatureProfile = {
+          name: saved?.name ?? profile.name ?? "",
+          code: saved?.code ?? cleanCode,
+          photoData:
+            typeof saved?.photoData === "string" && saved.photoData.length > 0
+              ? saved.photoData
+              : profile.photoData,
+          photoName:
+            typeof saved?.photoName === "string" && saved.photoName.length > 0
+              ? saved.photoName
+              : profile.photoName,
+          adminCes: typeof saved?.adminCes === "string" ? saved.adminCes : profile.adminCes,
+          updatedAt,
+        };
+        lastSavedSnapshot.current = computeProfileSnapshot(normalizedProfile);
+        setCoreProfile(normalizedProfile);
+        setProfileSavedAt(updatedAt);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(normalizedProfile));
+          } catch {
+            // ignore storage errors
+          }
+        }
+      } catch (err) {
+        setProfileError(err instanceof Error ? err.message : "Could not save CES profile.");
+      } finally {
+        setProfileSaving(false);
+      }
+    },
+    [computeProfileSnapshot, deviceId]
+  );
+
+  useEffect(() => {
+    const cleanCode = normalizeSignatureCode(coreProfile.code);
+    const snapshot = computeProfileSnapshot(coreProfile);
+    if (profileLoading) return;
+    if (snapshot === lastSavedSnapshot.current) return;
+    if (!deviceId) return;
+    if (cleanCode.length !== 9 || !coreProfile.name.trim()) {
+      setProfileError(null);
+      return;
+    }
+    if (profileSaveTimer.current) {
+      clearTimeout(profileSaveTimer.current);
+    }
+    profileSaveTimer.current = setTimeout(() => {
+      void saveProfileToVercel({ ...coreProfile, code: cleanCode });
+    }, 600);
+    return () => {
+      if (profileSaveTimer.current) {
+        clearTimeout(profileSaveTimer.current);
+      }
+    };
+  }, [coreProfile, computeProfileSnapshot, saveProfileToVercel, profileLoading, deviceId]);
+
+  const refreshCommunity = useCallback(async () => {
+    if (typeof fetch === "undefined") return;
+    try {
+      setCommunityLoading(true);
+      setCommunityError(null);
+      const res = await fetch("/api/community");
+      if (!res.ok) throw new Error(`Community fetch failed (${res.status})`);
+      const data: CommunityPost[] = await res.json();
+      setPosts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setCommunityError(err instanceof Error ? err.message : "Unable to load community posts.");
+    } finally {
+      setCommunityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCommunity();
+  }, [refreshCommunity]);
+
+  const onPostSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedMessage = draftPost.message.trim();
+      if (!trimmedMessage) return;
+      const cleanCode = normalizeSignatureCode(coreProfile.code);
+      const name = coreProfile.name.trim();
+      if (!name || cleanCode.length !== 9) {
+        setCommunityError("Add your CES profile (name + 9-digit code) before posting.");
+        setShowPostRequirement(true);
+        return;
+      }
+      if (!passkeySignedIn) {
+        setCommunityError("Passkey sign-in required before posting.");
+        return;
+      }
+      try {
+        setCommunityLoading(true);
+        setCommunityError(null);
+        const res = await fetch("/api/community", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            code: cleanCode,
+            message: trimmedMessage,
+            photoData: coreProfile.photoData ?? "",
+            photoName: coreProfile.photoName ?? "",
+            imageData: draftPost.imageData ?? "",
+            imageName: draftPost.imageName ?? "",
+          }),
+        });
+        if (!res.ok) throw new Error(`Post failed (${res.status})`);
+        await refreshCommunity();
+        setDraftPost({ message: "", imageData: "", imageName: "" });
+      } catch (err) {
+        setCommunityError(err instanceof Error ? err.message : "Could not post message.");
+      } finally {
+        setCommunityLoading(false);
+      }
+    },
+    [draftPost.imageData, draftPost.imageName, draftPost.message, coreProfile.code, coreProfile.name, passkeySignedIn, refreshCommunity]
+  );
+
+  useEffect(() => {
+    const cleanCode = normalizeSignatureCode(coreProfile.code);
+    const hasProfile = coreProfile.name.trim() && cleanCode.length === 9;
+    if (hasProfile) {
+      setShowPostRequirement(false);
+      if (communityError?.includes("Add your CES profile")) {
+        setCommunityError(null);
+      }
+    }
+  }, [coreProfile.code, coreProfile.name, communityError]);
+
+  const handleProfileFile = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : undefined;
+      setCoreProfile((prev) => ({
+        ...prev,
+        photoData: dataUrl,
+        photoName: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handlePostImageFile = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setDraftPost((prev) => ({ ...prev, imageData: "", imageName: "" }));
+      setPostImageError(null);
+      return;
+    }
+    setPostImageError(null);
+    if (file.size > MAX_POST_IMAGE_BYTES) {
+      setPostImageError("Image too large (max 2 MB). Please choose a smaller file.");
+      setDraftPost((prev) => ({ ...prev, imageData: "", imageName: "" }));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : undefined;
+      setDraftPost((prev) => ({
+        ...prev,
+        imageData: dataUrl,
+        imageName: file.name,
+      }));
+      setPostImageError(null);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const themePreset = THEME_PRESETS[uiTheme];
   const backdropClass = themePreset.backdropClass ?? "";
   const panelClass = themePreset.panelClass ?? "";
 
+  const handleThemeChange = useCallback((theme: UITheme) => {
+    setUiTheme(theme);
+    // local-only: theme persists in localStorage via persistTheme()
+  }, []);
+
   return (
     <div
-      className={`min-h-screen w-full flex items-center justify-center p-6 theme-shell ${backdropClass}`}
+      className={`min-h-screen w-full flex justify-center items-start md:items-center px-4 py-5 sm:px-5 md:p-6 theme-shell ${backdropClass}`}
       style={{ fontFamily: themePreset.fontFamily }}
     >
       <div
-      className={`w-full max-w-5xl rounded-2xl shadow-xl p-6 md:p-7 space-y-5 panel-surface ${panelClass}`}
+        className={`w-full max-w-5xl rounded-2xl shadow-xl p-5 sm:p-6 md:p-7 space-y-5 panel-surface ${panelClass}`}
       >
         <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex flex-col gap-1">
@@ -4214,12 +4856,12 @@ export default function AUTClock() {
               Time & Tools
             </h1>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
-            <div className="flex flex-col gap-1 text-xs uppercase tracking-wide text-zinc-400">
-              <label htmlFor={panelSelectId}>Dashboard Panel</label>
-              <select
-                id={panelSelectId}
-                className="themed-input rounded-lg px-2 py-1 text-xs uppercase tracking-wide shadow-sm"
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-end sm:gap-5">
+              <div className="flex flex-col gap-2 text-xs uppercase tracking-wide text-zinc-400">
+                <label htmlFor={panelSelectId}>Dashboard Panel</label>
+                <select
+                  id={panelSelectId}
+                  className="themed-input rounded-lg px-2 py-1 text-xs uppercase tracking-wide shadow-sm"
                 value={activePanel}
                 onChange={(event) => setActivePanel(event.target.value as PanelId)}
               >
@@ -4230,13 +4872,32 @@ export default function AUTClock() {
                 ))}
               </select>
             </div>
-            <button
-              type="button"
-              className="themed-button rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide"
-              onClick={() => setActivePanel("settings")}
-            >
-              Settings
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/5 shadow-inner shadow-black/40 hover:bg-white/10 transition"
+                onClick={() => setActivePanel("coreSignature")}
+              >
+                <span className="h-11 w-11 rounded-full border border-white/20 overflow-hidden" style={{ background: signatureGradient }}>
+                  <span className="h-full w-full rounded-full bg-zinc-950/75 flex items-center justify-center overflow-hidden">
+                    {profileImageSrc ? (
+                      <img src={profileImageSrc} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-base text-zinc-100">
+                        {coreProfile.name ? coreProfile.name[0]?.toUpperCase() : "✧"}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="themed-button rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                onClick={() => setActivePanel("settings")}
+              >
+                Settings
+              </button>
+            </div>
           </div>
         </header>
 
@@ -4255,7 +4916,7 @@ export default function AUTClock() {
                   id={themeSelectId}
                   className="themed-input rounded-lg px-2 py-2 text-sm shadow-sm"
                   value={uiTheme}
-                  onChange={(event) => setUiTheme(event.target.value as UITheme)}
+                  onChange={(event) => handleThemeChange(event.target.value as UITheme)}
                 >
                   <option value="normal">Normal</option>
                   <option value="retro">Retro Sci-Fi</option>
@@ -4429,52 +5090,49 @@ export default function AUTClock() {
           </section>
         )}
 
-        {["clock", "sol", "luna", "ray", "postal"].includes(activePanel) && (
+        {["sol", "luna", "ray", "postal"].includes(activePanel) && (
           <section className="themed-card p-5 space-y-3">
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-4">
-              <div className="max-w-3xl leading-tight">
-                <div className="text-sm text-zinc-400">Location</div>
-                <div className="text-lg md:text-xl font-medium leading-snug break-words">{locationPrimary}</div>
-              </div>
-              {activePanel !== "clock" ? (
-                <div className="text-right shrink-0 leading-tight">
-                  <div className="text-xs md:text-sm uppercase text-zinc-400">AUT</div>
-                  <div className="text-xl md:text-2xl font-semibold text-white">{data.autClock}</div>
-                  <div className="text-[11px] md:text-xs text-zinc-400">Local {formatLongTime(now)}</div>
+            <div className="flex flex-col gap-3">
+              <div className="space-y-1">
+                <div className="text-xs md:text-sm uppercase text-zinc-400">AUT</div>
+                <div className="text-3xl md:text-4xl font-semibold text-white leading-tight">{data.autClock}</div>
+                <div className="text-sm md:text-base text-zinc-200">Local {formatLongTime(now)}</div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+                  <span>Location:</span>
+                  <span className="text-[12px] text-zinc-300">{locationPrimary}</span>
+                  <button
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos: GeolocationPosition) =>
+                            setCoords({
+                              lat: pos.coords.latitude,
+                              lon: pos.coords.longitude,
+                            }),
+                          () => setCoords(fallback),
+                          { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+                        );
+                      }
+                    }}
+                  >
+                    Recenter
+                  </button>
                 </div>
-              ) : null}
+              </div>
             </div>
-            <div className={`text-xs ${timeZoneTone} break-words`}>{timeZoneLine}</div>
-            <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
+            <div className={`flex flex-wrap items-center gap-2 text-[11px] ${timeZoneTone}`}>
+              <span>{timeZoneLine}</span>
               <button
-                className="themed-button rounded-lg px-2 py-1 text-xs uppercase tracking-wide"
+                className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
                 onClick={() => setShowCoords((v) => !v)}
               >
                 {showCoords ? "Hide" : "Show"}
               </button>
-              <span className="break-words">
-                Latitude and Longitude:{" "}
-                {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
+              <span className="text-[11px] text-zinc-400">
+                Lat/Lon: {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
               </span>
             </div>
-            <button
-              className="themed-button self-start rounded-xl px-3 py-2 text-sm shadow"
-              onClick={() => {
-                if (navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    (pos: GeolocationPosition) =>
-                      setCoords({
-                        lat: pos.coords.latitude,
-                        lon: pos.coords.longitude,
-                      }),
-                    () => setCoords(fallback),
-                    { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
-                  );
-                }
-              }}
-            >
-              Recenter
-            </button>
             {locationHint ? (
               <div className={`flex flex-wrap items-center gap-2 text-xs ${locationHintTone}`}>
                 <span className="break-words">{locationHint}</span>
@@ -4491,6 +5149,401 @@ export default function AUTClock() {
           </section>
         )}
 
+        {/* Location panel removed from Sol/Luna/Ray/Postal to avoid duplication */}
+
+        {activePanel === "coreSignature" && (
+          <section className="themed-card p-5 space-y-5">
+            <div className="flex flex-col gap-1">
+              <div className="text-sm uppercase tracking-wide text-zinc-400">Core Energetic Signature Profile</div>
+              <p className="text-sm text-zinc-300">
+                Encode your Core Energetic Signature as nine digits, choose a name, and wrap it around your profile.
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-[1.35fr_1fr] md:items-start max-w-full">
+              <form className="space-y-4 max-w-full" onSubmit={(e) => e.preventDefault()}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Name</span>
+                    <input
+                      type="text"
+                      value={coreProfile.name}
+                      onChange={(event) =>
+                        setCoreProfile((prev) => ({
+                          ...prev,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="Your name or handle"
+                      className="themed-input w-full rounded-lg px-3 py-2 text-base shadow-sm"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Core Energetic Signature</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={9}
+                      value={coreProfile.code}
+                      onChange={(event) =>
+                        setCoreProfile((prev) => ({
+                          ...prev,
+                          code: normalizeSignatureCode(event.target.value),
+                        }))
+                      }
+                      placeholder="123456789"
+                      className="themed-input w-full rounded-lg px-3 py-2 font-mono text-lg tracking-[0.3em] shadow-sm"
+                    />
+                    <span className="text-[11px] text-zinc-400 leading-relaxed">
+                      9 digits. Each digit colors one ring slice. Last two digits: 10 → white hue, 11 → crystalline
+                      diamond effect, 12 → rainbow spectrum.
+                    </span>
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Upload CES Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileFile}
+                    className="text-sm text-zinc-300 w-full max-w-full file:mr-3 file:rounded-md file:border file:border-white/15 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:uppercase file:tracking-wide file:text-zinc-100"
+                  />
+                  <span className="text-[11px] text-zinc-400">
+                    Image is synced with your Vercel profile (base64). Clear to remove it from storage.
+                  </span>
+                </label>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-xs text-zinc-200">
+                    {profileSaving
+                      ? "Auto-saving to Vercel…"
+                      : profileLoading
+                      ? "Loading from Vercel…"
+                      : profileSavedAt
+                      ? `Saved ${new Date(profileSavedAt).toLocaleTimeString()}`
+                      : "Changes auto-save when name + 9-digit code are set."}
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/20 px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/10"
+                    onClick={() =>
+                      setCoreProfile((prev) => ({
+                        ...prev,
+                        photoData: undefined,
+                        photoName: undefined,
+                      }))
+                    }
+                    disabled={profileSaving}
+                  >
+                    Clear photo
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    className="themed-button rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide disabled:opacity-60"
+                    onClick={startPasskeyRegistration}
+                    disabled={passkeyBusy}
+                  >
+                    Set up passkey
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/25 px-3 py-2 text-xs text-zinc-100 transition hover:bg-white/10 disabled:opacity-60"
+                    onClick={startPasskeyAuth}
+                    disabled={passkeyBusy}
+                  >
+                    Sign in with passkey
+                  </button>
+                  {passkeyStatus ? (
+                    <div className="text-xs text-emerald-300">{passkeyStatus}</div>
+                  ) : null}
+                </div>
+                {profileError ? <div className="text-xs text-rose-300">{profileError}</div> : null}
+              </form>
+
+              <div className="w-full max-w-[420px] mx-auto rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/10">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="relative inline-flex items-center justify-center" style={signatureRingStyle}>
+                    <div className="relative h-36 w-36 rounded-full overflow-hidden border border-white/10 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 shadow-inner">
+                      {profileImageSrc ? (
+                        <img
+                          src={profileImageSrc}
+                          alt="Profile"
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-3xl text-zinc-500">
+                          {coreProfile.name ? coreProfile.name[0]?.toUpperCase() : "✧"}
+                        </div>
+                      )}
+                      {signatureDetails.special === "diamond" ? (
+                        <div
+                          className="pointer-events-none absolute inset-0 rounded-full mix-blend-screen opacity-80"
+                          style={{
+                            background:
+                              "repeating-conic-gradient(from 0deg, rgba(255,255,255,0.6) 0deg 10deg, rgba(255,255,255,0.05) 10deg 20deg)",
+                          }}
+                        />
+                      ) : null}
+                      {signatureDetails.special === "rainbow" ? (
+                        <div
+                          className="pointer-events-none absolute inset-[6%] rounded-full mix-blend-screen opacity-75 blur-[0.6px]"
+                          style={{ background: CORE_SPECIAL_GRADIENT }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="text-lg font-semibold">{coreProfile.name || "Unnamed Traveller"}</div>
+                  <div className="text-sm text-zinc-300">
+                    Core Code:{" "}
+                    <span className="font-mono tracking-[0.28em]">{formatSignatureDisplay(signatureDetails.sanitized)}</span>
+                  </div>
+                  <div className="text-xs text-zinc-400">
+                    {signatureDetails.special
+                      ? signatureDetails.special === "white"
+                        ? "Last two digits → 10 (White hue highlight)"
+                        : signatureDetails.special === "diamond"
+                        ? "Last two digits → 11 (Crystalline overlay)"
+                        : "Last two digits → 12 (Full-spectrum rainbow)"
+                      : "Each digit paints one ninth of the ring."}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activePanel === "community" && (
+          <section className="themed-card p-5 space-y-5">
+            <div className="flex flex-col gap-1">
+              <div className="text-sm uppercase tracking-wide text-zinc-400">Community Message Board</div>
+              <p className="text-sm text-zinc-300">
+                Share reflections, coordinates, or Ray sightings. Add an optional image to accompany your message.
+              </p>
+            </div>
+
+            <form
+              ref={postFormRef}
+              className="space-y-4"
+              onSubmit={onPostSubmit}
+            >
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Core Energetic Signature:</span>
+                    {coreProfile.name.trim() ? (
+                      <span className="text-sm text-zinc-200">{coreProfile.name.trim()}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-sm text-emerald-300 underline-offset-2 hover:underline"
+                        onClick={() => setActivePanel("coreSignature")}
+                      >
+                        Create CES Profile
+                      </button>
+                    )}
+                    <span className="text-[11px] text-zinc-500">
+                    {normalizeSignatureCode(coreProfile.code).length === 9
+                      ? `Core # ${formatSignatureDisplay(normalizeSignatureCode(coreProfile.code))}`
+                      : " "}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap justify-end">
+                    {!passkeySignedIn ? (
+                      <div className="flex items-center gap-2 text-[11px] text-amber-300">
+                        <span>Sign in with your passkey to post.</span>
+                        <button
+                          type="button"
+                          className="rounded-full border border-white/20 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-50 hover:bg-white/10 disabled:opacity-50"
+                          onClick={() => startPasskeyAuth()}
+                          disabled={passkeyBusy}
+                        >
+                          Sign in
+                        </button>
+                      </div>
+                    ) : null}
+                    {showPostRequirement ? <div className="text-[11px] text-amber-300">CES Profile required to post</div> : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor={messageInputId} className="flex flex-col gap-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Message</span>
+                  </label>
+                  <div className="relative">
+                    <textarea
+                      id={messageInputId}
+                      value={draftPost.message}
+                      onChange={(event) =>
+                        setDraftPost((prev) => ({
+                          ...prev,
+                          message: event.target.value,
+                        }))
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          postFormRef.current?.requestSubmit();
+                        }
+                      }}
+                      rows={2}
+                      placeholder="What’s resonating right now?"
+                      className="themed-input w-full rounded-lg px-3 py-2 pr-40 pb-14 text-base shadow-sm resize-y min-h-[60px]"
+                    />
+                    <button
+                      type="submit"
+                      className="absolute bottom-2 right-2 inline-flex items-center justify-center rounded-full border border-white/20 bg-emerald-500/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-emerald-400/80 disabled:opacity-50 disabled:hover:bg-emerald-500/80"
+                      disabled={
+                        !draftPost.message.trim() ||
+                        normalizeSignatureCode(coreProfile.code).length !== 9 ||
+                        !coreProfile.name.trim() ||
+                        communityLoading ||
+                        !passkeySignedIn
+                      }
+                    >
+                      Share
+                    </button>
+                    <button
+                      type="button"
+                      className="absolute bottom-2 right-20 inline-flex items-center justify-center rounded-full border border-white/25 bg-black/40 px-2.5 py-2 text-sm text-zinc-100 shadow-sm transition hover:bg-white/10"
+                      onClick={() => postImageInputRef.current?.click()}
+                      aria-label="Add photo"
+                    >
+                      📷
+                    </button>
+                    <input
+                      ref={postImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePostImageFile}
+                      className="hidden"
+                    />
+                  </div>
+                  {postImageError ? <div className="text-[11px] text-rose-300">{postImageError}</div> : null}
+                  {draftPost.imageData ? (
+                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30 shadow-inner shadow-black/40">
+                      <img
+                        src={draftPost.imageData}
+                        alt={draftPost.imageName || "Attached image"}
+                        className="w-full max-h-72 object-cover"
+                      />
+                      <div className="flex items-center justify-between px-3 py-2 text-[11px] text-zinc-200">
+                        <span className="truncate">{draftPost.imageName || "Attached image"}</span>
+                        <button
+                          type="button"
+                          className="text-rose-200 underline-offset-2 hover:underline"
+                          onClick={() => setDraftPost((prev) => ({ ...prev, imageData: "", imageName: "" }))}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">Optional photo or screenshot; it will show under your post.</p>
+                  )}
+                </div>
+
+                {communityLoading || communityError ? (
+                  <div className={`text-xs ${communityError ? "text-rose-300" : "text-zinc-400"}`}>
+                    {communityLoading ? "Posting…" : communityError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-3 border-t border-white/10 pt-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                  <div className="text-xs uppercase tracking-[0.28em] text-zinc-400">Message Board</div>
+                  <div className="text-sm text-zinc-200">
+                    {communityLoading
+                      ? "Loading posts…"
+                      : posts.length === 0
+                      ? "No posts yet — start the thread."
+                      : `${posts.length} message(s) synced`}
+                  </div>
+                </div>
+                {communityError ? <div className="text-xs text-rose-300">{communityError}</div> : null}
+                <div className="space-y-3 max-h-[520px] overflow-auto pr-1">
+                  {posts.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-zinc-400">
+                      Be the first to post. Add your Core code to paint a ring beside your note.
+                    </div>
+                  ) : (
+                    posts.map((post) => {
+                      const postSignature = deriveSignatureSegments(post.code);
+                      const chipBg = buildSignatureGradient(postSignature.colors, postSignature.special);
+                      const postImage =
+                        typeof post.photoData === "string" && post.photoData.length > 0 ? post.photoData : null;
+                      const postInitial = post.name?.trim()?.[0]?.toUpperCase() ?? "✧";
+                      const attachedImage =
+                        typeof post.imageData === "string" && post.imageData.length > 0 ? post.imageData : null;
+                      return (
+                        <article
+                          key={post.id}
+                          className="rounded-xl border border-white/10 bg-black/30 p-3 shadow-sm shadow-black/40"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="shrink-0">
+                              <div
+                                className="h-11 w-11 rounded-full p-[3px]"
+                                style={{ background: chipBg, boxShadow: "0 6px 14px rgba(0,0,0,0.4)" }}
+                              >
+                                <div className="relative h-full w-full overflow-hidden rounded-full border border-white/15 bg-zinc-950/80 flex items-center justify-center text-sm font-semibold text-zinc-400">
+                                  {postImage ? (
+                                    <img
+                                      src={postImage}
+                                      alt={`${post.name || "Community member"} CES photo`}
+                                      className="h-full w-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <span>{postInitial}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                <div className="font-semibold text-white">{post.name || "Anonymous"}</div>
+                                <div className="text-[11px] text-zinc-400">
+                                  {new Date(post.createdAt).toLocaleString()}
+                                </div>
+                              </div>
+                              <div className="text-sm text-zinc-200 whitespace-pre-wrap break-words">
+                                {post.message}
+                              </div>
+                              {attachedImage ? (
+                                <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                                  <img
+                                    src={attachedImage}
+                                    alt={post.imageName || "Attached image"}
+                                    className="w-full max-h-80 object-cover"
+                                    loading="lazy"
+                                  />
+                                </div>
+                              ) : null}
+                              {post.code ? (
+                                <div className="text-[11px] font-mono tracking-[0.24em] text-zinc-400">
+                                  {formatSignatureDisplay(post.code)}
+                                </div>
+                              ) : null}
+                            </div>
+                  {/* Delete button hidden for non-admin; admin may call API with token manually */}
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </form>
+          </section>
+        )}
+
         {activePanel === "clock" && (
           <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-6 shadow-inner">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -4501,6 +5554,52 @@ export default function AUTClock() {
                 <div className="text-xs text-zinc-400">
                   Sunrise → 00:00 AUT • Sunset → 12:00 AUT • Next Sunrise → 24:00/00:00 AUT
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
+                  <span className="font-medium text-white">{locationPrimary}</span>
+                  <button
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos: GeolocationPosition) =>
+                            setCoords({
+                              lat: pos.coords.latitude,
+                              lon: pos.coords.longitude,
+                            }),
+                          () => setCoords(fallback),
+                          { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+                        );
+                      }
+                    }}
+                  >
+                    Recenter
+                  </button>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+                  <span className={timeZoneTone}>{timeZoneLine}</span>
+                  <button
+                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    onClick={() => setShowCoords((v) => !v)}
+                  >
+                    {showCoords ? "Hide" : "Show"} Lat/Lon
+                  </button>
+                  <span className="text-[11px] text-zinc-300">
+                    {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
+                  </span>
+                </div>
+                {locationHint ? (
+                  <div className={`mt-1 flex flex-wrap items-center gap-2 text-[11px] ${locationHintTone}`}>
+                    <span className="break-words">{locationHint}</span>
+                    {status === "granted" && placeStatus === "error" ? (
+                      <button
+                        className="rounded-lg px-2 py-1 text-[11px] text-emerald-300 transition hover:text-emerald-200"
+                        onClick={() => retry()}
+                      >
+                        Try again
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
                   {data.autClock}
                 </div>
@@ -4517,17 +5616,7 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-6">
-              <div className="progress-track h-3 w-full rounded-full bg-zinc-700">
-                <div
-                  className="progress-fill h-3 bg-zinc-100/90"
-                  style={{ width: `${pct}%` }}
-                  aria-label="Progress within current segment"
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
                 <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
@@ -4542,7 +5631,7 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-4 text-sm text-zinc-300 md:grid-cols-2">
+            <div className="mt-2 grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/30 p-4">
                 <div>Day length: {Math.round(data.dayLenMin)} min</div>
               </div>
@@ -4550,7 +5639,131 @@ export default function AUTClock() {
                 <div>Night length: {Math.round(data.nightLenMin)} min</div>
               </div>
             </div>
+
+            {/* Ray Dial (inlined on clock page) */}
+            <div className="mt-4 p-5 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
+                  <div className="text-lg font-semibold" style={{ color: activeRay.color }}>
+                    Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
+                  </div>
+                  {rayWindowTimes ? (
+                    <div className="text-xs text-zinc-400">
+                      AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut} • Local {rayWindowTimes.start.local} →{" "}
+                      {rayWindowTimes.end.local}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="text-sm text-zinc-300 text-right">
+                  <div>{rayProgressPct}% through this cycle</div>
+                  <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left • ≈ {Math.ceil(remainingRealMin)} real min</div>
+                </div>
+              </div>
+
+              <div className="flex justify-center">
+                <div className="relative">
+                  <svg
+                    viewBox="-70 -70 140 140"
+                    className="h-96 w-96 text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                  >
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={RING_OUTER_RADIUS + 4}
+                      fill="#0f172a"
+                      fillOpacity="0.35"
+                      stroke="#1e293b"
+                      strokeWidth="0.8"
+                    />
+                    {dialSegments.map((segment) => {
+                      const isActive = segment.index === rayIndex;
+                      return (
+                        <g key={segment.index}>
+                          <path
+                            d={segment.path}
+                            fill={segment.ray.color}
+                            fillOpacity={isActive ? 1 : 0.78}
+                            stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
+                            strokeWidth={isActive ? 1.6 : 0.6}
+                          />
+                          <text
+                            x={segment.labelX.toFixed(3)}
+                            y={segment.labelY.toFixed(3)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="4.6"
+                            fill={segment.ray.labelColor ?? "#e2e8f0"}
+                          >
+                            {segment.labelLines.map((line, lineIdx) => (
+                              <tspan
+                                key={`${segment.index}-${lineIdx}`}
+                                x={segment.labelX.toFixed(3)}
+                                dy={lineIdx === 0 ? (segment.labelLines.length > 1 ? "-0.2em" : "0") : "1.1em"}
+                              >
+                                {line}
+                              </tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    <line
+                      x1={pointerInner.x.toFixed(3)}
+                      y1={pointerInner.y.toFixed(3)}
+                      x2={pointerCoord.x.toFixed(3)}
+                      y2={pointerCoord.y.toFixed(3)}
+                      stroke="#f8fafc"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="0" cy="0" r="6" fill="#0b1120" stroke="#f1f5f9" strokeWidth="1" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="themed-subcard p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
+                    style={{ backgroundColor: activeRay.color }}
+                  />
+                  <div className="space-y-2">
+                    <div className="text-base font-semibold text-zinc-50">
+                      {rayReading?.title ?? activeRay.name}
+                    </div>
+                    {rayReading ? (
+                      <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                        <div><span className="font-semibold text-zinc-100">Core Energetic Signature: </span>{rayReading.core}</div>
+                        <div><span className="font-semibold text-zinc-100">Gifts: </span>{rayReading.gifts}</div>
+                        <div><span className="font-semibold text-zinc-100">Ideal For: </span>{rayReading.ideal}</div>
+                        <div><span className="font-semibold text-zinc-100">Affirmation: </span>{rayReading.affirmation}</div>
+                      </div>
+                    ) : (
+                      <p className="text-sm leading-relaxed text-zinc-200">
+                        Ray reading unavailable for this cycle.
+                      </p>
+                    )}
+                    <div className="text-xs text-zinc-400">
+                      AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
+        )}
+
+        {activePanel === "cosmic" && (
+          <CosmicCalendarPanel
+            autClock={data.autClock}
+            autDateLabel={autDateLabel}
+            autEarthSolarCyclesLabel={autEarthSolarCycles}
+            autLunarCyclesLabel={autLunarCycles}
+            localTimeLabel={formatLongTime(now)}
+            localDateLabel={localDateLabel}
+            locationLabel={locationPrimary}
+          />
         )}
 
         {activePanel === "sol" && (
@@ -5021,12 +6234,6 @@ export default function AUTClock() {
           <>
         {/* Heartlight System Map */}
         <section className="rounded-2xl border border-sky-500/30 bg-slate-900/60 p-6 space-y-4">
-          <div className="flex flex-col gap-1">
-            <div className="text-sm uppercase tracking-wide text-sky-200/80">
-              Heartlight System Map
-            </div>
-            <p className="text-sm text-slate-300">Pan, zoom, and sweep through time to watch each planet trace its Keplerian ellipse.</p>
-          </div>
           <AtlasCometMap />
         </section>
           </>
@@ -5039,7 +6246,7 @@ export default function AUTClock() {
           <div className={rayHeaderClass}>
             <div>
               <div className="text-sm uppercase text-zinc-400 tracking-wide">
-                Ray Dial Cycles
+                Ray Dial
               </div>
               <div className="text-lg font-semibold text-zinc-100">
                 Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
@@ -5220,15 +6427,80 @@ export default function AUTClock() {
           <>
         {/* Rays of the Week */}
         <section className="themed-card p-6 space-y-6">
+          <div className="themed-subcard p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="text-xs uppercase tracking-wide text-indigo-200/80">Preview</div>
+                <div className="text-sm text-slate-100">
+                  Date + AUT time drive the wheel and labels below.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-indigo-500/50 bg-indigo-600/80 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-indigo-500"
+                onClick={() => {
+                  const nowLocal = new Date();
+                  setWeekPickerDate(toLocalISODate(nowLocal));
+                  setWeekPickerLocalHour(nowLocal.getHours() + nowLocal.getMinutes() / 60);
+                }}
+              >
+                Use Now
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-slate-100">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Date</span>
+                <input
+                  type="date"
+                  className="rounded-lg border border-indigo-500/40 bg-slate-900/60 px-3 py-2 text-slate-100 shadow-inner focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  value={weekPickerDate}
+                  onChange={(e) => setWeekPickerDate(e.target.value)}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-slate-100">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Local time</span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={24}
+                    step={0.25}
+                    value={weekPickerLocalHour}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setWeekPickerLocalHour(Number.isFinite(v) ? v : 0);
+                    }}
+                    className="flex-1 accent-indigo-400"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={24}
+                    step={0.25}
+                    value={weekPickerLocalHour}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setWeekPickerLocalHour(Number.isFinite(v) ? v : 0);
+                    }}
+                    className="w-20 rounded-lg border border-indigo-500/40 bg-slate-900/60 px-2 py-1 text-right text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="text-xs text-slate-300">
+                  Local {weekSelectedLocalLabel} • {weekPickerLocalClock} (24h)
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div className={weekHeaderClass}>
-            <div className="space-y-1">
-              <div className="text-sm uppercase tracking-wide text-indigo-200/80">
-                Rays of the Week
-              </div>
-              <div className="text-lg font-semibold text-slate-100">
-                {weekActiveCycle.dayLabel} • Cycle {weekActiveCycle.cycle} —{" "}
-                <span className="underline decoration-dotted">{weekActiveCycle.name}</span>
-              </div>
+              <div className="space-y-1">
+                <div className="text-sm uppercase tracking-wide text-indigo-200/80">
+                  Rays of the Week
+                </div>
+                <div className="text-lg font-semibold text-slate-100">
+                  {weekActiveCycle.dayLabel} • Cycle {weekActiveCycle.cycle} —{" "}
+                  <span className="underline decoration-dotted">{weekActiveCycle.name}</span>
+                </div>
               <p className="text-xs text-indigo-100/90">{weekActiveCycle.description}</p>
               <div className="text-xs text-slate-400">
                 Local {weekRayWindowTimes.start} → {weekRayWindowTimes.end}
@@ -5303,8 +6575,8 @@ export default function AUTClock() {
               </svg>
             </div>
             <div className="text-xs text-slate-300 text-center max-w-2xl">
-              12-hour ray shifts at local midnight and noon, flowing in order from Saturday dawn through
-              Friday night.
+              12-hour AUT shifts (sunrise→sunset, sunset→next sunrise), flowing in order from Saturday dawn
+              through Friday night.
             </div>
           </div>
 
@@ -5831,7 +7103,7 @@ export default function AUTClock() {
           >
             www.atlasisland.co
           </a>{" "}
-          • v2.8.6
+          • V5.9.3
         </footer>
       </div>
       {secretOpen && (

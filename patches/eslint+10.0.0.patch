@@ -1,0 +1,41 @@
+diff --git a/node_modules/eslint/lib/shared/ajv.js b/node_modules/eslint/lib/shared/ajv.js
+index 5c5c41b..3de3817 100644
+--- a/node_modules/eslint/lib/shared/ajv.js
++++ b/node_modules/eslint/lib/shared/ajv.js
+@@ -8,27 +8,26 @@
+ // Requirements
+ //------------------------------------------------------------------------------
+ 
+-const Ajv = require("ajv"),
+-	metaSchema = require("ajv/lib/refs/json-schema-draft-04.json");
++// Patched to use Ajv v8 with draft-04 support via ajv-draft-04
++const AjvDraft4 = require("ajv-draft-04").default ?? require("ajv-draft-04");
+ 
+ //------------------------------------------------------------------------------
+ // Public Interface
+ //------------------------------------------------------------------------------
+ 
+ module.exports = (additionalOptions = {}) => {
+-	const ajv = new Ajv({
++	const { strictDefaults: _strictDefaults, ...restOptions } = additionalOptions || {};
++
++	const ajv = new AjvDraft4({
+ 		meta: false,
+ 		useDefaults: true,
+ 		validateSchema: false,
+-		missingRefs: "ignore",
++		// Ajv v8 defaults are stricter; relax to match v6 behavior used by ESLint
++		strict: false,
++		allErrors: true,
+ 		verbose: true,
+-		schemaId: "auto",
+-		...additionalOptions,
++		...restOptions,
+ 	});
+ 
+-	ajv.addMetaSchema(metaSchema);
+-	// eslint-disable-next-line no-underscore-dangle -- Ajv's API
+-	ajv._opts.defaultMeta = metaSchema.id;
+-
+ 	return ajv;
+ };
