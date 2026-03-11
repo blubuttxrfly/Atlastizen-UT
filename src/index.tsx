@@ -175,6 +175,11 @@ const RING_OUTER_RADIUS = 62;
 const RING_INNER_RADIUS = 22;
 const POINTER_RADIUS = 58;
 const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
+const RAY_LABEL_RADIUS = LABEL_RADIUS - 4;
+const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
+const RING_VIEWBOX_PADDING = 10;
+const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
+const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 const UI_THEME_STORAGE_KEY = "aut-ui-theme";
 const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
@@ -4183,8 +4188,8 @@ export default function AUTClock() {
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
   const ringSizeClass = PRESENT_ONLY
-    ? "max-w-[15rem] sm:max-w-[19rem] xl:max-w-[22rem]"
-    : "max-w-[16rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
+    ? "max-w-[13rem] sm:max-w-[19rem] xl:max-w-[22rem]"
+    : "max-w-[14rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
   const ringLayoutClass = "flex flex-col items-center justify-center gap-5";
   const rayHeaderClass = PRESENT_ONLY
     ? "flex flex-col items-center gap-2 text-center"
@@ -4193,6 +4198,7 @@ export default function AUTClock() {
     "max-w-[18rem] sm:max-w-[21rem] lg:max-w-[23rem]";
   const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
   const weekHeaderClass = "flex flex-wrap items-start justify-between gap-3";
+  const ringViewBox = `${RING_VIEWBOX_MIN} ${RING_VIEWBOX_MIN} ${RING_VIEWBOX_SIZE} ${RING_VIEWBOX_SIZE}`;
 
   // Rays of the Week: active cycle + progress within current 12h band
   const weekBaseDate = useMemo(() => {
@@ -4209,7 +4215,7 @@ export default function AUTClock() {
       const endAngle = startAngle + weekSegmentAngle;
       const midAngle = startAngle + weekSegmentAngle / 2;
       const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
-      const labelPosition = polarToCartesian(LABEL_RADIUS, midAngle);
+      const labelPosition = polarToCartesian(WEEK_LABEL_RADIUS, midAngle);
       const sequenceLabel = WEEK_RAY_SEQUENCE_LABELS[index] ?? `${index}-${index + 1}`;
       const labelLines = [cycle.dayLabel, sequenceLabel];
       return {
@@ -4327,7 +4333,7 @@ export default function AUTClock() {
       const endAngle = startAngle + segmentAngle;
       const midAngle = startAngle + segmentAngle / 2;
       const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
-      const labelPosition = polarToCartesian(LABEL_RADIUS, midAngle);
+      const labelPosition = polarToCartesian(RAY_LABEL_RADIUS, midAngle);
       const labelLines = splitRayLabel(ray.name);
       return {
         ray,
@@ -5929,7 +5935,7 @@ export default function AUTClock() {
         {activePanel === "luna" && (
           <>
         {/* Luna Panel */}
-        <section className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-700 space-y-6">
+        <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="text-sm uppercase tracking-wide text-zinc-400">Luna (Moon)</div>
@@ -6108,7 +6114,7 @@ export default function AUTClock() {
         {activePanel === "compass" && (
           <>
         {/* Gyro Compass */}
-        <section className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-700 space-y-6">
+        <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="text-sm uppercase tracking-wide text-zinc-400">Gyro Compass</div>
@@ -6242,7 +6248,7 @@ export default function AUTClock() {
         {activePanel === "ray" && (
           <>
         {/* Ray Dial */}
-        <section className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-700 space-y-6">
+        <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
           <div className={rayHeaderClass}>
             <div>
               <div className="text-sm uppercase text-zinc-400 tracking-wide">
@@ -6267,10 +6273,10 @@ export default function AUTClock() {
           </div>
 
           <div className={ringLayoutClass}>
-            <div className={`relative mx-auto w-full ${ringSizeClass}`}>
+            <div className={`relative mx-auto aspect-square w-full overflow-hidden ${ringSizeClass}`}>
               <svg
-                viewBox="-70 -70 140 140"
-                className="h-auto w-full text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
+                viewBox={ringViewBox}
+                className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
               >
                 <circle
                   cx="0"
@@ -6297,7 +6303,7 @@ export default function AUTClock() {
                         y={segment.labelY.toFixed(3)}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="4.6"
+                        fontSize="4.1"
                         fill={segment.ray.labelColor ?? "#e2e8f0"}
                       >
                         {segment.labelLines.map((line, lineIdx) => (
@@ -6513,10 +6519,10 @@ export default function AUTClock() {
           </div>
 
           <div className={weekRingLayoutClass}>
-            <div className={`relative mx-auto w-full ${weekRingSizeClass}`}>
+            <div className={`relative mx-auto aspect-square w-full overflow-hidden ${weekRingSizeClass}`}>
               <svg
-                viewBox="-70 -70 140 140"
-                className="h-auto w-full text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]"
+                viewBox={ringViewBox}
+                className="block h-auto w-full overflow-hidden text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]"
                 role="img"
                 aria-label="Rays of the Week dial"
               >
@@ -6545,7 +6551,7 @@ export default function AUTClock() {
                         y={segment.labelY.toFixed(3)}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="3.6"
+                        fontSize="3.4"
                         fill={segment.cycle.labelColor ?? "#e2e8f0"}
                         letterSpacing="0.02em"
                       >
