@@ -4183,14 +4183,14 @@ export default function AUTClock() {
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
   const ringSizeClass = PRESENT_ONLY
-    ? "h-[15rem] w-[15rem] sm:h-[19rem] sm:w-[19rem] xl:h-[22rem] xl:w-[22rem]"
-    : "h-[16rem] w-[16rem] sm:h-[20rem] sm:w-[20rem] lg:h-[24rem] lg:w-[24rem] xl:h-[26rem] xl:w-[26rem]";
+    ? "max-w-[15rem] sm:max-w-[19rem] xl:max-w-[22rem]"
+    : "max-w-[16rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
   const ringLayoutClass = "flex flex-col items-center justify-center gap-5";
   const rayHeaderClass = PRESENT_ONLY
     ? "flex flex-col items-center gap-2 text-center"
     : "flex flex-wrap items-end justify-between gap-3";
   const weekRingSizeClass =
-    "h-[18rem] w-[18rem] sm:h-[21rem] sm:w-[21rem] lg:h-[23rem] lg:w-[23rem]";
+    "max-w-[18rem] sm:max-w-[21rem] lg:max-w-[23rem]";
   const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
   const weekHeaderClass = "flex flex-wrap items-start justify-between gap-3";
 
@@ -6267,10 +6267,10 @@ export default function AUTClock() {
           </div>
 
           <div className={ringLayoutClass}>
-            <div className="relative">
+            <div className={`relative mx-auto w-full ${ringSizeClass}`}>
               <svg
                 viewBox="-70 -70 140 140"
-                className={`${ringSizeClass} text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]`}
+                className="h-auto w-full text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
               >
                 <circle
                   cx="0"
@@ -6513,10 +6513,10 @@ export default function AUTClock() {
           </div>
 
           <div className={weekRingLayoutClass}>
-            <div className="relative">
+            <div className={`relative mx-auto w-full ${weekRingSizeClass}`}>
               <svg
                 viewBox="-70 -70 140 140"
-                className={`${weekRingSizeClass} text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]`}
+                className="h-auto w-full text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]"
                 role="img"
                 aria-label="Rays of the Week dial"
               >
