@@ -4188,8 +4188,8 @@ export default function AUTClock() {
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
   const ringSizeClass = PRESENT_ONLY
-    ? "max-w-[13rem] sm:max-w-[19rem] xl:max-w-[22rem]"
-    : "max-w-[14rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
+    ? "max-w-[16rem] sm:max-w-[19rem] xl:max-w-[22rem]"
+    : "max-w-[18rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
   const ringLayoutClass = "flex flex-col items-center justify-center gap-5";
   const rayHeaderClass = PRESENT_ONLY
     ? "flex flex-col items-center gap-2 text-center"
