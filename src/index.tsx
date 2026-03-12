@@ -5647,7 +5647,7 @@ export default function AUTClock() {
             </div>
 
             {/* Ray Dial (inlined on clock page) */}
-            <div className="mt-4 p-5 space-y-5">
+            <div className="mt-4 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
@@ -5668,10 +5668,10 @@ export default function AUTClock() {
               </div>
 
               <div className="flex justify-center">
-                <div className="relative">
+                <div className={`relative aspect-square w-full overflow-hidden ${ringSizeClass}`}>
                   <svg
-                    viewBox="-70 -70 140 140"
-                    className="h-96 w-96 text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                    viewBox={ringViewBox}
+                    className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
                   >
                     <circle
                       cx="0"
@@ -5698,7 +5698,7 @@ export default function AUTClock() {
                             y={segment.labelY.toFixed(3)}
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            fontSize="4.6"
+                            fontSize="4.1"
                             fill={segment.ray.labelColor ?? "#e2e8f0"}
                           >
                             {segment.labelLines.map((line, lineIdx) => (
