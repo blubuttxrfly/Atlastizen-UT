@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as Astronomy from "astronomy-engine";
+import { useSolarReturn, type SolarReturnProfile } from "../hooks/useSolarReturn";
+import { useForwardGeocode } from "../hooks/useForwardGeocode";
 type Vec2 = { x: number; y: number };
 
 type ViewMode = "heliocentric" | "geocentric";
@@ -73,9 +75,6 @@ const SCALE_MIN = 0.03;
 const SCALE_MAX = 18;
 const CANVAS_SIZE = 560;
 const SPREAD_FACTOR = 1.8;
-const MOON_VIS_MIN_PX = 10;
-const MOON_VIS_MAX_PX = 28;
-const LERP_SOFTEN_PX = 6;
 const GEO_SCALE_FACTOR = 0.34;
 const DEG2RAD = Math.PI / 180;
 const ZODIAC_SIGNS = [
@@ -544,6 +543,80 @@ function HeartlightSystemMap() {
   const [rayOpen, setRayOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
 
+  /* ── Solar Return constellation ─────────────────────────────────────────── */
+  const {
+    profiles,
+    activeProfile,
+    activeId,
+    setActiveId,
+    addProfile,
+    updateProfile,
+    removeProfile,
+  } = useSolarReturn();
+
+  // Add/Edit form states
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  // Add form fields
+  const [addName, setAddName] = useState("");
+  const [addDateStr, setAddDateStr] = useState("");
+  const [addTimeStr, setAddTimeStr] = useState("12:00");
+  const [addLocationQuery, setAddLocationQuery] = useState("");
+  const [addSelectedLocation, setAddSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const { results: addGeocodeResults } = useForwardGeocode(addLocationQuery);
+
+  // Edit form fields (mirror add, scoped to editingId)
+  const [editName, setEditName] = useState("");
+  const [editDateStr, setEditDateStr] = useState("");
+  const [editTimeStr, setEditTimeStr] = useState("12:00");
+  const [editLocationQuery, setEditLocationQuery] = useState("");
+  const [editSelectedLocation, setEditSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const { results: editGeocodeResults } = useForwardGeocode(editLocationQuery);
+
+  const startAdd = useCallback(() => {
+    setAddName("");
+    setAddDateStr("");
+    setAddTimeStr("12:00");
+    setAddLocationQuery("");
+    setAddSelectedLocation(null);
+    setShowAddForm(true);
+  }, []);
+
+  const startEdit = useCallback((profile: SolarReturnProfile) => {
+    setEditName(profile.name);
+    const d = new Date(profile.birthYear ?? 2000, profile.birthMonth, profile.birthDay);
+    const mStr = (d.getMonth() + 1).toString().padStart(2, "0");
+    const dayStr = d.getDate().toString().padStart(2, "0");
+    setEditDateStr(`${profile.birthYear ?? 2000}-${mStr}-${dayStr}`);
+    const hStr = (profile.birthHour ?? 12).toString().padStart(2, "0");
+    const minStr = (profile.birthMinute ?? 0).toString().padStart(2, "0");
+    setEditTimeStr(`${hStr}:${minStr}`);
+    setEditLocationQuery("");
+    setEditSelectedLocation({ lat: profile.birthLat, lon: profile.birthLon, displayName: profile.birthPlaceLabel });
+    setEditingId(profile.id);
+  }, []);
+
+  const applySolarReturn = useCallback(() => {
+    if (!activeProfile) return;
+    const natalDate = new Date(
+      activeProfile.birthYear ?? 2000,
+      activeProfile.birthMonth,
+      activeProfile.birthDay,
+      activeProfile.birthHour ?? 12,
+      activeProfile.birthMinute ?? 0,
+      0
+    );
+    timeRef.current = natalDate.getTime();
+    setWhen(new Date(natalDate));
+  }, [activeProfile, setWhen]);
+
+  const getFormLocation = useCallback((formLoc: typeof addSelectedLocation) => {
+    if (formLoc) return formLoc;
+    return { lat: 35.25, lon: -80.8, displayName: "Charlotte, NC" };
+ }, []);
+
   const orbitCache = useMemo(() => {
     const cache = new Map<string, Vec2[]>();
     PLANETS.forEach((planet) => {
@@ -934,6 +1007,238 @@ function HeartlightSystemMap() {
         </div>
       </div>
 
+      {/* 1b) Solar Return Constellation */}
+      <div className="space-y-2 text-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs uppercase tracking-wide text-sky-200/80">
+            Solar Return — {profiles.length} constellation{profiles.length !== 1 ? "s" : ""}
+          </div>
+          <button
+            type="button"
+            className="rounded-md border border-sky-500/50 px-2 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+            onClick={startAdd}
+          >
+            + Add
+          </button>
+        </div>
+
+        {profiles.length === 0 && !showAddForm ? (
+          <div className="text-sm text-slate-300">No constellations yet. Click "+ Add" to create one.</div>
+        ) : null}
+
+        <div className="space-y-1.5">
+          {profiles.map((profile) => {
+            const isExpanded = activeId === profile.id;
+            const isEditing = editingId === profile.id;
+            const isConfirming = confirmRemoveId === profile.id;
+
+            return (
+              <div key={profile.id} className="rounded-lg border border-sky-500/20 bg-slate-800/50 px-3 py-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="text-xs text-sky-200/70 transition hover:text-sky-100"
+                    onClick={() => setActiveId(isExpanded ? null : profile.id)}
+                    aria-label={isExpanded ? "Collapse" : "Expand"}
+                  >
+                    {isExpanded ? "▼" : "▶"}
+                  </button>
+                  <span className="text-sm font-medium text-sky-100">{profile.name}</span>
+                  <span className="text-xs text-slate-400">
+                    {profile.birthMonth + 1}/{profile.birthDay}/{profile.birthYear ?? "??"}
+                    {profile.birthHour != null ? ` at ${profile.birthHour.toString().padStart(2,"0")}:${(profile.birthMinute ?? 0).toString().padStart(2,"0")}` : ""}
+                    {" @ "}{profile.birthPlaceLabel || "Unknown"}
+                  </span>
+                  {isExpanded ? (
+                    <div className="flex items-center gap-1 sm:ml-0">
+                      <button
+                        type="button"
+                        className="rounded-md border border-sky-500/30 px-1.5 py-0.5 text-xs text-sky-100 transition hover:bg-sky-500/20"
+                        title="Show natal chart"
+                        onClick={applySolarReturn}
+                      >
+                        💫
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-sky-500/30 px-1.5 py-0.5 text-xs text-sky-100 transition hover:bg-sky-500/20"
+                        title="Edit"
+                        onClick={() => startEdit(profile)}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-sky-500/30 px-1.5 py-0.5 text-xs text-sky-100 transition hover:bg-red-500/20"
+                        title="Remove"
+                        onClick={() => setConfirmRemoveId(profile.id)}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {isConfirming ? (
+                  <div className="mt-1.5 flex items-center gap-2 text-xs">
+                    <span className="text-slate-300">Remove this constellation?</span>
+                    <button
+                      type="button"
+                      className="rounded bg-red-500/20 px-2 py-0.5 text-red-200 transition hover:bg-red-500/30"
+                      onClick={() => { removeProfile(profile.id); setConfirmRemoveId(null); }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-sky-500/30 px-2 py-0.5 text-sky-100 transition hover:bg-sky-500/20"
+                      onClick={() => setConfirmRemoveId(null)}
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : null}
+
+                {isEditing ? (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
+                      <input type="date" value={editDateStr} onChange={(e) => setEditDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+                      <input type="time" step={60} value={editTimeStr} onChange={(e) => setEditTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+                    </div>
+                    <div className="relative">
+                      <input
+                        value={editLocationQuery}
+                        onChange={(e) => setEditLocationQuery(e.target.value)}
+                        placeholder={editSelectedLocation?.displayName || "Search location…"}
+                        className="w-full max-w-xs rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
+                      />
+                      {editGeocodeResults.length > 0 && editLocationQuery.trim().length >= 2 ? (
+                        <ul className="absolute z-10 mt-1 max-h-48 w-full max-w-xs overflow-auto rounded border border-sky-500/40 bg-slate-800 shadow-lg">
+                          {editGeocodeResults.map((r, idx) => (
+                            <li key={idx}>
+                              <button
+                                type="button"
+                                className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
+                                onClick={() => { setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setEditLocationQuery(""); }}
+                              >
+                                {r.displayName}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
+                        onClick={() => {
+                          const [yStr, mStr, dStr] = editDateStr.split("-").map(Number);
+                          const [hStr, minStr] = editTimeStr.split(":").map(Number);
+                          const loc = getFormLocation(editSelectedLocation);
+                          updateProfile(profile.id, {
+                            name: editName.trim() || profile.name,
+                            birthMonth: (mStr || 1) - 1,
+                            birthDay: dStr || 1,
+                            birthYear: yStr || 2000,
+                            birthHour: hStr ?? 12,
+                            birthMinute: minStr ?? 0,
+                            birthLat: loc.lat,
+                            birthLon: loc.lon,
+                            birthPlaceLabel: loc.displayName,
+                          });
+                          setEditingId(null);
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-slate-300 transition hover:bg-sky-500/10"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add form */}
+        {showAddForm ? (
+          <div className="rounded-lg border border-sky-500/30 bg-slate-800/60 p-3">
+            <div className="mb-2 text-sm font-medium text-sky-100">New Constellation</div>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
+                <input type="date" value={addDateStr} onChange={(e) => setAddDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+                <input type="time" step={60} value={addTimeStr} onChange={(e) => setAddTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+              </div>
+              <div className="relative">
+                <input
+                  value={addLocationQuery}
+                  onChange={(e) => setAddLocationQuery(e.target.value)}
+                  placeholder="Search location…"
+                  className="w-full max-w-xs rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
+                />
+                {addGeocodeResults.length > 0 && addLocationQuery.trim().length >= 2 ? (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-full max-w-xs overflow-auto rounded border border-sky-500/40 bg-slate-800 shadow-lg">
+                    {addGeocodeResults.map((r, idx) => (
+                      <li key={idx}>
+                        <button
+                          type="button"
+                          className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
+                          onClick={() => { setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setAddLocationQuery(""); }}
+                        >
+                          {r.displayName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
+                  onClick={() => {
+                    if (!addDateStr) return;
+                    const [yStr, mStr, dStr] = addDateStr.split("-").map(Number);
+                    const [hStr, minStr] = addTimeStr.split(":").map(Number);
+                    const loc = getFormLocation(addSelectedLocation);
+                    addProfile({
+                      name: addName.trim() || "Unnamed",
+                      birthMonth: (mStr || 1) - 1,
+                      birthDay: dStr || 1,
+                      birthYear: yStr || 2000,
+                      birthHour: hStr ?? 12,
+                      birthMinute: minStr ?? 0,
+                      birthLat: loc.lat,
+                      birthLon: loc.lon,
+                      birthPlaceLabel: loc.displayName,
+                    });
+                    setShowAddForm(false);
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-slate-300 transition hover:bg-sky-500/10"
+                  onClick={() => setShowAddForm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       {/* 2) HSM title */}
       <div className="space-y-1 text-slate-100">
         <div className="text-sm uppercase tracking-wide text-sky-200/80">HSM: Heartlight System Map</div>
@@ -1291,10 +1596,6 @@ function drawScene(
 
   if (overlays.showEclipticGrid) {
     drawEclipticGrid(ctx, worldToScreen, scale);
-  }
-
-  if (overlays.viewMode === "geocentric") {
-    drawGeocentricAlignmentRays(ctx, placements, worldToScreen, scale);
   }
 
   if (overlays.viewMode === "heliocentric") {
@@ -1699,85 +2000,6 @@ function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: nu
       ctx.fill();
     });
   }
-}
-
-function drawHeliocentricMoonSystem(
-  ctx: CanvasRenderingContext2D,
-  earthPlacement: Placement,
-  moonPlacement: Placement,
-  worldToScreen: (point: Vec2) => Vec2,
-  planetRadius: number
-) {
-  const earthScreen = worldToScreen(earthPlacement.world);
-  const moonScreenRaw = worldToScreen(moonPlacement.world);
-  const dx = moonScreenRaw.x - earthScreen.x;
-  const dy = moonScreenRaw.y - earthScreen.y;
-  const screenDistance = Math.hypot(dx, dy);
-  const theta = Math.atan2(moonPlacement.world.y - earthPlacement.world.y, moonPlacement.world.x - earthPlacement.world.x);
-  const rTarget = clamp(screenDistance, MOON_VIS_MIN_PX, MOON_VIS_MAX_PX);
-  const weight = smoothClampWeight(screenDistance, MOON_VIS_MIN_PX, MOON_VIS_MAX_PX, LERP_SOFTEN_PX);
-  const rVisual = lerp(screenDistance, rTarget, weight);
-  const moonScreen = {
-    x: earthScreen.x + rVisual * Math.cos(theta),
-    y: earthScreen.y + rVisual * Math.sin(theta),
-  };
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(earthScreen.x, earthScreen.y, rVisual, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(148,163,184,0.25)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.restore();
-
-  const moonRadius = clamp(planetRadius * 0.55, ICON_MIN * 0.45, ICON_MAX * 0.45);
-  drawPlanetGlyph(ctx, moonScreen, moonRadius, MOON);
-  ctx.fillStyle = "#e2e8f0";
-  ctx.fillText(MOON.name, moonScreen.x + moonRadius + 4, moonScreen.y);
-}
-
-function drawGeocentricAlignmentRays(
-  ctx: CanvasRenderingContext2D,
-  placements: Placement[],
-  worldToScreen: (point: Vec2) => Vec2,
-  scale: number
-) {
-  const lineWidth = clamp(scale * 0.4, 0.45, 1.4);
-  ctx.save();
-  ctx.strokeStyle = "rgba(56,189,248,0.32)";
-  ctx.lineWidth = lineWidth;
-  placements.forEach((placement) => {
-    if (placement.mode !== "geocentric" || placement.body === "Earth") return;
-    const angle = Math.atan2(placement.world.y, placement.world.x);
-    const inner = worldToScreen(placement.world);
-    const outerWorld = {
-      x: Math.cos(angle) * ZODIAC_RING_RADIUS_AU * GEO_SCALE_FACTOR,
-      y: Math.sin(angle) * ZODIAC_RING_RADIUS_AU * GEO_SCALE_FACTOR,
-    };
-    const outer = worldToScreen(outerWorld);
-    ctx.beginPath();
-    ctx.moveTo(inner.x, inner.y);
-    ctx.lineTo(outer.x, outer.y);
-    ctx.stroke();
-  });
-  ctx.restore();
-}
-
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
-function smoothClampWeight(r: number, lo: number, hi: number, feather: number) {
-  if (feather <= 0) return r < lo || r > hi ? 1 : 0;
-  if (r < lo) {
-    const t = (lo - r) / feather;
-    return Math.min(1, (t * t) / (1 + t * t));
-  }
-  if (r > hi) {
-    const t = (r - hi) / feather;
-    return Math.min(1, (t * t) / (1 + t * t));
-  }
-  return 0;
 }
 
 function lighten(hex: string, factor: number) {
