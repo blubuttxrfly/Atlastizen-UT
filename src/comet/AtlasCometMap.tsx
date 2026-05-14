@@ -35,6 +35,7 @@ type OverlayOptions = {
   showEclipticGrid: boolean;
   showMoon: boolean;
   scaleLabels: boolean;
+  showRayZones: boolean;
 };
 
 const PLANETS: Planet[] = [
@@ -537,6 +538,7 @@ function HeartlightSystemMap() {
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [showMoon, setShowMoon] = useState(true);
   const [scaleLabels, setScaleLabels] = useState(true);
+  const [showRayZones, setShowRayZones] = useState(true);
   const [distanceMode, setDistanceMode] = useState<"scaled" | "accurate">("scaled");
   const [infoOpen, setInfoOpen] = useState(false);
   const [rayOpen, setRayOpen] = useState(false);
@@ -649,7 +651,7 @@ function HeartlightSystemMap() {
         new Date(timeRef.current),
         worldToScreen,
         scaleRef.current,
-        { showZodiac, showEclipticGrid, showMoon, scaleLabels, viewMode }
+        { showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode }
       );
 
       raf = requestAnimationFrame(render);
@@ -657,7 +659,7 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, viewMode, distanceMode]);
+  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode, distanceMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -991,12 +993,17 @@ function HeartlightSystemMap() {
       <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-sky-200/80">
         <label className="flex items-center gap-2">
           Date
-          <input
-            type="date"
-            value={formattedDate}
-            onChange={handleDateChange}
-            className="rounded-md border border-sky-500/50 bg-slate-900 px-2 py-1 text-sky-100"
-          />
+          <div className="group relative inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-500/50 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-sky-100 shadow-sm transition hover:bg-sky-500/20 hover:border-sky-400/60">
+            <span className="pointer-events-none select-none">🗓</span>
+            <span className="pointer-events-none select-none tabular-nums">{formattedDate}</span>
+            <input
+              type="date"
+              value={formattedDate}
+              onChange={handleDateChange}
+              className="absolute inset-0 w-full cursor-pointer opacity-0"
+              aria-label="Select date for the Heartlight System Map"
+            />
+          </div>
           <button
             type="button"
             className="rounded-md border border-sky-500/50 px-2 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
@@ -1117,6 +1124,15 @@ function HeartlightSystemMap() {
           />
           Labels Scale
         </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-sky-500 bg-slate-900/80 text-sky-500 focus:ring-sky-400"
+            checked={showRayZones}
+            onChange={(event) => setShowRayZones(event.target.checked)}
+          />
+          Ray Zones
+        </label>
       </div>
 
       {/* 6) Map */}
@@ -1129,6 +1145,10 @@ function HeartlightSystemMap() {
             className="absolute inset-0 h-full w-full rounded-full"
             style={gyroEnabled && viewMode === "geocentric" ? { transform: `rotate(${gyroHeading.toFixed(1)}deg)` } : undefined}
           />
+        </div>
+        {/* HSM version */}
+        <div className="mt-1 text-center text-[10px] text-slate-400">
+          {HSM_VERSION} • Heartlight System Map
         </div>
       </div>
 
@@ -1251,7 +1271,12 @@ function drawScene(
   ctx.fillStyle = "#030712";
   ctx.fillRect(0, 0, width, height);
 
+  // PRE-COMPUTE: all astronomical data before drawing
   const placements = getPlacements(overlays.viewMode, time);
+  const geoPlacements = getPlacements("geocentric", time);
+  const moonGeo = geoPlacements.find((p) => p.body === "Moon");
+  const sunGeo = geoPlacements.find((p) => p.body === "Sun");
+  const activeRayIndex = sunGeo ? Math.floor(normalizeDegrees(sunGeo.lon) / 30) % 12 : -1;
 
   // Circular viewport clip for the system
   const radius = Math.min(width, height) / 2;
@@ -1259,6 +1284,10 @@ function drawScene(
   ctx.beginPath();
   ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
   ctx.clip();
+
+  if (overlays.showRayZones) {
+    drawRayZones(ctx, radius, activeRayIndex);
+  }
 
   if (overlays.showEclipticGrid) {
     drawEclipticGrid(ctx, worldToScreen, scale);
@@ -1285,7 +1314,7 @@ function drawScene(
     drawSun(ctx, worldToScreen, scale);
   }
 
-  drawBodies(ctx, placements, worldToScreen, scale, overlays);
+  drawBodies(ctx, placements, worldToScreen, scale, overlays, moonGeo);
   ctx.restore(); // end clip
 
   if (overlays.showZodiac) {
@@ -1313,22 +1342,29 @@ function drawZodiacRing(
   const height = ctx.canvas.height / dpr;
   const center = { x: width / 2, y: height / 2 };
   const viewportRadius = Math.min(width, height) / 2;
-  // Bring the ring close to the canvas edge while keeping labels inside the viewport.
-  const edgePadding = 12; // tighter margin but avoids clipping
+  const edgePadding = 12;
   const ringRadius = Math.max(18, viewportRadius - edgePadding);
   const tickInner = ringRadius - 10;
   const tickOuter = ringRadius + 6;
 
   ctx.save();
-  ctx.strokeStyle = "rgba(56,189,248,0.28)";
+  ctx.textAlign = "center";
+
+  // Draw ring outline with first hue (Aries/Red)
+  ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.28);
   ctx.lineWidth = clamp(scale * 0.35, 0.6, 1.4);
   ctx.beginPath();
   ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.textAlign = "center";
 
   for (let i = 0; i < 12; i += 1) {
+    const hue = ZODIAC_HUES[i];
+    const isCarbon = i === 9;
     const angle = (i / 12) * Math.PI * 2;
+
+    // Tick marks with Ray hue
+    ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.35)" : hexToRgba(hue, 0.52);
+    ctx.lineWidth = clamp(scale * 0.4, 0.8, 1.8);
     const lineInner = {
       x: center.x + Math.cos(angle) * (tickInner - 4),
       y: center.y - Math.sin(angle) * (tickInner - 4),
@@ -1346,9 +1382,7 @@ function drawZodiacRing(
     const midAngle = angle + Math.PI / 12;
     const symbolPx = clamp(14 * Math.pow(scale, SCALE_EXP * 0.7), 11, 22);
     const namePx = clamp(10 * Math.pow(scale, SCALE_EXP * 0.6), 9, 14);
-    // Push labels inward so they no longer spill outside the circular viewport.
     const symbolOffsetPx = clamp(18 * Math.pow(scale, SCALE_EXP * 0.6), 12, 24);
-    // Pull the name farther inward than the symbol to avoid overlap (e.g., Virgo vs Aries).
     const nameOffsetPx = clamp(44 * Math.pow(scale, SCALE_EXP * 0.6), 32, 72);
     const labelRadiusPx = ringRadius - symbolOffsetPx;
     const nameRadiusPx = ringRadius - nameOffsetPx;
@@ -1361,15 +1395,37 @@ function drawZodiacRing(
       y: center.y - Math.sin(midAngle) * nameRadiusPx,
     };
 
+    // Symbol with Ray hue
     ctx.font = `${symbolPx}px 'JetBrains Mono', ui-monospace, monospace`;
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(165,243,252,0.85)";
+    if (isCarbon) {
+      ctx.shadowColor = "rgba(255,255,255,0.9)";
+      ctx.shadowBlur = 6;
+      ctx.strokeStyle = "rgba(255,255,255,0.7)";
+      ctx.lineWidth = 0.8;
+      ctx.strokeText(sign.symbol, labelPoint.x, labelPoint.y);
+    }
+    ctx.fillStyle = hue;
     ctx.fillText(sign.symbol, labelPoint.x, labelPoint.y);
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+
+    // Name with Ray hue
     ctx.font = `${namePx}px 'JetBrains Mono', ui-monospace, monospace`;
-    ctx.fillStyle = "rgba(148,212,255,0.85)";
+    if (isCarbon) {
+      ctx.shadowColor = "rgba(255,255,255,0.9)";
+      ctx.shadowBlur = 5;
+      ctx.strokeStyle = "rgba(255,255,255,0.7)";
+      ctx.lineWidth = 0.6;
+      ctx.strokeText(sign.name.toUpperCase(), namePoint.x, namePoint.y);
+    }
+    ctx.fillStyle = hue;
     ctx.fillText(sign.name.toUpperCase(), namePoint.x, namePoint.y);
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
   }
 
+  // Degree ticks every 10° (use faint blue — independent of Ray hues)
   for (let deg = 0; deg < 360; deg += 10) {
     const rad = deg * DEG2RAD;
     const isMajor = deg % 30 === 0;
@@ -1391,6 +1447,72 @@ function drawZodiacRing(
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function drawRayZones(
+  ctx: CanvasRenderingContext2D,
+  viewportRadius: number,
+  activeRayIndex: number
+) {
+  const sectorRadius = viewportRadius * 0.92;
+  const steps = 12;
+  const center = { x: ctx.canvas.width / (window.devicePixelRatio ?? 1) / 2, y: ctx.canvas.height / (window.devicePixelRatio ?? 1) / 2 };
+
+  for (let i = 0; i < 12; i++) {
+    const hue = ZODIAC_HUES[i];
+    const isActive = i === activeRayIndex;
+    const isCarbon = i === 9;
+    const startAngle = (i / 12) * Math.PI * 2;
+    const endAngle = ((i + 1) / 12) * Math.PI * 2;
+
+    // Build polygon with same trig as labels (CCW: cos, -sin)
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    for (let s = 0; s <= steps; s++) {
+      const a = startAngle + (s / steps) * (endAngle - startAngle);
+      ctx.lineTo(
+        center.x + Math.cos(a) * sectorRadius,
+        center.y - Math.sin(a) * sectorRadius
+      );
+    }
+    ctx.closePath();
+
+    // Fill
+    if (isCarbon) {
+      ctx.fillStyle = isActive ? "rgba(30,25,25,0.28)" : "rgba(15,10,10,0.18)";
+    } else if (isActive) {
+      ctx.fillStyle = hexToRgba(hue, 0.22);
+    } else {
+      ctx.fillStyle = hexToRgba(hue, 0.10);
+    }
+    ctx.fill();
+
+    // Boundary
+    ctx.strokeStyle = isCarbon
+      ? (isActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.20)")
+      : (isActive ? hexToRgba(hue, 0.55) : hexToRgba(hue, 0.22));
+    ctx.lineWidth = isActive ? 1.6 : 0.8;
+    ctx.stroke();
+
+    // Inner glow for active
+    if (isActive) {
+      ctx.beginPath();
+      const midA = startAngle + (endAngle - startAngle) / 2;
+      const gx = center.x + Math.cos(midA) * sectorRadius * 0.65;
+      const gy = center.y - Math.sin(midA) * sectorRadius * 0.65;
+      const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, sectorRadius * 0.35);
+      if (isCarbon) {
+        gr.addColorStop(0, "rgba(255,255,255,0.08)");
+        gr.addColorStop(1, "rgba(255,255,255,0)");
+      } else {
+        gr.addColorStop(0, hexToRgba(hue, 0.14));
+        gr.addColorStop(1, hexToRgba(hue, 0));
+      }
+      ctx.fillStyle = gr;
+      ctx.arc(gx, gy, sectorRadius * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 function drawEclipticGrid(
@@ -1471,7 +1593,8 @@ function drawBodies(
   placements: Placement[],
   worldToScreen: (point: Vec2) => Vec2,
   scale: number,
-  overlays: OverlayOptions
+  overlays: OverlayOptions,
+  moonGeo?: Placement
 ) {
   const isGeocentric = overlays.viewMode === "geocentric";
   const radiusMultiplier = isGeocentric ? 1.55 : 1;
@@ -1488,7 +1611,6 @@ function drawBodies(
   ctx.fillStyle = "#e2e8f0";
 
   const earthPlacement = placements.find((placement) => placement.body === "Earth");
-  const moonPlacement = placements.find((placement) => placement.body === "Moon");
 
   placements.forEach((placement) => {
     const { body } = placement;
@@ -1513,8 +1635,18 @@ function drawBodies(
     ctx.fillText(body, center.x + bodyRadius + 6, center.y);
   });
 
-  if (overlays.viewMode === "heliocentric" && overlays.showMoon && earthPlacement && moonPlacement) {
-    drawHeliocentricMoonSystem(ctx, earthPlacement, moonPlacement, worldToScreen, radiusPx);
+  // Geocentric Moon positioning: Moon orbits Earth using real sky longitude
+  if (overlays.viewMode === "heliocentric" && overlays.showMoon && earthPlacement && moonGeo) {
+    const earthScreen = worldToScreen(earthPlacement.world);
+    const moonAngle = moonGeo.lon * DEG2RAD;
+    const moonOrbitPx = radiusPx * 0.7; // roughly 0.04 of viewport equivalent
+    const moonX = earthScreen.x + moonOrbitPx * Math.cos(moonAngle);
+    const moonY = earthScreen.y - moonOrbitPx * Math.sin(moonAngle);
+    const moonRadius = clamp(radiusPx * 0.35, ICON_MIN * 0.5, ICON_MAX * 0.5);
+
+    drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText("Moon", moonX + moonRadius + 4, moonY);
   }
 }
 
