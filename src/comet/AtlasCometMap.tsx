@@ -137,6 +137,17 @@ const ZODIAC_RAY_ESSENCE = [
   "Mysticism • compassion • dreamfield • unity consciousness",
 ];
 
+/* ── Ray hue helpers for canvas ─────────────────────────────────────────── */
+
+function hexToRgba(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+const HSM_VERSION = "V0.0.1";
+
 const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
   {
     body: "Sun",
@@ -195,7 +206,7 @@ const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", 
 const BODY_ORDER: BodyName[] = ["Sun", "Earth", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
 const GEO_BASE_RADIUS_AU = ZODIAC_RING_RADIUS_AU * 0.97;
 const DEFAULT_SCALE: Record<ViewMode, number> = {
-  heliocentric: 0.85,
+  heliocentric: 0.25,
   geocentric: 1.85,
 };
 
