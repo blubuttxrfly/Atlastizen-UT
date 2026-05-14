@@ -188,7 +188,7 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "sol", label: "Sol Panel" },
   { id: "luna", label: "Luna Panel" },
   { id: "compass", label: "Gyro Compass" },
-  { id: "heartlight", label: "Zodiac Alignment" },
+  { id: "heartlight", label: "Ray Astrology" },
   { id: "community", label: "Community" },
   { id: "ray", label: "Ray Dial" },
   { id: "weekrays", label: "Rays of the Week" },

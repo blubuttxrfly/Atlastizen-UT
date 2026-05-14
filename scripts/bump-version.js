@@ -10,7 +10,7 @@ import path from "path";
 
 const bumpType = process.argv[2] ?? "patch";
 const pkgPath = path.resolve("package.json");
-const uiFiles = [path.resolve("src/index.tsx")];
+const uiFiles = [path.resolve("src/index.tsx"), path.resolve("src/comet/AtlasCometMap.tsx")];
 
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 const [major, minor, patch] = pkg.version.split(".").map((n) => parseInt(n, 10));
