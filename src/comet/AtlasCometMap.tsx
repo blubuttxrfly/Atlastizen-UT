@@ -98,8 +98,6 @@ const BODY_PX: Record<BodyName, number> = {
   Pluto: 3.2,
   Moon: 2.8,
 };
-const BODY_LABEL_OFFSET = 10;
-const MOON_LABEL_OFFSET = 10;
 
 // Default font for canvas labels
 const BODY_FONT = "11px 'JetBrains Mono', ui-monospace, monospace";
@@ -1813,18 +1811,11 @@ function drawBodies(
       drawPlanetGlyph(ctx, center, bodyRadius, planetDef);
     }
     ctx.fillStyle = "#e2e8f0";
-    // Flip label inward when planet sits on the right half of the canvas
-    // to keep text fully inside the circular viewport.
-    const labelOffset = BODY_LABEL_OFFSET * scale;
-    const labelX = center.x + bodyRadius + labelOffset;
-    if (center.x > 280 * scale) {
-      ctx.textAlign = "right";
-      ctx.fillText(body, center.x - bodyRadius - labelOffset, center.y);
-    } else {
-      ctx.textAlign = "left";
-      ctx.fillText(body, labelX, center.y);
-    }
-    ctx.textAlign = "left"; // reset
+    // Place label below the planet with a small gap so it never overlaps.
+    const labelGap = Math.max(3, 4 * scale);
+    ctx.textBaseline = "top";
+    ctx.fillText(body, center.x, center.y + bodyRadius + labelGap);
+    ctx.textBaseline = "middle"; // reset
   });
 
   // Moon rendering: fixed pixel orbit around Earth.
@@ -1839,14 +1830,10 @@ function drawBodies(
   const moonRadius = BODY_PX["Moon"] * scale;
   drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
   ctx.fillStyle = "#e2e8f0";
-  const moonLabelOffset = MOON_LABEL_OFFSET * scale;
-  if (moonX > 280 * scale) {
-    ctx.textAlign = "right";
-    ctx.fillText("Moon", moonX - moonRadius - moonLabelOffset, moonY);
-  } else {
-    ctx.textAlign = "left";
-    ctx.fillText("Moon", moonX + moonRadius + moonLabelOffset, moonY);
-  }
+  const moonLabelGap = Math.max(3, 4 * scale);
+  ctx.textBaseline = "top";
+  ctx.fillText("Moon", moonX, moonY + moonRadius + moonLabelGap);
+  ctx.textBaseline = "middle";
   ctx.textAlign = "left";
 }
 
