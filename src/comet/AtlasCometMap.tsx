@@ -35,7 +35,6 @@ type OverlayOptions = {
   viewMode: ViewMode;
   showZodiac: boolean;
   showEclipticGrid: boolean;
-  showMoon: boolean;
   scaleLabels: boolean;
   showRayZones: boolean;
 };
@@ -104,8 +103,6 @@ const MOON_LABEL_OFFSET = 10;
 
 // Default font for canvas labels
 const BODY_FONT = "11px 'JetBrains Mono', ui-monospace, monospace";
-
-// Geocentric: all bodies sit on a fixed zodiac ring (same radius for all).
 const GEO_RING_PX = 210;
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
@@ -234,7 +231,6 @@ const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
     detail: "Transmutates identity, exposes truth, empowers renewal, clears distorted control.",
   },
 ];
-const ZODIAC_RING_RADIUS_AU = 44;
 const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
 // Presentation order for the alignment list: highlight Sun/Moon/Earth first.
 const BODY_ORDER: BodyName[] = ["Sun", "Earth", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
@@ -540,7 +536,6 @@ function HeartlightSystemMap() {
   const [viewMode, setViewMode] = useState<ViewMode>("heliocentric");
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
-  const [showMoon, setShowMoon] = useState(true);
   const [scaleLabels, setScaleLabels] = useState(true);
   const [showRayZones, setShowRayZones] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -700,7 +695,7 @@ function HeartlightSystemMap() {
         new Date(timeRef.current),
         worldToScreen,
         viewportScaleRef.current,
-        { showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode }
+        { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode }
       );
 
       raf = requestAnimationFrame(render);
@@ -708,7 +703,7 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode]);
+  }, [orbitCache, showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -795,9 +790,7 @@ function HeartlightSystemMap() {
       byBody.set(placement.body, placement);
     });
 
-    return BODY_ORDER
-      .filter((body) => (showMoon ? true : body !== "Moon"))
-      .map((body) => {
+    return BODY_ORDER.map((body) => {
         const placement = byBody.get(body);
         if (!placement) {
           return null;
@@ -822,7 +815,7 @@ function HeartlightSystemMap() {
         };
       })
       .filter(Boolean) as ZodiacPlacement[];
-  }, [when, showMoon]);
+  }, [when]);
 
   const formatDateForInput = (date: Date) => {
     // Keep the local calendar day (avoid UTC conversion that can shift the date).
@@ -1306,15 +1299,6 @@ function HeartlightSystemMap() {
           <input
             type="checkbox"
             className="h-4 w-4 rounded border-sky-500 bg-slate-900/80 text-sky-500 focus:ring-sky-400"
-            checked={showMoon}
-            onChange={(event) => setShowMoon(event.target.checked)}
-          />
-          Show Moon
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-sky-500 bg-slate-900/80 text-sky-500 focus:ring-sky-400"
             checked={scaleLabels}
             onChange={(event) => setScaleLabels(event.target.checked)}
           />
@@ -1530,14 +1514,14 @@ function drawZodiacRing(
   const height = ctx.canvas.height / dpr;
   const center = { x: width / 2, y: height / 2 };
   const viewportRadius = Math.min(width, height) / 2;
-  const edgePadding = 12;
+  const edgePadding = 4;
   const ringRadius = Math.max(18, viewportRadius - edgePadding);
   const tickInner = ringRadius * 0.96;
   const tickOuter = ringRadius * 1.03;
 
   // Proportional zodiac label layout — scales with viewport
-  const symbolGap = ringRadius * 0.06;   // 6% inward from ring edge
-  const nameGap   = ringRadius * 0.24;   // 24% inward — between Saturn & outer planets
+  const symbolGap = ringRadius * 0.04;   // 4% inward from ring edge
+  const nameGap   = ringRadius * 0.08;   // 8% inward — stays outside outer planets
   const symbolPx  = clamp(ringRadius * 0.065, 10, 18);
   const namePx    = clamp(ringRadius * 0.045, 8, 13);
   const labelRadiusPx = ringRadius - symbolGap;
@@ -1712,8 +1696,9 @@ function drawEclipticGrid(
   scale: number
 ) {
   const center = worldToScreen({ x: 0, y: 0 });
-  const outerRadius = ZODIAC_RING_RADIUS_AU * 1.05;
-  const innerRadius = 2.5;
+  const maxOrbit = RING_PX["Pluto"];
+  const innerRadius = RING_PX["Mercury"] * 0.5;
+  const outerRadius = maxOrbit * 1.02;
   ctx.save();
   ctx.strokeStyle = "rgba(125,211,252,0.18)";
   ctx.lineWidth = clamp(scale * 0.25, 0.3, 1.0);
@@ -1737,8 +1722,8 @@ function drawEclipticGrid(
   const latitudes = [-30, -15, 15, 30];
   latitudes.forEach((lat) => {
     const beta = lat * DEG2RAD;
-    const radiusAU = outerRadius * Math.cos(beta);
-    const edge = worldToScreen({ x: radiusAU, y: 0 });
+    const r = outerRadius * Math.cos(beta);
+    const edge = worldToScreen({ x: r, y: 0 });
     const radiusPx = Math.hypot(edge.x - center.x, edge.y - center.y);
     ctx.beginPath();
     ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
@@ -1796,7 +1781,6 @@ function drawBodies(
   // Draw all non-Moon bodies.
   placements.forEach((placement) => {
     const { body } = placement;
-    if (!overlays.showMoon && body === "Moon") return;
     if (overlays.viewMode === "heliocentric" && body === "Sun") return; // drawn separately
     if (body === "Moon") return; // handled below
 
@@ -1826,7 +1810,7 @@ function drawBodies(
   });
 
   // Moon rendering: fixed pixel orbit around Earth.
-  if (!overlays.showMoon || !earthPlacement || !moonGeo) return;
+  if (!earthPlacement || !moonGeo) return;
 
   const moonAngle = moonGeo.lon * DEG2RAD;
   const earthScreen = worldToScreen(earthPlacement.world);
@@ -1887,6 +1871,15 @@ function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: nu
     ctx.fillStyle = gradient;
     ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
     ctx.fill();
+
+    // White glow stroke for tiny planets so they're visible on dark bg
+    if (radius < 4) {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 1;
+      ctx.arc(center.x, center.y, radius + 1, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   if (planet.spots) {
