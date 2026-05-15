@@ -1532,8 +1532,16 @@ function drawZodiacRing(
   const viewportRadius = Math.min(width, height) / 2;
   const edgePadding = 12;
   const ringRadius = Math.max(18, viewportRadius - edgePadding);
-  const tickInner = ringRadius - 10;
-  const tickOuter = ringRadius + 6;
+  const tickInner = ringRadius * 0.96;
+  const tickOuter = ringRadius * 1.03;
+
+  // Proportional zodiac label layout — scales with viewport
+  const symbolGap = ringRadius * 0.06;   // 6% inward from ring edge
+  const nameGap   = ringRadius * 0.24;   // 24% inward — between Saturn & outer planets
+  const symbolPx  = clamp(ringRadius * 0.065, 10, 18);
+  const namePx    = clamp(ringRadius * 0.045, 8, 13);
+  const labelRadiusPx = ringRadius - symbolGap;
+  const nameRadiusPx  = ringRadius - nameGap;
 
   ctx.save();
   ctx.textAlign = "center";
@@ -1553,13 +1561,14 @@ function drawZodiacRing(
     // Tick marks with Ray hue
     ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.35)" : hexToRgba(hue, 0.52);
     ctx.lineWidth = clamp(scale * 0.4, 0.8, 1.8);
+    const tickLen = ringRadius * 0.04;
     const lineInner = {
-      x: center.x + Math.cos(angle) * (tickInner - 4),
-      y: center.y - Math.sin(angle) * (tickInner - 4),
+      x: center.x + Math.cos(angle) * (tickInner - tickLen),
+      y: center.y - Math.sin(angle) * (tickInner - tickLen),
     };
     const lineOuter = {
-      x: center.x + Math.cos(angle) * (tickOuter + 2),
-      y: center.y - Math.sin(angle) * (tickOuter + 2),
+      x: center.x + Math.cos(angle) * (tickOuter + tickLen * 0.5),
+      y: center.y - Math.sin(angle) * (tickOuter + tickLen * 0.5),
     };
     ctx.beginPath();
     ctx.moveTo(lineInner.x, lineInner.y);
@@ -1568,12 +1577,6 @@ function drawZodiacRing(
 
     const sign = ZODIAC_SIGNS[i];
     const midAngle = angle + Math.PI / 12;
-    const symbolPx = clamp(14, 11, 22);
-    const namePx = clamp(10, 9, 14);
-    const symbolOffsetPx = clamp(18, 12, 24);
-    const nameOffsetPx = clamp(44, 32, 72);
-    const labelRadiusPx = ringRadius - symbolOffsetPx;
-    const nameRadiusPx = ringRadius - nameOffsetPx;
     const labelPoint = {
       x: center.x + Math.cos(midAngle) * labelRadiusPx,
       y: center.y - Math.sin(midAngle) * labelRadiusPx,
@@ -1617,8 +1620,8 @@ function drawZodiacRing(
   for (let deg = 0; deg < 360; deg += 10) {
     const rad = deg * DEG2RAD;
     const isMajor = deg % 30 === 0;
-    const innerR = isMajor ? ringRadius - 10 : ringRadius - 6;
-    const outerR = ringRadius + 6;
+    const innerR = isMajor ? ringRadius * 0.95 : ringRadius * 0.97;
+    const outerR = ringRadius * 1.04;
     const innerPoint = {
       x: center.x + Math.cos(rad) * innerR,
       y: center.y - Math.sin(rad) * innerR,
