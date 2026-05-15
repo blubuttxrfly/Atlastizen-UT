@@ -677,11 +677,11 @@ function HeartlightSystemMap() {
       sizeRef.current = { width: cssWidth, height: cssHeight };
 
       // Compute responsive scale: fit the full solar system into the viewport.
-      // Padding ensures Pluto + labels don't touch the edge.
+      // Minimal padding — planets should sit near the circular edge.
       const minDim = Math.min(cssWidth, cssHeight);
-      const padding = 20;
+      const padding = 2;
       const targetDiameter = minDim - padding * 2;
-      const designDiameter = RING_PX["Pluto"] * 2 + 35; // 258*2 + label space
+      const designDiameter = RING_PX["Pluto"] * 2 + 12; // 258*2 + small label buffer
       const viewportScale = targetDiameter / designDiameter;
       viewportScaleRef.current = Math.max(0.45, Math.min(1, viewportScale));
 
@@ -1871,15 +1871,6 @@ function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: nu
     ctx.fillStyle = gradient;
     ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
     ctx.fill();
-
-    // White glow stroke for tiny planets so they're visible on dark bg
-    if (radius < 4) {
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 1;
-      ctx.arc(center.x, center.y, radius + 1, 0, Math.PI * 2);
-      ctx.stroke();
-    }
   }
 
   if (planet.spots) {
