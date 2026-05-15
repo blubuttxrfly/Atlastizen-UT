@@ -1607,7 +1607,7 @@ function drawArcText(
   isCarbon: boolean
 ) {
   const metrics = ctx.measureText("M");
-  const charW = metrics.width * 0.9; // approximate avg char width
+  const charW = metrics.width * 0.9;
   const totalArc = (text.length * charW) / radius;
   let angle = midAngle - totalArc / 2;
 
@@ -1616,11 +1616,12 @@ function drawArcText(
     const x = cx + Math.cos(angle) * radius;
     const y = cy - Math.sin(angle) * radius;
 
+    // Upper half (0°–180°): flip rotation so text reads L→R from outside
+    const isUpperHalf = Math.sin(angle) > 0;
+
     ctx.save();
     ctx.translate(x, y);
-    // Rotate so text baseline is tangent to circle, bottom toward center
-    // Standard formula for outside-of-circle curved text
-    ctx.rotate(-angle - Math.PI / 2);
+    ctx.rotate(isUpperHalf ? (-angle + Math.PI / 2) : (-angle - Math.PI / 2));
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
