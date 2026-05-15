@@ -1611,13 +1611,14 @@ function drawArcText(
   const totalArc = (text.length * charW) / radius;
   let angle = midAngle - totalArc / 2;
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  // Upper half (0°–180°): reverse text so it reads L→R along the arc
+  const isUpperHalf = Math.sin(midAngle) > 0;
+  const drawText = isUpperHalf ? text.split("").reverse().join("") : text;
+
+  for (let i = 0; i < drawText.length; i++) {
+    const ch = drawText[i];
     const x = cx + Math.cos(angle) * radius;
     const y = cy - Math.sin(angle) * radius;
-
-    // Upper half (0°–180°): flip rotation so text reads L→R from outside
-    const isUpperHalf = Math.sin(angle) > 0;
 
     ctx.save();
     ctx.translate(x, y);
