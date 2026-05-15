@@ -1514,25 +1514,20 @@ function drawZodiacRing(
   const height = ctx.canvas.height / dpr;
   const center = { x: width / 2, y: height / 2 };
   const viewportRadius = Math.min(width, height) / 2;
-  const edgePadding = 4;
-  const ringRadius = Math.max(18, viewportRadius - edgePadding);
-  const tickInner = ringRadius * 0.96;
-  const tickOuter = ringRadius * 1.03;
 
-  // Proportional zodiac label layout — scales with viewport
-  const symbolGap = ringRadius * 0.04;   // 4% inward from ring edge
-  const nameGap   = ringRadius * 0.08;   // 8% inward — stays outside outer planets
-  const symbolPx  = clamp(ringRadius * 0.065, 10, 18);
-  const namePx    = clamp(ringRadius * 0.045, 8, 13);
-  const labelRadiusPx = ringRadius - symbolGap;
-  const nameRadiusPx  = ringRadius - nameGap;
+  // Ring is the boundary: just inside viewport edge, leaving room outside for names
+  const ringRadius = viewportRadius - 3;
+  const symbolRadius = ringRadius * 0.86;  // well inside, clear of all planets
+  const nameRadius = ringRadius + 6;       // just outside ring (minor clip for long names)
+
+  const symbolPx = clamp(ringRadius * 0.072, 11, 20);
+  const namePx   = clamp(ringRadius * 0.046, 8, 14);
 
   ctx.save();
-  ctx.textAlign = "center";
 
-  // Draw ring outline with first hue (Aries/Red)
-  ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.28);
-  ctx.lineWidth = clamp(scale * 0.35, 0.6, 1.4);
+  // Draw thin bright ring outline with first hue
+  ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.35);
+  ctx.lineWidth = clamp(scale * 0.4, 0.8, 1.6);
   ctx.beginPath();
   ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
   ctx.stroke();
@@ -1542,51 +1537,54 @@ function drawZodiacRing(
     const isCarbon = i === 9;
     const angle = (i / 12) * Math.PI * 2;
 
-    // Tick marks with Ray hue
-    ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.35)" : hexToRgba(hue, 0.52);
-    ctx.lineWidth = clamp(scale * 0.4, 0.8, 1.8);
-    const tickLen = ringRadius * 0.04;
-    const lineInner = {
-      x: center.x + Math.cos(angle) * (tickInner - tickLen),
-      y: center.y - Math.sin(angle) * (tickInner - tickLen),
+    // Tick marks: short lines crossing the ring boundary
+    ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.4)" : hexToRgba(hue, 0.55);
+    ctx.lineWidth = clamp(scale * 0.35, 0.7, 1.6);
+    const tickLen = ringRadius * 0.035;
+    const tInner = {
+      x: center.x + Math.cos(angle) * (ringRadius - tickLen),
+      y: center.y - Math.sin(angle) * (ringRadius - tickLen),
     };
-    const lineOuter = {
-      x: center.x + Math.cos(angle) * (tickOuter + tickLen * 0.5),
-      y: center.y - Math.sin(angle) * (tickOuter + tickLen * 0.5),
+    const tOuter = {
+      x: center.x + Math.cos(angle) * (ringRadius + tickLen),
+      y: center.y - Math.sin(angle) * (ringRadius + tickLen),
     };
     ctx.beginPath();
-    ctx.moveTo(lineInner.x, lineInner.y);
-    ctx.lineTo(lineOuter.x, lineOuter.y);
+    ctx.moveTo(tInner.x, tInner.y);
+    ctx.lineTo(tOuter.x, tOuter.y);
     ctx.stroke();
 
     const sign = ZODIAC_SIGNS[i];
     const midAngle = angle + Math.PI / 12;
-    const labelPoint = {
-      x: center.x + Math.cos(midAngle) * labelRadiusPx,
-      y: center.y - Math.sin(midAngle) * labelRadiusPx,
-    };
-    const namePoint = {
-      x: center.x + Math.cos(midAngle) * nameRadiusPx,
-      y: center.y - Math.sin(midAngle) * nameRadiusPx,
-    };
 
-    // Symbol with Ray hue
+    // ── SYMBOL: inside the ring ──
+    const symPoint = {
+      x: center.x + Math.cos(midAngle) * symbolRadius,
+      y: center.y - Math.sin(midAngle) * symbolRadius,
+    };
     ctx.font = `${symbolPx}px 'JetBrains Mono', ui-monospace, monospace`;
     ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
     if (isCarbon) {
       ctx.shadowColor = "rgba(255,255,255,0.9)";
       ctx.shadowBlur = 6;
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
       ctx.lineWidth = 0.8;
-      ctx.strokeText(sign.symbol, labelPoint.x, labelPoint.y);
+      ctx.strokeText(sign.symbol, symPoint.x, symPoint.y);
     }
     ctx.fillStyle = hue;
-    ctx.fillText(sign.symbol, labelPoint.x, labelPoint.y);
+    ctx.fillText(sign.symbol, symPoint.x, symPoint.y);
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
 
-    // Name with Ray hue
+    // ── NAME: outside the ring ──
+    const namePoint = {
+      x: center.x + Math.cos(midAngle) * nameRadius,
+      y: center.y - Math.sin(midAngle) * nameRadius,
+    };
     ctx.font = `${namePx}px 'JetBrains Mono', ui-monospace, monospace`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
     if (isCarbon) {
       ctx.shadowColor = "rgba(255,255,255,0.9)";
       ctx.shadowBlur = 5;
@@ -1600,27 +1598,28 @@ function drawZodiacRing(
     ctx.shadowBlur = 0;
   }
 
-  // Degree ticks every 10° (use faint blue — independent of Ray hues)
+  // Degree ticks every 10° (faint, independent of Ray hues)
   for (let deg = 0; deg < 360; deg += 10) {
     const rad = deg * DEG2RAD;
     const isMajor = deg % 30 === 0;
-    const innerR = isMajor ? ringRadius * 0.95 : ringRadius * 0.97;
-    const outerR = ringRadius * 1.04;
-    const innerPoint = {
+    const innerR = isMajor ? ringRadius * 0.96 : ringRadius * 0.98;
+    const outerR = ringRadius * 1.03;
+    const innerP = {
       x: center.x + Math.cos(rad) * innerR,
       y: center.y - Math.sin(rad) * innerR,
     };
-    const outerPoint = {
+    const outerP = {
       x: center.x + Math.cos(rad) * outerR,
       y: center.y - Math.sin(rad) * outerR,
     };
     ctx.beginPath();
     ctx.strokeStyle = isMajor ? "rgba(56,189,248,0.35)" : "rgba(56,189,248,0.18)";
-    ctx.lineWidth = isMajor ? clamp(scale * 0.35, 0.5, 1.4) : clamp(scale * 0.25, 0.4, 1.0);
-    ctx.moveTo(innerPoint.x, innerPoint.y);
-    ctx.lineTo(outerPoint.x, outerPoint.y);
+    ctx.lineWidth = isMajor ? clamp(scale * 0.3, 0.5, 1.2) : clamp(scale * 0.2, 0.35, 0.9);
+    ctx.moveTo(innerP.x, innerP.y);
+    ctx.lineTo(outerP.x, outerP.y);
     ctx.stroke();
   }
+
   ctx.restore();
 }
 
