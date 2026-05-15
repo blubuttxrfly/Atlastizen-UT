@@ -1619,7 +1619,8 @@ function drawArcText(
     ctx.save();
     ctx.translate(x, y);
     // Rotate so text baseline is tangent to circle, bottom toward center
-    ctx.rotate(-angle + Math.PI / 2);
+    // Standard formula for outside-of-circle curved text
+    ctx.rotate(-angle - Math.PI / 2);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
