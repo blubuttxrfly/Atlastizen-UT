@@ -1823,12 +1823,20 @@ function drawBodies(
   themeFont?: string,
   themeTextColor?: string
 ) {
+  const dpr = window.devicePixelRatio ?? 1;
+  const canvasWidth = ctx.canvas.width / dpr;
+  const cx = canvasWidth / 2;
+
   ctx.textBaseline = "middle";
   ctx.font = BODY_FONT;
 
   const earthPlacement = placements.find((placement) => placement.body === "Earth");
 
-  // Draw all non-Moon bodies.
+  // Inner planets always get centered-below labels (near Sun, keep clean)
+  const INNER_BODIES = new Set<BodyName>(["Sun", "Mercury", "Venus", "Earth", "Mars", "Moon"]);
+  // Outer planets get smart edge-aware labels
+  const OUTER_BODIES = new Set<BodyName>(["Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]);
+
   placements.forEach((placement) => {
     const { body } = placement;
     if (overlays.viewMode === "heliocentric" && body === "Sun") return; // drawn separately
@@ -1845,14 +1853,37 @@ function drawBodies(
       drawPlanetGlyph(ctx, center, bodyRadius, planetDef);
     }
 
-    // Label: theme font + color, centered below planet
+    // ── Smart label placement ──
     const labelGap = Math.max(3, 4 * scale);
     ctx.fillStyle = themeTextColor ?? "#e2e8f0";
     ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
-    ctx.textBaseline = "top";
-    ctx.textAlign = "center";
-    ctx.fillText(body, center.x, center.y + bodyRadius + labelGap);
-    ctx.textBaseline = "middle"; // reset
+
+    if (INNER_BODIES.has(body)) {
+      // Inner: always centered below
+      ctx.textBaseline = "top";
+      ctx.textAlign = "center";
+      ctx.fillText(body, center.x, center.y + bodyRadius + labelGap);
+      ctx.textBaseline = "middle";
+    } else if (OUTER_BODIES.has(body)) {
+      // Outer: edge-aware horizontal placement
+      const isNearRightEdge = center.x > cx + canvasWidth * 0.18;
+      const isNearLeftEdge  = center.x < cx - canvasWidth * 0.18;
+
+      if (isNearRightEdge) {
+        ctx.textAlign = "right";
+        ctx.fillText(body, center.x - bodyRadius - labelGap, center.y);
+      } else if (isNearLeftEdge) {
+        ctx.textAlign = "left";
+        ctx.fillText(body, center.x + bodyRadius + labelGap, center.y);
+      } else {
+        // Center zone: below planet
+        ctx.textBaseline = "top";
+        ctx.textAlign = "center";
+        ctx.fillText(body, center.x, center.y + bodyRadius + labelGap);
+        ctx.textBaseline = "middle";
+      }
+    }
+    ctx.textAlign = "left"; // reset
   });
 
   // Moon rendering: fixed pixel orbit around Earth.
@@ -1867,7 +1898,7 @@ function drawBodies(
   const moonRadius = BODY_PX["Moon"] * scale;
   drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
 
-  // Moon label with theme
+  // Moon is an inner body: centered below
   const moonLabelGap = Math.max(3, 4 * scale);
   ctx.fillStyle = themeTextColor ?? "#e2e8f0";
   ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
