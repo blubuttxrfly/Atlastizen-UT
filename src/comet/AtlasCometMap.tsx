@@ -676,14 +676,13 @@ function HeartlightSystemMap() {
       }
       sizeRef.current = { width: cssWidth, height: cssHeight };
 
-      // Compute responsive scale: fit the full solar system into the viewport.
-      // Minimal padding — planets should sit near the circular edge.
+      // Compute responsive scale: fit the full solar system into ~78% of viewport.
+      // Leaves a zodiac band (names + ring) in the outer 22%.
       const minDim = Math.min(cssWidth, cssHeight);
-      const padding = 2;
-      const targetDiameter = minDim - padding * 2;
-      const designDiameter = RING_PX["Pluto"] * 2 + 12; // 258*2 + small label buffer
-      const viewportScale = targetDiameter / designDiameter;
-      viewportScaleRef.current = Math.max(0.45, Math.min(1, viewportScale));
+      const solarDiameter = minDim * 0.78;  // planets fill 78% of canvas
+      const designDiameter = RING_PX["Pluto"] * 2 + 12;
+      const viewportScale = solarDiameter / designDiameter;
+      viewportScaleRef.current = Math.max(0.40, Math.min(1, viewportScale));
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1507,27 +1506,25 @@ function drawZodiacRing(
   _worldToScreen: (point: Vec2) => Vec2,
   scale: number
 ) {
-  // Draw a static ring that hugs the outer edge of the viewport circle,
-  // independent of panning/zooming mechanics.
   const dpr = window.devicePixelRatio ?? 1;
   const width = ctx.canvas.width / dpr;
   const height = ctx.canvas.height / dpr;
   const center = { x: width / 2, y: height / 2 };
   const viewportRadius = Math.min(width, height) / 2;
 
-  // Ring is the boundary: just inside viewport edge, leaving room outside for names
-  const ringRadius = viewportRadius - 3;
-  const symbolRadius = ringRadius * 0.86;  // well inside, clear of all planets
-  const nameRadius = ringRadius + 6;       // just outside ring (minor clip for long names)
+  // Ring sits in the outer zodiac band (between solar system edge and viewport edge)
+  const ringRadius = viewportRadius * 0.88;
+  const symbolRadius = ringRadius * 0.94;  // just inside ring, outside all planets
+  const nameRadius = ringRadius + 5;      // just outside ring
 
-  const symbolPx = clamp(ringRadius * 0.072, 11, 20);
-  const namePx   = clamp(ringRadius * 0.046, 8, 14);
+  const symbolPx = clamp(ringRadius * 0.065, 10, 18);
+  const namePx   = clamp(ringRadius * 0.042, 7, 13);
 
   ctx.save();
 
-  // Draw thin bright ring outline with first hue
-  ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.35);
-  ctx.lineWidth = clamp(scale * 0.4, 0.8, 1.6);
+  // Thin ring outline with first hue (Aries/Red)
+  ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.30);
+  ctx.lineWidth = clamp(scale * 0.35, 0.7, 1.4);
   ctx.beginPath();
   ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
   ctx.stroke();
@@ -1537,10 +1534,10 @@ function drawZodiacRing(
     const isCarbon = i === 9;
     const angle = (i / 12) * Math.PI * 2;
 
-    // Tick marks: short lines crossing the ring boundary
-    ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.4)" : hexToRgba(hue, 0.55);
-    ctx.lineWidth = clamp(scale * 0.35, 0.7, 1.6);
-    const tickLen = ringRadius * 0.035;
+    // Tick marks crossing the ring boundary
+    ctx.strokeStyle = isCarbon ? "rgba(255,255,255,0.35)" : hexToRgba(hue, 0.50);
+    ctx.lineWidth = clamp(scale * 0.3, 0.6, 1.4);
+    const tickLen = ringRadius * 0.03;
     const tInner = {
       x: center.x + Math.cos(angle) * (ringRadius - tickLen),
       y: center.y - Math.sin(angle) * (ringRadius - tickLen),
@@ -1557,70 +1554,89 @@ function drawZodiacRing(
     const sign = ZODIAC_SIGNS[i];
     const midAngle = angle + Math.PI / 12;
 
-    // ── SYMBOL: inside the ring ──
-    const symPoint = {
-      x: center.x + Math.cos(midAngle) * symbolRadius,
-      y: center.y - Math.sin(midAngle) * symbolRadius,
-    };
+    // ── SYMBOL: inside the ring, centered horizontally ──
+    const symX = center.x + Math.cos(midAngle) * symbolRadius;
+    const symY = center.y - Math.sin(midAngle) * symbolRadius;
     ctx.font = `${symbolPx}px 'JetBrains Mono', ui-monospace, monospace`;
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    if (isCarbon) {
-      ctx.shadowColor = "rgba(255,255,255,0.9)";
-      ctx.shadowBlur = 6;
-      ctx.strokeStyle = "rgba(255,255,255,0.7)";
-      ctx.lineWidth = 0.8;
-      ctx.strokeText(sign.symbol, symPoint.x, symPoint.y);
-    }
-    ctx.fillStyle = hue;
-    ctx.fillText(sign.symbol, symPoint.x, symPoint.y);
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
-
-    // ── NAME: outside the ring ──
-    const namePoint = {
-      x: center.x + Math.cos(midAngle) * nameRadius,
-      y: center.y - Math.sin(midAngle) * nameRadius,
-    };
-    ctx.font = `${namePx}px 'JetBrains Mono', ui-monospace, monospace`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     if (isCarbon) {
       ctx.shadowColor = "rgba(255,255,255,0.9)";
       ctx.shadowBlur = 5;
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
-      ctx.lineWidth = 0.6;
-      ctx.strokeText(sign.name.toUpperCase(), namePoint.x, namePoint.y);
+      ctx.lineWidth = 0.7;
+      ctx.strokeText(sign.symbol, symX, symY);
     }
     ctx.fillStyle = hue;
-    ctx.fillText(sign.name.toUpperCase(), namePoint.x, namePoint.y);
+    ctx.fillText(sign.symbol, symX, symY);
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
+
+    // ── NAME: curved text following the outer arc ──
+    ctx.fillStyle = hue;
+    ctx.font = `${namePx}px 'JetBrains Mono', ui-monospace, monospace`;
+    drawArcText(ctx, sign.name.toUpperCase(), center.x, center.y, nameRadius, midAngle, isCarbon);
   }
 
-  // Degree ticks every 10° (faint, independent of Ray hues)
+  // Degree ticks every 10°
   for (let deg = 0; deg < 360; deg += 10) {
     const rad = deg * DEG2RAD;
     const isMajor = deg % 30 === 0;
     const innerR = isMajor ? ringRadius * 0.96 : ringRadius * 0.98;
     const outerR = ringRadius * 1.03;
-    const innerP = {
-      x: center.x + Math.cos(rad) * innerR,
-      y: center.y - Math.sin(rad) * innerR,
-    };
-    const outerP = {
-      x: center.x + Math.cos(rad) * outerR,
-      y: center.y - Math.sin(rad) * outerR,
-    };
     ctx.beginPath();
-    ctx.strokeStyle = isMajor ? "rgba(56,189,248,0.35)" : "rgba(56,189,248,0.18)";
-    ctx.lineWidth = isMajor ? clamp(scale * 0.3, 0.5, 1.2) : clamp(scale * 0.2, 0.35, 0.9);
-    ctx.moveTo(innerP.x, innerP.y);
-    ctx.lineTo(outerP.x, outerP.y);
+    ctx.strokeStyle = isMajor ? "rgba(56,189,248,0.30)" : "rgba(56,189,248,0.15)";
+    ctx.lineWidth = isMajor ? clamp(scale * 0.25, 0.4, 1.0) : clamp(scale * 0.18, 0.3, 0.8);
+    ctx.moveTo(center.x + Math.cos(rad) * innerR, center.y - Math.sin(rad) * innerR);
+    ctx.lineTo(center.x + Math.cos(rad) * outerR, center.y - Math.sin(rad) * outerR);
     ctx.stroke();
   }
 
   ctx.restore();
+}
+
+/** Draw text curved along a circular arc (each char tangent to the circle).
+ *  For outside-of-circle placement with bottom of letters toward center. */
+function drawArcText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  cy: number,
+  radius: number,
+  midAngle: number,
+  isCarbon: boolean
+) {
+  const metrics = ctx.measureText("M");
+  const charW = metrics.width * 0.9; // approximate avg char width
+  const totalArc = (text.length * charW) / radius;
+  let angle = midAngle - totalArc / 2;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy - Math.sin(angle) * radius;
+
+    ctx.save();
+    ctx.translate(x, y);
+    // Rotate so text baseline is tangent to circle, bottom toward center
+    ctx.rotate(-angle + Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    if (isCarbon) {
+      ctx.shadowColor = "rgba(255,255,255,0.8)";
+      ctx.shadowBlur = 4;
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 0.5;
+      ctx.strokeText(ch, 0, 0);
+    }
+    ctx.fillText(ch, 0, 0);
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+    angle += charW / radius;
+  }
 }
 
 function drawRayZones(
