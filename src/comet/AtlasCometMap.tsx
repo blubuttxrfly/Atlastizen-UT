@@ -63,20 +63,50 @@ const MOON: Planet = {
 
 const ORBIT_SAMPLES = 512;
 const INITIAL_DATE = new Date();
-const AU_PER_PX_AT_1X = 1 / 260; // 260 px per AU at scale = 1
-const SCALE_EXP = 0.45;
-const ICON_BASE = 6;
-const ICON_MIN = 3;
-const ICON_MAX = 36;
-const FONT_BASE = 11;
-const FONT_MIN = 7;
-const FONT_MAX = 20;
-const SCALE_MIN = 0.03;
-const SCALE_MAX = 18;
-const CANVAS_SIZE = 560;
-const SPREAD_FACTOR = 1.8;
-const GEO_SCALE_FACTOR = 0.34;
 const DEG2RAD = Math.PI / 180;
+
+/* ── Fixed Visual Solar System (Apple Watch style) ───────────────────────── */
+// Canvas is fixed at 560×560 CSS px. All distances are in pixels from center.
+// The outer edge of the zodiac ring sits ~260 px from center.
+// We fit Mercury→Pluto between the Sun edge and ~245 px (just inside zodiac).
+// Responsive constants
+const MOON_ORBIT_PX = 18; // Moon circles Earth at fixed px radius
+const RING_PX: Record<BodyName, number> = {
+  Sun: 0,
+  Mercury: 45,
+  Venus: 68,
+  Earth: 92,
+  Mars: 116,
+  Jupiter: 152,
+  Saturn: 184,
+  Uranus: 214,
+  Neptune: 238,
+  Pluto: 258,
+  Moon: 0,
+};
+
+// Fixed body radii in px. No dynamic scaling — they stay visible.
+const BODY_PX: Record<BodyName, number> = {
+  Sun: 34,
+  Mercury: 3.5,
+  Venus: 6,
+  Earth: 6.2,
+  Mars: 4.8,
+  Jupiter: 14,
+  Saturn: 12,
+  Uranus: 8.5,
+  Neptune: 8.2,
+  Pluto: 3.2,
+  Moon: 2.8,
+};
+const BODY_LABEL_OFFSET = 10;
+const MOON_LABEL_OFFSET = 10;
+
+// Default font for canvas labels
+const BODY_FONT = "11px 'JetBrains Mono', ui-monospace, monospace";
+
+// Geocentric: all bodies sit on a fixed zodiac ring (same radius for all).
+const GEO_RING_PX = 210;
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
   { name: "Taurus", symbol: "♉︎" },
@@ -146,7 +176,6 @@ function hexToRgba(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-const HSM_VERSION = "V0.0.1";
 
 const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
   {
@@ -195,6 +224,11 @@ const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
     detail: "Deepens intuition, imagination, compassion, spiritual sensitivity, poetic vision.",
   },
   {
+    body: "Moon",
+    title: "Soul Mirror • Emotional Tide • Cyclic Wisdom",
+    detail: "Reflects inner landscape, receptivity, instinctual rhythm, memory, and the felt current beneath thought.",
+  },
+  {
     body: "Pluto",
     title: "Underworld Alchemy • Death/Rebirth • Soul Power",
     detail: "Transmutates identity, exposes truth, empowers renewal, clears distorted control.",
@@ -204,15 +238,9 @@ const ZODIAC_RING_RADIUS_AU = 44;
 const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
 // Presentation order for the alignment list: highlight Sun/Moon/Earth first.
 const BODY_ORDER: BodyName[] = ["Sun", "Earth", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
-const GEO_BASE_RADIUS_AU = ZODIAC_RING_RADIUS_AU * 0.97;
 const DEFAULT_SCALE: Record<ViewMode, number> = {
-  heliocentric: 0.25,
-  geocentric: 1.85,
-};
-
-const FULL_SYSTEM_SCALE: Record<ViewMode, number> = {
-  heliocentric: SCALE_MIN,
-  geocentric: 0.9,
+  heliocentric: 0.03,
+  geocentric: 0.03,
 };
 
 type Placement = {
@@ -265,20 +293,6 @@ const BODY_COLORS: Record<BodyName, string> = {
   Pluto: "#cdb4ff",
 };
 
-// Mean radius ratios vs Earth for relative sizing (not applied to Sun/Moon).
-const PLANET_SIZE_FACTOR: Record<BodyName, number> = {
-  Sun: 1,
-  Moon: 1,
-  Mercury: 0.38,
-  Venus: 0.95,
-  Earth: 1,
-  Mars: 0.53,
-  Jupiter: 11.21,
-  Saturn: 9.45,
-  Uranus: 4.01,
-  Neptune: 3.88,
-  Pluto: 0.19,
-};
 
 function planetIconStyle(body: BodyName): CSSProperties {
   if (body === "Sun") {
@@ -424,10 +438,11 @@ function heliocentricPlacement(body: BodyName, when: Date): Placement {
   }
   const vector = Astronomy.HelioVector(body as Astronomy.Body, time);
   const { lon, lat, dist } = toEcliptic(vector);
+  const ringPx = RING_PX[body] ?? 0;
   const rad = lon * DEG2RAD;
   const world: Vec2 = {
-    x: dist * Math.cos(rad),
-    y: dist * Math.sin(rad),
+    x: ringPx * Math.cos(rad),
+    y: ringPx * Math.sin(rad),
   };
   return { body, lon, lat, dist, vector, world, mode: "heliocentric" };
 }
@@ -435,11 +450,10 @@ function heliocentricPlacement(body: BodyName, when: Date): Placement {
 function geocentricWorld(lon: number, lat: number): Vec2 {
   const rad = lon * DEG2RAD;
   const latFactor = clamp(lat / 40, -1.5, 1.5);
-  const radius = GEO_BASE_RADIUS_AU * (1 + latFactor * 0.12);
-  const scaledRadius = radius * GEO_SCALE_FACTOR;
+  const radius = GEO_RING_PX * (1 + latFactor * 0.12);
   return {
-    x: scaledRadius * Math.cos(rad),
-    y: scaledRadius * Math.sin(rad),
+    x: radius * Math.cos(rad),
+    y: radius * Math.sin(rad),
   };
 }
 
@@ -473,18 +487,12 @@ function getPlacements(viewMode: ViewMode, when: Date): Placement[] {
 
 function sampleOrbit(planet: Planet): Vec2[] {
   const orbit: Vec2[] = [];
+  const R = RING_PX[planet.name as BodyName] ?? 0;
   for (let i = 0; i <= ORBIT_SAMPLES; i += 1) {
     const angle = (i / ORBIT_SAMPLES) * Math.PI * 2;
-    const M = angle;
-    let E = M;
-    for (let it = 0; it < 5; it += 1) {
-      E = E - (E - planet.e * Math.sin(E) - M) / (1 - planet.e * Math.cos(E));
-    }
-    const cosE = Math.cos(E);
-    const sinE = Math.sin(E);
     orbit.push({
-      x: planet.a * (cosE - planet.e),
-      y: planet.a * Math.sqrt(1 - planet.e * planet.e) * sinE,
+      x: R * Math.cos(angle),
+      y: R * Math.sin(angle),
     });
   }
   return orbit;
@@ -523,22 +531,18 @@ function HeartlightSystemMap() {
   const timeRef = useRef(INITIAL_DATE.getTime());
   const runningRef = useRef(false);
   const timeScaleRef = useRef(4);
-  const sizeRef = useRef<{ width: number; height: number }>({ width: CANVAS_SIZE, height: CANVAS_SIZE });
-  const draggingRef = useRef(false);
-  const lastPointerRef = useRef<Vec2>({ x: 0, y: 0 });
+  const sizeRef = useRef<{ width: number; height: number }>({ width: 560, height: 560 });
+  const viewportScaleRef = useRef(1);
 
   const [when, setWhen] = useState(INITIAL_DATE);
   const [running, setRunning] = useState(false);
   const [timeScale] = useState(4);
   const [viewMode, setViewMode] = useState<ViewMode>("heliocentric");
-  const [gyroEnabled, setGyroEnabled] = useState(false);
-  const [gyroHeading, setGyroHeading] = useState(0);
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [showMoon, setShowMoon] = useState(true);
   const [scaleLabels, setScaleLabels] = useState(true);
   const [showRayZones, setShowRayZones] = useState(true);
-  const [distanceMode, setDistanceMode] = useState<"scaled" | "accurate">("scaled");
   const [infoOpen, setInfoOpen] = useState(false);
   const [rayOpen, setRayOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
@@ -634,53 +638,14 @@ function HeartlightSystemMap() {
   }, [timeScale]);
 
   const worldToScreen = (point: Vec2): Vec2 => {
-    const pxPerAU = scaleRef.current / AU_PER_PX_AT_1X;
-    const { width, height } = sizeRef.current;
-    const adjusted =
-      distanceMode === "scaled"
-        ? { x: point.x * SPREAD_FACTOR, y: point.y * SPREAD_FACTOR }
-        : point;
+    const s = viewportScaleRef.current;
+    const cx = sizeRef.current.width / 2;
+    const cy = sizeRef.current.height / 2;
     return {
-      x: (adjusted.x - cameraRef.current.x) * pxPerAU + width / 2,
-      y: height / 2 - (adjusted.y - cameraRef.current.y) * pxPerAU,
+      x: point.x * s + cx,
+      y: cy - point.y * s,
     };
   };
-
-  const screenToWorld = (point: Vec2): Vec2 => {
-    const pxPerAU = scaleRef.current / AU_PER_PX_AT_1X;
-    const { width, height } = sizeRef.current;
-    return {
-      x: (point.x - width / 2) / pxPerAU + cameraRef.current.x,
-      y: (height / 2 - point.y) / pxPerAU + cameraRef.current.y,
-    };
-  };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!gyroEnabled || viewMode !== "geocentric") return;
-
-    const handler = (event: DeviceOrientationEvent) => {
-      if (typeof event.alpha === "number") {
-        setGyroHeading(event.alpha);
-      }
-    };
-
-    const enable = async () => {
-      const perm = (DeviceOrientationEvent as any)?.requestPermission;
-      if (typeof perm === "function") {
-        try {
-          const res = await perm();
-          if (res !== "granted") return;
-        } catch {
-          return;
-        }
-      }
-      window.addEventListener("deviceorientation", handler, true);
-    };
-
-    enable();
-    return () => window.removeEventListener("deviceorientation", handler, true);
-  }, [gyroEnabled, viewMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -706,13 +671,24 @@ function HeartlightSystemMap() {
       }
 
       const dpr = window.devicePixelRatio ?? 1;
-      const width = canvas.clientWidth * dpr;
-      const height = canvas.clientHeight * dpr;
+      const cssWidth = canvas.clientWidth;
+      const cssHeight = canvas.clientHeight;
+      const width = cssWidth * dpr;
+      const height = cssHeight * dpr;
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
-      sizeRef.current = { width: width / dpr, height: height / dpr };
+      sizeRef.current = { width: cssWidth, height: cssHeight };
+
+      // Compute responsive scale: fit the full solar system into the viewport.
+      // Padding ensures Pluto + labels don't touch the edge.
+      const minDim = Math.min(cssWidth, cssHeight);
+      const padding = 20;
+      const targetDiameter = minDim - padding * 2;
+      const designDiameter = RING_PX["Pluto"] * 2 + 35; // 258*2 + label space
+      const viewportScale = targetDiameter / designDiameter;
+      viewportScaleRef.current = Math.max(0.45, Math.min(1, viewportScale));
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -723,7 +699,7 @@ function HeartlightSystemMap() {
         orbitCache,
         new Date(timeRef.current),
         worldToScreen,
-        scaleRef.current,
+        viewportScaleRef.current,
         { showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode }
       );
 
@@ -732,49 +708,28 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode, distanceMode]);
+  }, [orbitCache, showZodiac, showEclipticGrid, showMoon, scaleLabels, showRayZones, viewMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Fixed viewport: no zoom/pan needed. The solar system auto-fits.
+    // We still listen for pointer events to allow click detection if desired,
+    // but disable scroll/drag behavior.
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const before = scaleRef.current;
-      const factor = Math.exp(-event.deltaY * 0.0015);
-      const after = clamp(before * factor, SCALE_MIN, SCALE_MAX);
-      if (after === before) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      const worldBefore = screenToWorld(cursor);
-      scaleRef.current = after;
-      const worldAfter = screenToWorld(cursor);
-      cameraRef.current.x += worldBefore.x - worldAfter.x;
-      cameraRef.current.y += worldBefore.y - worldAfter.y;
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      draggingRef.current = true;
-      const rect = canvas.getBoundingClientRect();
-      lastPointerRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       canvas.setPointerCapture(event.pointerId);
     };
 
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!draggingRef.current) return;
-      const rect = canvas.getBoundingClientRect();
-      const now = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      const dx = now.x - lastPointerRef.current.x;
-      const dy = now.y - lastPointerRef.current.y;
-      lastPointerRef.current = now;
-      const pxPerAU = scaleRef.current / AU_PER_PX_AT_1X;
-      cameraRef.current.x -= dx / pxPerAU;
-      cameraRef.current.y += dy / pxPerAU;
+    const handlePointerMove = (_event: PointerEvent) => {
+      // no-op: fixed viewport
     };
 
     const handlePointerUp = (event: PointerEvent) => {
-      draggingRef.current = false;
       try {
         canvas.releasePointerCapture(event.pointerId);
       } catch {
@@ -827,20 +782,6 @@ function HeartlightSystemMap() {
   const resetView = () => {
     cameraRef.current = { x: 0, y: 0 };
     scaleRef.current = DEFAULT_SCALE[viewMode];
-  };
-
-  const zoomWholeSystem = () => {
-    cameraRef.current = { x: 0, y: 0 };
-    scaleRef.current = clamp(FULL_SYSTEM_SCALE[viewMode], SCALE_MIN, SCALE_MAX);
-  };
-
-  const nudgeZoom = (direction: "in" | "out") => {
-    const factor = direction === "in" ? 1.35 : 1 / 1.35;
-    const before = scaleRef.current;
-    const after = clamp(before * factor, SCALE_MIN, SCALE_MAX);
-    if (after !== before) {
-      scaleRef.current = after;
-    }
   };
 
   useEffect(() => {
@@ -1245,8 +1186,33 @@ function HeartlightSystemMap() {
         <p className="text-sm text-slate-300">Pan, zoom, and sweep through time to watch each planet trace its Keplerian ellipse.</p>
       </div>
 
-      {/* 3) Time controls */}
+      {/* 3) Map controls: time + date + perspective */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-sky-500/40 bg-sky-500/10 p-4 text-sky-100">
+        {/* 🗓 Date picker */}
+        <div className="group relative inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-500/50 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-sky-100 shadow-sm transition hover:bg-sky-500/20 hover:border-sky-400/60">
+          <span className="pointer-events-none select-none">🗓</span>
+          <span className="pointer-events-none select-none tabular-nums">{formattedDate}</span>
+          <input
+            type="date"
+            value={formattedDate}
+            onChange={handleDateChange}
+            className="absolute inset-0 w-full cursor-pointer opacity-0"
+            aria-label="Select date for the Heartlight System Map"
+          />
+        </div>
+        <button
+          type="button"
+          className="rounded-md border border-sky-500/50 px-2 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
+          onClick={() => {
+            const now = new Date();
+            timeRef.current = now.getTime();
+            setWhen(now);
+          }}
+        >
+          Current Date
+        </button>
+
+        {/* Play / Pause */}
         <button
           type="button"
           className="rounded-full bg-sky-500 px-3 py-2 text-sm font-semibold text-sky-950 transition hover:bg-sky-400"
@@ -1264,6 +1230,8 @@ function HeartlightSystemMap() {
             </svg>
           )}
         </button>
+
+        {/* Time step buttons */}
         <button
           type="button"
           className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
@@ -1292,106 +1260,29 @@ function HeartlightSystemMap() {
         >
           +30 days
         </button>
-      </div>
 
-      {/* 4) Date + view controls */}
-      <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-sky-200/80">
-        <label className="flex items-center gap-2">
-          Date
-          <div className="group relative inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-500/50 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-sky-100 shadow-sm transition hover:bg-sky-500/20 hover:border-sky-400/60">
-            <span className="pointer-events-none select-none">🗓</span>
-            <span className="pointer-events-none select-none tabular-nums">{formattedDate}</span>
-            <input
-              type="date"
-              value={formattedDate}
-              onChange={handleDateChange}
-              className="absolute inset-0 w-full cursor-pointer opacity-0"
-              aria-label="Select date for the Heartlight System Map"
-            />
-          </div>
+        {/* Perspective toggle */}
+        <div className="inline-flex overflow-hidden rounded-xl border border-sky-500/60">
           <button
             type="button"
-            className="rounded-md border border-sky-500/50 px-2 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-            onClick={() => {
-              const now = new Date();
-              timeRef.current = now.getTime();
-              setWhen(now);
-            }}
+            className={`${heliocentricButtonClass}`}
+            aria-pressed={viewMode === "heliocentric"}
+            onClick={() => setViewMode("heliocentric")}
           >
-            Current Date
+            Solar
           </button>
-        </label>
-        <div className="flex items-center gap-2">
-          <span>Perspective</span>
-          <div className="inline-flex overflow-hidden rounded-xl border border-sky-500/60">
-            <button
-              type="button"
-              className={`${heliocentricButtonClass}`}
-              aria-pressed={viewMode === "heliocentric"}
-              onClick={() => setViewMode("heliocentric")}
-            >
-              Solar
-            </button>
-            <button
-              type="button"
-              className={`${gaianButtonClass}`}
-              aria-pressed={viewMode === "geocentric"}
-              onClick={() => setViewMode("geocentric")}
-            >
-              Gaian
-            </button>
-          </div>
+          <button
+            type="button"
+            className={`${gaianButtonClass}`}
+            aria-pressed={viewMode === "geocentric"}
+            onClick={() => setViewMode("geocentric")}
+          >
+            Gaian
+          </button>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-          onClick={resetView}
-        >
-          Reset View
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-          onClick={() => nudgeZoom("in")}
-          aria-label="Zoom in"
-        >
-          Zoom In
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-          onClick={() => nudgeZoom("out")}
-          aria-label="Zoom out"
-        >
-          Zoom Out
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-          onClick={zoomWholeSystem}
-        >
-          Full System
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20"
-          onClick={() => setDistanceMode((m) => (m === "scaled" ? "accurate" : "scaled"))}
-          aria-pressed={distanceMode === "accurate"}
-        >
-          {distanceMode === "accurate" ? "Accurate distances" : "Scaled spacing"}
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-500/60 px-3 py-1 text-xs uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/20 disabled:opacity-50"
-          disabled={viewMode !== "geocentric"}
-          onClick={() => setGyroEnabled((v) => !v)}
-          aria-pressed={gyroEnabled}
-        >
-          Gyro (Gaian)
-        </button>
       </div>
 
-      {/* 5) Overlays toggles */}
+      {/* 4) Overlays toggles */}
       <div className="flex w-full flex-wrap items-center gap-3 border-t border-sky-500/20 pt-3 text-[0.65rem] uppercase tracking-wide text-sky-200/80">
         <label className="flex items-center gap-2">
           <input
@@ -1445,15 +1336,11 @@ function HeartlightSystemMap() {
         <div className="relative aspect-square w-full max-w-[560px] overflow-hidden rounded-full border border-sky-500/50 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 shadow-inner">
           <canvas
             ref={canvasRef}
-            width={CANVAS_SIZE}
-            height={CANVAS_SIZE}
+            width={560}
+            height={560}
             className="absolute inset-0 h-full w-full rounded-full"
-            style={gyroEnabled && viewMode === "geocentric" ? { transform: `rotate(${gyroHeading.toFixed(1)}deg)` } : undefined}
+
           />
-        </div>
-        {/* HSM version */}
-        <div className="mt-1 text-center text-[10px] text-slate-400">
-          {HSM_VERSION} • Heartlight System Map
         </div>
       </div>
 
@@ -1607,8 +1494,8 @@ function drawScene(
         if (idx === 0) ctx.moveTo(screen.x, screen.y);
         else ctx.lineTo(screen.x, screen.y);
       });
-      ctx.strokeStyle = "rgba(148,163,184,0.35)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(148,163,184,0.55)";
+      ctx.lineWidth = 1.5 * scale;
       ctx.stroke();
     });
 
@@ -1681,10 +1568,10 @@ function drawZodiacRing(
 
     const sign = ZODIAC_SIGNS[i];
     const midAngle = angle + Math.PI / 12;
-    const symbolPx = clamp(14 * Math.pow(scale, SCALE_EXP * 0.7), 11, 22);
-    const namePx = clamp(10 * Math.pow(scale, SCALE_EXP * 0.6), 9, 14);
-    const symbolOffsetPx = clamp(18 * Math.pow(scale, SCALE_EXP * 0.6), 12, 24);
-    const nameOffsetPx = clamp(44 * Math.pow(scale, SCALE_EXP * 0.6), 32, 72);
+    const symbolPx = clamp(14, 11, 22);
+    const namePx = clamp(10, 9, 14);
+    const symbolOffsetPx = clamp(18, 12, 24);
+    const nameOffsetPx = clamp(44, 32, 72);
     const labelRadiusPx = ringRadius - symbolOffsetPx;
     const nameRadiusPx = ringRadius - nameOffsetPx;
     const labelPoint = {
@@ -1859,7 +1746,7 @@ function drawEclipticGrid(
 }
 
 function drawSun(ctx: CanvasRenderingContext2D, worldToScreen: (point: Vec2) => Vec2, scale: number) {
-  const radius = clamp(ICON_BASE * 1.8 * Math.pow(scale, SCALE_EXP), 12, 42);
+  const radius = BODY_PX["Sun"] * scale;
   const center = worldToScreen({ x: 0, y: 0 });
   const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.1, center.x, center.y, radius);
   gradient.addColorStop(0, "#ffe7a3");
@@ -1867,14 +1754,14 @@ function drawSun(ctx: CanvasRenderingContext2D, worldToScreen: (point: Vec2) => 
   ctx.beginPath();
   ctx.fillStyle = gradient;
   ctx.shadowColor = "rgba(253, 211, 107, 0.6)";
-  ctx.shadowBlur = 35;
+  ctx.shadowBlur = 35 * scale;
   ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
 }
 
 function drawSunMarker(ctx: CanvasRenderingContext2D, center: Vec2, scale: number) {
-  const radius = clamp(ICON_BASE * 1.3 * Math.pow(scale, SCALE_EXP * 0.85), ICON_MIN * 0.8, ICON_MAX * 0.8);
+  const radius = BODY_PX["Sun"] * 0.85 * scale;
   const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.15, center.x, center.y, radius);
   gradient.addColorStop(0, "#fff7d6");
   gradient.addColorStop(1, "#f59e0b");
@@ -1882,7 +1769,7 @@ function drawSunMarker(ctx: CanvasRenderingContext2D, center: Vec2, scale: numbe
   ctx.beginPath();
   ctx.fillStyle = gradient;
   ctx.shadowColor = "rgba(253, 211, 107, 0.45)";
-  ctx.shadowBlur = 18;
+  ctx.shadowBlur = 18 * scale;
   ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
@@ -1897,58 +1784,65 @@ function drawBodies(
   overlays: OverlayOptions,
   moonGeo?: Placement
 ) {
-  const isGeocentric = overlays.viewMode === "geocentric";
-  const radiusMultiplier = isGeocentric ? 1.55 : 1;
-  const minRadius = isGeocentric ? ICON_MIN * 2 : ICON_MIN;
-  const maxRadius = isGeocentric ? ICON_MAX * 1.15 : ICON_MAX;
-  const radiusPx = clamp(ICON_BASE * radiusMultiplier * Math.pow(scale, SCALE_EXP), minRadius, maxRadius);
-  const fontMultiplier = overlays.scaleLabels ? (isGeocentric ? 1.2 : 1) : 1;
-  const fontPx = overlays.scaleLabels
-    ? clamp(FONT_BASE * fontMultiplier * Math.pow(scale, SCALE_EXP), FONT_MIN, FONT_MAX * (isGeocentric ? 1.1 : 1))
-    : FONT_BASE;
-
   ctx.textBaseline = "middle";
-  ctx.font = `${fontPx}px 'JetBrains Mono', ui-monospace, monospace`;
+  ctx.font = BODY_FONT;
   ctx.fillStyle = "#e2e8f0";
 
   const earthPlacement = placements.find((placement) => placement.body === "Earth");
 
+  // Draw all non-Moon bodies.
   placements.forEach((placement) => {
     const { body } = placement;
     if (!overlays.showMoon && body === "Moon") return;
-    if (overlays.viewMode === "heliocentric" && (body === "Sun" || body === "Moon")) return;
+    if (overlays.viewMode === "heliocentric" && body === "Sun") return; // drawn separately
+    if (body === "Moon") return; // handled below
 
-    const sizeFactor =
-      body === "Sun" || body === "Moon"
-        ? 1
-        : Math.pow(PLANET_SIZE_FACTOR[body] ?? 1, 0.6);
-    const bodyRadius = clamp(radiusPx * sizeFactor, ICON_MIN * 0.7, ICON_MAX * 1.25);
-
+    const bodyRadius = (BODY_PX[body] ?? 5) * scale;
     const center = worldToScreen(placement.world);
+
     if (overlays.viewMode === "geocentric" && body === "Sun") {
       drawSunMarker(ctx, center, scale);
     } else {
-      const planetDef = body === "Moon" ? MOON : PLANETS.find((planet) => planet.name === body);
+      const planetDef = PLANETS.find((planet) => planet.name === body);
       if (!planetDef) return;
       drawPlanetGlyph(ctx, center, bodyRadius, planetDef);
     }
     ctx.fillStyle = "#e2e8f0";
-    ctx.fillText(body, center.x + bodyRadius + 6, center.y);
+    // Flip label inward when planet sits on the right half of the canvas
+    // to keep text fully inside the circular viewport.
+    const labelOffset = BODY_LABEL_OFFSET * scale;
+    const labelX = center.x + bodyRadius + labelOffset;
+    if (center.x > 280 * scale) {
+      ctx.textAlign = "right";
+      ctx.fillText(body, center.x - bodyRadius - labelOffset, center.y);
+    } else {
+      ctx.textAlign = "left";
+      ctx.fillText(body, labelX, center.y);
+    }
+    ctx.textAlign = "left"; // reset
   });
 
-  // Geocentric Moon positioning: Moon orbits Earth using real sky longitude
-  if (overlays.viewMode === "heliocentric" && overlays.showMoon && earthPlacement && moonGeo) {
-    const earthScreen = worldToScreen(earthPlacement.world);
-    const moonAngle = moonGeo.lon * DEG2RAD;
-    const moonOrbitPx = radiusPx * 0.7; // roughly 0.04 of viewport equivalent
-    const moonX = earthScreen.x + moonOrbitPx * Math.cos(moonAngle);
-    const moonY = earthScreen.y - moonOrbitPx * Math.sin(moonAngle);
-    const moonRadius = clamp(radiusPx * 0.35, ICON_MIN * 0.5, ICON_MAX * 0.5);
+  // Moon rendering: fixed pixel orbit around Earth.
+  if (!overlays.showMoon || !earthPlacement || !moonGeo) return;
 
-    drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
-    ctx.fillStyle = "#e2e8f0";
-    ctx.fillText("Moon", moonX + moonRadius + 4, moonY);
+  const moonAngle = moonGeo.lon * DEG2RAD;
+  const earthScreen = worldToScreen(earthPlacement.world);
+
+  const moonOrbitPx = MOON_ORBIT_PX * scale;
+  const moonX = earthScreen.x + moonOrbitPx * Math.cos(moonAngle);
+  const moonY = earthScreen.y - moonOrbitPx * Math.sin(moonAngle);
+  const moonRadius = BODY_PX["Moon"] * scale;
+  drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
+  ctx.fillStyle = "#e2e8f0";
+  const moonLabelOffset = MOON_LABEL_OFFSET * scale;
+  if (moonX > 280 * scale) {
+    ctx.textAlign = "right";
+    ctx.fillText("Moon", moonX - moonRadius - moonLabelOffset, moonY);
+  } else {
+    ctx.textAlign = "left";
+    ctx.fillText("Moon", moonX + moonRadius + moonLabelOffset, moonY);
   }
+  ctx.textAlign = "left";
 }
 
 function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: number, planet: Planet) {
