@@ -538,6 +538,35 @@ function HeartlightSystemMap() {
   const [showRayZones, setShowRayZones] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
   const [rayOpen, setRayOpen] = useState(false);
+  const [uiTheme, setUiTheme] = useState(() => {
+    try {
+      return (localStorage.getItem("aut-ui-theme") ?? "normal") as "normal" | "retro" | "atlas";
+    } catch {
+      return "normal";
+    }
+  });
+
+  // Listen for theme changes while HSM is open
+  useEffect(() => {
+    const handler = () => {
+      try {
+        setUiTheme((localStorage.getItem("aut-ui-theme") ?? "normal") as "normal" | "retro" | "atlas");
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  const THEME_FONT: Record<string, string> = {
+    normal: "'Alice', ui-sans-serif",
+    retro: "'JetBrains Mono', ui-monospace, monospace",
+    atlas: "'Alice', ui-sans-serif",
+  };
+  const THEME_TEXT: Record<string, string> = {
+    normal: "#e4e4e7",
+    retro: "#b8ffd1",
+    atlas: "#fffbef",
+  };
   const [keyOpen, setKeyOpen] = useState(false);
 
   /* ── Solar Return constellation ─────────────────────────────────────────── */
@@ -692,7 +721,9 @@ function HeartlightSystemMap() {
         new Date(timeRef.current),
         worldToScreen,
         viewportScaleRef.current,
-        { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode }
+        { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode },
+        THEME_FONT[uiTheme],
+        THEME_TEXT[uiTheme]
       );
 
       raf = requestAnimationFrame(render);
@@ -700,7 +731,7 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode]);
+  }, [orbitCache, showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode, uiTheme]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1435,7 +1466,9 @@ function drawScene(
   time: Date,
   worldToScreen: (point: Vec2) => Vec2,
   scale: number,
-  overlays: OverlayOptions
+  overlays: OverlayOptions,
+  themeFont: string,
+  themeTextColor: string
 ) {
   const width = ctx.canvas.width / (window.devicePixelRatio ?? 1);
   const height = ctx.canvas.height / (window.devicePixelRatio ?? 1);
@@ -1483,7 +1516,7 @@ function drawScene(
     drawSun(ctx, worldToScreen, scale);
   }
 
-  drawBodies(ctx, placements, worldToScreen, scale, overlays, moonGeo);
+  drawBodies(ctx, placements, worldToScreen, scale, overlays, moonGeo, themeFont, themeTextColor);
   ctx.restore(); // end clip
 
   if (overlays.showZodiac) {
@@ -1786,11 +1819,12 @@ function drawBodies(
   worldToScreen: (point: Vec2) => Vec2,
   scale: number,
   overlays: OverlayOptions,
-  moonGeo?: Placement
+  moonGeo?: Placement,
+  themeFont?: string,
+  themeTextColor?: string
 ) {
   ctx.textBaseline = "middle";
   ctx.font = BODY_FONT;
-  ctx.fillStyle = "#e2e8f0";
 
   const earthPlacement = placements.find((placement) => placement.body === "Earth");
 
@@ -1810,10 +1844,13 @@ function drawBodies(
       if (!planetDef) return;
       drawPlanetGlyph(ctx, center, bodyRadius, planetDef);
     }
-    ctx.fillStyle = "#e2e8f0";
-    // Place label below the planet with a small gap so it never overlaps.
+
+    // Label: theme font + color, centered below planet
     const labelGap = Math.max(3, 4 * scale);
+    ctx.fillStyle = themeTextColor ?? "#e2e8f0";
+    ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
     ctx.textBaseline = "top";
+    ctx.textAlign = "center";
     ctx.fillText(body, center.x, center.y + bodyRadius + labelGap);
     ctx.textBaseline = "middle"; // reset
   });
@@ -1829,9 +1866,13 @@ function drawBodies(
   const moonY = earthScreen.y - moonOrbitPx * Math.sin(moonAngle);
   const moonRadius = BODY_PX["Moon"] * scale;
   drawPlanetGlyph(ctx, { x: moonX, y: moonY }, moonRadius, MOON);
-  ctx.fillStyle = "#e2e8f0";
+
+  // Moon label with theme
   const moonLabelGap = Math.max(3, 4 * scale);
+  ctx.fillStyle = themeTextColor ?? "#e2e8f0";
+  ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
   ctx.textBaseline = "top";
+  ctx.textAlign = "center";
   ctx.fillText("Moon", moonX, moonY + moonRadius + moonLabelGap);
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
