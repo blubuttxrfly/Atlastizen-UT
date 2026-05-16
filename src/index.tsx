@@ -58,6 +58,7 @@ type AUTBase = {
   autClock: string;
   sunriseLocal: Date;
   sunsetLocal: Date;
+  solarNoonLocal: Date;
   nextSunriseLocal: Date;
   segmentLabel: string;
   progress: number;
@@ -1362,6 +1363,7 @@ function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC:
     autClock: formatClock(autHours),
     sunriseLocal: utcMinutesToLocalDate(sunriseVirtualUTC, todayUTC),
     sunsetLocal: utcMinutesToLocalDate(sunsetVirtualUTC, todayUTC),
+    solarNoonLocal: utcMinutesToLocalDate(noonUTC, todayUTC),
     nextSunriseLocal: utcMinutesToLocalDate(sunriseVirtualUTC, tomorrowUTC),
     segmentLabel,
     progress,
@@ -1467,6 +1469,7 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     autClock: formatClock(autHours),
     sunriseLocal,
     sunsetLocal,
+    solarNoonLocal: utcMinutesToLocalDate(noonUTC, todayUTC),
     nextSunriseLocal,
     segmentLabel,
     progress,
@@ -5622,10 +5625,14 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
                 <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Solar Apex (06:00 AUT)</div>
+                <div className="text-xl font-semibold">{formatShortTime(data.solarNoonLocal)}</div>
               </div>
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
                 <div className="text-sm text-zinc-400">Solar Sunset (12:00 AUT)</div>
@@ -5637,16 +5644,7 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-zinc-300">
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/30 p-4">
-                <div>Day length: {Math.round(data.dayLenMin)} min</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/30 p-4">
-                <div>Night length: {Math.round(data.nightLenMin)} min</div>
-              </div>
-            </div>
-
-            {/* Ray Dial (inlined on clock page) */}
+            {/* Ray Dial — moved above solar timing cards */}
             <div className="mt-4 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
