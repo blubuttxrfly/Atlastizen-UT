@@ -3979,6 +3979,16 @@ export default function AUTClock() {
     }),
     [signatureGradient]
   );
+  const signatureRingStyleThin: CSSProperties = useMemo(
+    () => ({
+      background: signatureGradient,
+      padding: "2px",
+      borderRadius: "9999px",
+      boxShadow:
+        "0 6px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12), 0 0 0 1px rgba(255,255,255,0.05)",
+    }),
+    [signatureGradient]
+  );
   const profileImageSrc = coreProfile.photoData;
 
   // Use a stable, wrapped AUT hour value
@@ -4639,7 +4649,7 @@ export default function AUTClock() {
     } finally {
       setProfileLoading(false);
     }
-  }, [computeProfileSnapshot, deviceId, coreProfile.code, uiTheme]);
+  }, [computeProfileSnapshot, deviceId]);
 
   refreshCoreProfileRef.current = refreshCoreProfile;
 
@@ -4670,7 +4680,8 @@ export default function AUTClock() {
         if (!res.ok) throw new Error(`CES profile save failed (${res.status})`);
         const saved = (await res.json()) as Partial<CoreSignatureProfile>;
         const updatedAt = typeof saved?.updatedAt === "number" ? saved.updatedAt : Date.now();
-        const normalizedProfile: CoreSignatureProfile = {
+        // Only update the saved snapshot, not coreProfile state — user may have continued typing
+        lastSavedSnapshot.current = computeProfileSnapshot({
           name: saved?.name ?? profile.name ?? "",
           code: saved?.code ?? cleanCode,
           photoData:
@@ -4681,15 +4692,20 @@ export default function AUTClock() {
             typeof saved?.photoName === "string" && saved.photoName.length > 0
               ? saved.photoName
               : profile.photoName,
-          adminCes: typeof saved?.adminCes === "string" ? saved.adminCes : profile.adminCes,
-          updatedAt,
-        };
-        lastSavedSnapshot.current = computeProfileSnapshot(normalizedProfile);
-        setCoreProfile(normalizedProfile);
+        });
         setProfileSavedAt(updatedAt);
+        if (typeof saved?.photoData === "string" && saved.photoData.length > 0) {
+          // Only update photo-related fields silently
+          setCoreProfile((prev) => ({
+            ...prev,
+            photoData: saved.photoData,
+            photoName: typeof saved.photoName === "string" ? saved.photoName : prev.photoName,
+            updatedAt,
+          }));
+        }
         if (typeof window !== "undefined") {
           try {
-            localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(normalizedProfile));
+            localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(coreProfile));
           } catch {
             // ignore storage errors
           }
@@ -4708,6 +4724,7 @@ export default function AUTClock() {
     const snapshot = computeProfileSnapshot(coreProfile);
     if (profileLoading) return;
     if (snapshot === lastSavedSnapshot.current) return;
+    if (snapshot === "") return; // don't auto-save empty profiles before initialization
     if (!deviceId) return;
     if (cleanCode.length !== 9 || !coreProfile.name.trim()) {
       setProfileError(null);
@@ -4889,8 +4906,8 @@ export default function AUTClock() {
                 className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition"
                 onClick={() => setActivePanel("coreSignature")}
               >
-                <span className="inline-flex items-center justify-center" style={signatureRingStyle}>
-                  <span className="h-11 w-11 rounded-full overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+                <span className="inline-flex items-center justify-center" style={signatureRingStyleThin}>
+                  <span className="relative h-11 w-11 rounded-full overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
                     {profileImageSrc ? (
                       <img src={profileImageSrc} alt="Profile" className="h-full w-full object-cover" />
                     ) : (
@@ -4898,6 +4915,27 @@ export default function AUTClock() {
                         {coreProfile.name ? coreProfile.name[0]?.toUpperCase() : "✧"}
                       </span>
                     )}
+                    {signatureDetails.special === "diamond" ? (
+                      <div
+                        className="pointer-events-none absolute inset-0 rounded-full mix-blend-screen opacity-80"
+                        style={{
+                          background:
+                            "repeating-conic-gradient(from 0deg, rgba(255,255,255,0.6) 0deg 10deg, rgba(255,255,255,0.05) 10deg 20deg)",
+                        }}
+                      />
+                    ) : null}
+                    {signatureDetails.special === "rainbow" ? (
+                      <div
+                        className="pointer-events-none absolute inset-[6%] rounded-full mix-blend-screen opacity-75 blur-[0.6px]"
+                        style={{ background: CORE_SPECIAL_GRADIENT }}
+                      />
+                    ) : null}
+                    {signatureDetails.special === "white" ? (
+                      <div
+                        className="pointer-events-none absolute inset-[6%] rounded-full mix-blend-screen opacity-75 blur-[0.6px]"
+                        style={{ background: "#ffffff" }}
+                      />
+                    ) : null}
                   </span>
                 </span>
               </button>
