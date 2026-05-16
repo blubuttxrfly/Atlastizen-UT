@@ -4859,8 +4859,8 @@ export default function AUTClock() {
       <div
         className={`w-full max-w-5xl rounded-2xl shadow-xl p-5 sm:p-6 md:p-7 space-y-5 panel-surface ${panelClass}`}
       >
-        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="flex flex-col gap-1">
+        <header className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-1 pr-28 md:pr-0">
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
               Atlastizen Universal
               <br />
@@ -4883,7 +4883,7 @@ export default function AUTClock() {
                 ))}
               </select>
             </div>
-            <div className="flex flex-col items-center gap-2">
+            <div className="absolute top-0 right-0 md:static flex flex-row items-center gap-2">
               <button
                 type="button"
                 className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/5 shadow-inner shadow-black/40 hover:bg-white/10 transition"
