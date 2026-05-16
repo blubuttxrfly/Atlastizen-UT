@@ -45,7 +45,7 @@ const PLANETS: Planet[] = [
   { name: "Earth", a: 1.0, e: 0.0167, periodDays: 365.256, baseColor: "#4aa3ff", gradient: { inner: "#6fd3ff", outer: "#1359a0" }, spots: [{ color: "#4ade80", radius: 0.18, offset: { x: -0.2, y: 0.05 } }] },
   { name: "Mars", a: 1.524, e: 0.0934, periodDays: 686.98, baseColor: "#ff6a3d", gradient: { inner: "#ffb48a", outer: "#a23a27" } },
   { name: "Jupiter", a: 5.2, e: 0.0489, periodDays: 4332.589, baseColor: "#f2c078", bands: ["#f3d8ab", "#d4a46c", "#f6e5c7", "#c78f57"], spots: [{ color: "#d86b41", radius: 0.35, offset: { x: 0.25, y: 0.05 } }] },
-  { name: "Saturn", a: 9.58, e: 0.0565, periodDays: 10759.22, baseColor: "#dccaa6", bands: ["#f6e7c4", "#ceb98d", "#f9eedd", "#cdaa7a"], ring: { color: "rgba(220,202,166,0.7)", width: 0.9, opacity: 0.8 } },
+  { name: "Saturn", a: 9.58, e: 0.0565, periodDays: 10759.22, baseColor: "#dccaa6", gradient: { inner: "#f6e7c4", outer: "#cdaa7a" } },
   { name: "Uranus", a: 19.2, e: 0.046, periodDays: 30685.4, baseColor: "#7dd3fc", gradient: { inner: "#b0f0ff", outer: "#459bbf" } },
   { name: "Neptune", a: 30.07, e: 0.009, periodDays: 60189, baseColor: "#7aa2ff", gradient: { inner: "#8ad0ff", outer: "#2843c2" } },
   { name: "Pluto", a: 39.48, e: 0.2488, periodDays: 90560, baseColor: "#cdb4ff", gradient: { inner: "#e6dcff", outer: "#9d86c6" } },
@@ -1898,21 +1898,25 @@ function drawBodies(
 }
 
 function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: number, planet: Planet) {
-  // Try real planet image first (replaces the gradient body)
   const bodyName = planet.name as BodyName;
-  const didDrawImage = drawPlanetImage(ctx, center, radius, bodyName);
 
-  // Saturn ring always drawn on top of image
-  if (planet.ring) {
-    ctx.save();
-    ctx.strokeStyle = planet.ring.color;
-    ctx.globalAlpha = planet.ring.opacity;
-    ctx.lineWidth = radius * (1 + planet.ring.width);
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, radius * 1.8, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+  // For Saturn (and any wide-ringed body): draw full image without circle clip
+  if (bodyName === "Saturn") {
+    const img = getPlanetImage(bodyName);
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save();
+      // Scale image to fit within target radius, but show full width including rings
+      const scale = (radius * 2.2) / Math.max(img.naturalWidth, img.naturalHeight);
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      ctx.drawImage(img, center.x - drawW / 2, center.y - drawH / 2, drawW, drawH);
+      ctx.restore();
+      return;
+    }
   }
+
+  // All other planets: circular clip + cover crop
+  const didDrawImage = drawPlanetImage(ctx, center, radius, bodyName);
 
   if (!didDrawImage) {
     // Fallback: gradient + bands + spots (original logic)
