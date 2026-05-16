@@ -4886,15 +4886,15 @@ export default function AUTClock() {
             <div className="absolute top-0 right-0 md:static flex flex-col items-center gap-2">
               <button
                 type="button"
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full hover:opacity-80 transition"
+                className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition"
                 onClick={() => setActivePanel("coreSignature")}
               >
-                <span className="h-11 w-11 rounded-full border border-white/20 overflow-hidden" style={{ background: signatureGradient }}>
-                  <span className="h-full w-full rounded-full bg-zinc-950/75 flex items-center justify-center overflow-hidden">
+                <span className="inline-flex items-center justify-center" style={signatureRingStyle}>
+                  <span className="h-11 w-11 rounded-full overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
                     {profileImageSrc ? (
                       <img src={profileImageSrc} alt="Profile" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-base text-zinc-100">
+                      <span className="flex h-full w-full items-center justify-center text-base text-zinc-100">
                         {coreProfile.name ? coreProfile.name[0]?.toUpperCase() : "✧"}
                       </span>
                     )}
