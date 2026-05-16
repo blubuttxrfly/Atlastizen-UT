@@ -873,7 +873,7 @@ function HeartlightSystemMap() {
       {/* 1) Zodiac alignment cards */}
       <div className="space-y-3 text-slate-100">
         <div className="flex flex-col gap-2">
-          <div className="text-xs uppercase tracking-wide text-sky-200/80">Zodiac alignments</div>
+          <div className="text-xs uppercase tracking-wide text-sky-200/80">Ray Astrology</div>
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
             <label className="flex items-center gap-2">
               <span className="text-sky-200/80">Date</span>
@@ -917,7 +917,7 @@ function HeartlightSystemMap() {
             return (
               <div
                 key={placement.body}
-                className="rounded-xl border border-sky-500/20 bg-slate-800/50 px-3 py-1.5 backdrop-blur-sm"
+                className="rounded-xl border border-sky-500/20 bg-slate-800/50 px-2 py-2 backdrop-blur-sm"
               >
                 <div
                   className="mb-0.5 h-0.5 w-full rounded-full"
