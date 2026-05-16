@@ -923,39 +923,39 @@ function HeartlightSystemMap() {
                   className="mb-0.5 h-0.5 w-full rounded-full"
                   style={{ background: ZODIAC_HUES[placement.signIndex] ?? "rgba(125,211,252,0.6)" }}
                 />
-                <div className="flex w-full flex-wrap items-start justify-between gap-x-2 gap-y-0 pt-0.5 text-sm leading-[1.05] text-slate-200">
-                  <div className="flex items-center gap-3 leading-[1.05]">
+                <div className="flex w-full items-start justify-between gap-x-1 pt-0.5 text-sm leading-[1.05] text-slate-200">
+                  <div className="flex items-center gap-2 leading-[1.05] shrink-0">
                     <span
-                      className="h-9 w-9 rounded-full shadow-[0_0_12px_rgba(56,189,248,0.25)]"
+                      className="h-8 w-8 rounded-full shadow-[0_0_12px_rgba(56,189,248,0.25)]"
                       style={planetIconStyle(placement.body)}
                       aria-hidden
                     />
-                    <div className="flex items-center gap-2 leading-tight">
+                    <div className="flex items-center gap-1.5 leading-tight">
                       <span className="font-semibold text-sky-100">{placement.body}</span>
-                      <span className="text-base text-sky-200">{BODY_GLYPHS[placement.body]}</span>
+                      <span className="text-sm text-sky-200">{BODY_GLYPHS[placement.body]}</span>
                     </div>
                   </div>
-                  <div className="ml-auto flex flex-col items-end gap-0.25 text-right leading-[1.05]">
-                  <div
-                    className="flex items-center gap-2 text-lg font-bold"
-                    style={{
-                      color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
-                      textShadow: isCarbonRay ? carbonShadow : "0 0 8px rgba(0,0,0,0.25)",
-                    }}
-                  >
-                    <span className="text-xl">{placement.signSymbol}</span>
-                    <span className="uppercase tracking-wide">{placement.signName}</span>
-                  </div>
-                  <div
-                    className={`${isLongRay ? "text-[0.7rem]" : "text-[0.78rem]"} font-semibold`}
-                    style={{
-                      color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
-                      textShadow: isCarbonRay ? carbonShadow : undefined,
-                    }}
-                  >
-                    {rayName}
-                  </div>
-                    <div className="text-base font-semibold text-sky-100">
+                  <div className="flex flex-col items-end gap-0 text-right leading-[1.05] shrink-0">
+                    <div
+                      className="flex items-center gap-1 text-sm font-bold whitespace-nowrap"
+                      style={{
+                        color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
+                        textShadow: isCarbonRay ? carbonShadow : "0 0 8px rgba(0,0,0,0.25)",
+                      }}
+                    >
+                      <span className="text-base">{placement.signSymbol}</span>
+                      <span className="uppercase tracking-wide">{placement.signName}</span>
+                    </div>
+                    <div
+                      className={`${isLongRay ? "text-[0.65rem]" : "text-[0.72rem]"} font-semibold whitespace-nowrap`}
+                      style={{
+                        color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
+                        textShadow: isCarbonRay ? carbonShadow : undefined,
+                      }}
+                    >
+                      {rayName}
+                    </div>
+                    <div className="text-sm font-semibold text-sky-100 whitespace-nowrap">
                       {placement.degrees.toString().padStart(2, "0")}°{placement.minutes.toString().padStart(2, "0")}′
                     </div>
                   </div>
