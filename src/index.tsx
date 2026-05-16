@@ -5622,7 +5622,7 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-3">
+            <div className="mt-6 grid grid-cols-3 gap-3">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
                 <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
@@ -5637,7 +5637,7 @@ export default function AUTClock() {
               </div>
             </div>
 
-            <div className="mt-2 grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
+            <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-zinc-300">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/30 p-4">
                 <div>Day length: {Math.round(data.dayLenMin)} min</div>
               </div>
