@@ -481,6 +481,74 @@ function zodiacFromLongitude(lon: number) {
   };
 }
 
+type CanvasThemeColors = {
+  background: string;
+  orbitStroke: string;
+  orbitWidth: number;
+  sunGlow: string;
+  sunInner: string;
+  sunOuter: string;
+  zodiacRing: string;
+  zodiacRingWidth: number;
+  zodiacTickMajor: string;
+  zodiacTickMinor: string;
+  bodyLabel: string;
+  rayZoneOpacity: number;
+};
+
+function buildCanvasTheme(theme: string): CanvasThemeColors {
+  const base: CanvasThemeColors = {
+    background: "#030712",
+    orbitStroke: "rgba(148,163,184,0.55)",
+    orbitWidth: 1.5,
+    sunGlow: "rgba(253,211,107,0.6)",
+    sunInner: "#ffe7a3",
+    sunOuter: "#f59e0b",
+    zodiacRing: "rgba(56,189,248,0.35)",
+    zodiacRingWidth: 1,
+    zodiacTickMajor: "rgba(56,189,248,0.30)",
+    zodiacTickMinor: "rgba(56,189,248,0.15)",
+    bodyLabel: "#e2e8f0",
+    rayZoneOpacity: 0.08,
+  };
+
+  if (theme === "atlas") {
+    return {
+      background: "#060e1a",
+      orbitStroke: "rgba(246,196,83,0.75)",
+      orbitWidth: 2.0,
+      sunGlow: "rgba(255,230,160,0.85)",
+      sunInner: "#fff2cc",
+      sunOuter: "#f6c453",
+      zodiacRing: "rgba(246,196,83,0.55)",
+      zodiacRingWidth: 1.5,
+      zodiacTickMajor: "rgba(246,196,83,0.50)",
+      zodiacTickMinor: "rgba(246,196,83,0.25)",
+      bodyLabel: "#fffbef",
+      rayZoneOpacity: 0.22,
+    };
+  }
+
+  if (theme === "retro") {
+    return {
+      ...base,
+      background: "#020b04",
+      orbitStroke: "rgba(96,255,176,0.55)",
+      sunGlow: "rgba(96,255,176,0.5)",
+      sunInner: "#b8ffd1",
+      sunOuter: "#60ffb0",
+      zodiacRing: "rgba(96,255,176,0.4)",
+      zodiacRingWidth: 1,
+      zodiacTickMajor: "rgba(96,255,176,0.35)",
+      zodiacTickMinor: "rgba(96,255,176,0.18)",
+      bodyLabel: "#b8ffd1",
+      rayZoneOpacity: 0.10,
+    };
+  }
+
+  return base;
+}
+
 function HeartlightSystemMap() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraRef = useRef<Vec2>({ x: 0, y: 0 });
@@ -691,7 +759,8 @@ function HeartlightSystemMap() {
         viewportScaleRef.current,
         { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode: hsmViewMode },
         THEME_FONT[uiTheme],
-        THEME_TEXT[uiTheme]
+        THEME_TEXT[uiTheme],
+        buildCanvasTheme(uiTheme)
       );
 
       raf = requestAnimationFrame(render);
@@ -1488,13 +1557,14 @@ function drawScene(
   scale: number,
   overlays: OverlayOptions,
   themeFont: string,
-  themeTextColor: string
+  themeTextColor: string,
+  themeColors: CanvasThemeColors
 ) {
   const width = ctx.canvas.width / (window.devicePixelRatio ?? 1);
   const height = ctx.canvas.height / (window.devicePixelRatio ?? 1);
 
   ctx.save();
-  ctx.fillStyle = "#030712";
+  ctx.fillStyle = themeColors.background;
   ctx.fillRect(0, 0, width, height);
 
   // PRE-COMPUTE: all astronomical data before drawing
@@ -1512,7 +1582,7 @@ function drawScene(
   ctx.clip();
 
   if (overlays.showRayZones) {
-    drawRayZones(ctx, radius, activeRayIndex);
+    drawRayZones(ctx, radius, activeRayIndex, themeColors.rayZoneOpacity);
   }
 
   if (overlays.showEclipticGrid) {
@@ -1528,24 +1598,24 @@ function drawScene(
         if (idx === 0) ctx.moveTo(screen.x, screen.y);
         else ctx.lineTo(screen.x, screen.y);
       });
-      ctx.strokeStyle = "rgba(148,163,184,0.55)";
-      ctx.lineWidth = 1.5 * scale;
+      ctx.strokeStyle = themeColors.orbitStroke;
+      ctx.lineWidth = 1.5 * scale * themeColors.orbitWidth;
       ctx.stroke();
     });
 
-    drawSun(ctx, worldToScreen, scale);
+    drawSun(ctx, worldToScreen, scale, themeColors);
   }
 
-  drawBodies(ctx, placements, worldToScreen, scale, overlays, moonGeo, themeFont, themeTextColor);
+  drawBodies(ctx, placements, worldToScreen, scale, overlays, moonGeo, themeFont, themeTextColor, themeColors);
   ctx.restore(); // end clip
 
   if (overlays.showZodiac) {
-    drawZodiacRing(ctx, worldToScreen, scale);
+    drawZodiacRing(ctx, worldToScreen, scale, themeColors);
   }
 
   // Outline circular viewport
-  ctx.strokeStyle = "rgba(56,189,248,0.35)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = themeColors.zodiacRing;
+  ctx.lineWidth = 1 * themeColors.zodiacRingWidth;
   ctx.beginPath();
   ctx.arc(width / 2, height / 2, radius - 0.5, 0, Math.PI * 2);
   ctx.stroke();
@@ -1555,7 +1625,8 @@ function drawScene(
 function drawZodiacRing(
   ctx: CanvasRenderingContext2D,
   _worldToScreen: (point: Vec2) => Vec2,
-  scale: number
+  scale: number,
+  themeColors: CanvasThemeColors
 ) {
   const dpr = window.devicePixelRatio ?? 1;
   const width = ctx.canvas.width / dpr;
@@ -1575,7 +1646,7 @@ function drawZodiacRing(
 
   // Thin ring outline with first hue (Aries/Red)
   ctx.strokeStyle = hexToRgba(ZODIAC_HUES[0], 0.30);
-  ctx.lineWidth = clamp(scale * 0.35, 0.7, 1.4);
+  ctx.lineWidth = clamp(scale * 0.35, 0.7, 1.4) * themeColors.zodiacRingWidth;
   ctx.beginPath();
   ctx.arc(center.x, center.y, ringRadius, 0, Math.PI * 2);
   ctx.stroke();
@@ -1636,7 +1707,7 @@ function drawZodiacRing(
     const innerR = isMajor ? ringRadius * 0.96 : ringRadius * 0.98;
     const outerR = ringRadius * 1.03;
     ctx.beginPath();
-    ctx.strokeStyle = isMajor ? "rgba(56,189,248,0.30)" : "rgba(56,189,248,0.15)";
+    ctx.strokeStyle = isMajor ? themeColors.zodiacTickMajor : themeColors.zodiacTickMinor;
     ctx.lineWidth = isMajor ? clamp(scale * 0.25, 0.4, 1.0) : clamp(scale * 0.18, 0.3, 0.8);
     ctx.moveTo(center.x + Math.cos(rad) * innerR, center.y - Math.sin(rad) * innerR);
     ctx.lineTo(center.x + Math.cos(rad) * outerR, center.y - Math.sin(rad) * outerR);
@@ -1696,7 +1767,8 @@ function drawArcText(
 function drawRayZones(
   ctx: CanvasRenderingContext2D,
   viewportRadius: number,
-  activeRayIndex: number
+  activeRayIndex: number,
+  rayZoneOpacity: number
 ) {
   const sectorRadius = viewportRadius * 0.92;
   const steps = 12;
@@ -1723,18 +1795,18 @@ function drawRayZones(
 
     // Fill
     if (isCarbon) {
-      ctx.fillStyle = isActive ? "rgba(30,25,25,0.28)" : "rgba(15,10,10,0.18)";
+      ctx.fillStyle = isActive ? `rgba(30,25,25,${0.28 * rayZoneOpacity / 0.08})` : `rgba(15,10,10,${0.18 * rayZoneOpacity / 0.08})`;
     } else if (isActive) {
-      ctx.fillStyle = hexToRgba(hue, 0.22);
+      ctx.fillStyle = hexToRgba(hue, 0.22 * (rayZoneOpacity / 0.08));
     } else {
-      ctx.fillStyle = hexToRgba(hue, 0.10);
+      ctx.fillStyle = hexToRgba(hue, 0.10 * (rayZoneOpacity / 0.08));
     }
     ctx.fill();
 
     // Boundary
     ctx.strokeStyle = isCarbon
-      ? (isActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.20)")
-      : (isActive ? hexToRgba(hue, 0.55) : hexToRgba(hue, 0.22));
+      ? (isActive ? `rgba(255,255,255,${0.45 * rayZoneOpacity / 0.08})` : `rgba(255,255,255,${0.20 * rayZoneOpacity / 0.08})`)
+      : (isActive ? hexToRgba(hue, 0.55 * (rayZoneOpacity / 0.08)) : hexToRgba(hue, 0.22 * (rayZoneOpacity / 0.08)));
     ctx.lineWidth = isActive ? 1.6 : 0.8;
     ctx.stroke();
 
@@ -1746,10 +1818,10 @@ function drawRayZones(
       const gy = center.y - Math.sin(midA) * sectorRadius * 0.65;
       const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, sectorRadius * 0.35);
       if (isCarbon) {
-        gr.addColorStop(0, "rgba(255,255,255,0.08)");
+        gr.addColorStop(0, `rgba(255,255,255,${rayZoneOpacity})`);
         gr.addColorStop(1, "rgba(255,255,255,0)");
       } else {
-        gr.addColorStop(0, hexToRgba(hue, 0.14));
+        gr.addColorStop(0, hexToRgba(hue, 0.14 * (rayZoneOpacity / 0.08)));
         gr.addColorStop(1, hexToRgba(hue, 0));
       }
       ctx.fillStyle = gr;
@@ -1802,24 +1874,24 @@ function drawEclipticGrid(
   ctx.restore();
 }
 
-function drawSun(ctx: CanvasRenderingContext2D, worldToScreen: (point: Vec2) => Vec2, scale: number) {
+function drawSun(ctx: CanvasRenderingContext2D, worldToScreen: (point: Vec2) => Vec2, scale: number, themeColors: CanvasThemeColors) {
   const radius = BODY_PX["Sun"] * scale;
   const center = worldToScreen({ x: 0, y: 0 });
 
   // Try real Sun image first
   const didDraw = drawPlanetImage(ctx, center, radius, "Sun", {
-    color: "rgba(253, 211, 107, 0.6)",
+    color: themeColors.sunGlow,
     blur: 35 * scale,
   });
 
   if (!didDraw) {
     // Fallback gradient
     const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.1, center.x, center.y, radius);
-    gradient.addColorStop(0, "#ffe7a3");
-    gradient.addColorStop(1, "#f59e0b");
+    gradient.addColorStop(0, themeColors.sunInner);
+    gradient.addColorStop(1, themeColors.sunOuter);
     ctx.beginPath();
     ctx.fillStyle = gradient;
-    ctx.shadowColor = "rgba(253, 211, 107, 0.6)";
+    ctx.shadowColor = themeColors.sunGlow;
     ctx.shadowBlur = 35 * scale;
     ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -1861,7 +1933,8 @@ function drawBodies(
   overlays: OverlayOptions,
   moonGeo?: Placement,
   themeFont?: string,
-  themeTextColor?: string
+  themeTextColor?: string,
+  themeColors?: CanvasThemeColors
 ) {
   const dpr = window.devicePixelRatio ?? 1;
   const canvasWidth = ctx.canvas.width / dpr;
@@ -1895,7 +1968,7 @@ function drawBodies(
 
     // ── Smart label placement ──
     const labelGap = Math.max(3, 4 * scale);
-    ctx.fillStyle = themeTextColor ?? "#e2e8f0";
+    ctx.fillStyle = themeTextColor ?? themeColors?.bodyLabel ?? "#e2e8f0";
     ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
 
     if (INNER_BODIES.has(body)) {
@@ -1940,7 +2013,7 @@ function drawBodies(
 
   // Moon is an inner body: centered below
   const moonLabelGap = Math.max(3, 4 * scale);
-  ctx.fillStyle = themeTextColor ?? "#e2e8f0";
+  ctx.fillStyle = themeTextColor ?? themeColors?.bodyLabel ?? "#e2e8f0";
   ctx.font = `${clamp(11 * scale, 8, 14)}px ${themeFont ?? "'JetBrains Mono', ui-monospace, monospace"}`;
   ctx.textBaseline = "top";
   ctx.textAlign = "center";
