@@ -494,8 +494,8 @@ function HeartlightSystemMap() {
   const [when, setWhen] = useState(INITIAL_DATE);
   const [running, setRunning] = useState(false);
   const [timeScale] = useState(4);
-  const [hsmViewMode, setHsmViewMode] = useState<ViewMode>("heliocentric");
-  const [rayViewMode, setRayViewMode] = useState<"gaian" | "solar">("gaian");
+  const [hsmViewMode, setHsmViewMode] = useState<ViewMode>("geocentric");
+  const [rayViewMode, setRayViewMode] = useState<"gaian" | "solar">("solar");
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [scaleLabels, setScaleLabels] = useState(true);
@@ -848,25 +848,25 @@ function HeartlightSystemMap() {
       }),
     [when]
   );
-  const heliocentricButtonClass = `px-3 py-1 text-xs font-bold transition ${
+  const heliocentricButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "heliocentric"
-      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
-      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
-  const gaianButtonClass = `px-3 py-1 text-xs font-bold transition ${
+  const gaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "geocentric"
-      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
-      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
-  const raySolarButtonClass = `px-3 py-1 text-xs font-bold transition ${
+  const raySolarButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "solar"
-      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
-      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
-  const rayGaianButtonClass = `px-3 py-1 text-xs font-bold transition ${
+  const rayGaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "gaian"
-      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
-      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
 
   return (
@@ -906,7 +906,7 @@ function HeartlightSystemMap() {
             >
               Current Date
             </button>
-            <div className="inline-flex overflow-hidden rounded-xl border border-sky-500/60 ml-1">
+            <div className="inline-flex overflow-hidden rounded-xl ml-1">
               <button
                 type="button"
                 className={`${raySolarButtonClass}`}
@@ -1303,7 +1303,7 @@ function HeartlightSystemMap() {
         </button>
 
         {/* Perspective toggle */}
-        <div className="inline-flex overflow-hidden rounded-xl border border-sky-500/60">
+        <div className="inline-flex overflow-hidden rounded-xl">
           <button
             type="button"
             className={`${heliocentricButtonClass}`}
