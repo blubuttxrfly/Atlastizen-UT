@@ -4883,7 +4883,7 @@ export default function AUTClock() {
                 ))}
               </select>
             </div>
-            <div className="absolute top-0 right-0 md:static flex flex-row items-center gap-2">
+            <div className="absolute top-0 right-0 md:static flex flex-col items-center gap-2">
               <button
                 type="button"
                 className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/5 shadow-inner shadow-black/40 hover:bg-white/10 transition"
