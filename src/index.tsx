@@ -2357,7 +2357,7 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
   Magenta: {
     title: "Magenta",
-    core: "Red life-force rising + Violet spirit descending, meeting in the Heart and ascending as sovereign love.",
+    core: "Red Ray primordial life-force + Violet Ray high-frequency ascension, co-creating a uniting interconnection bridge of ALL that IS.",
     gifts:
       "Transmutation of desire into devotion • Magnetic authenticity • Heart-wings (love with altitude) • Embodied spirituality through voice, art, and aligned boundaries.",
     ideal:
