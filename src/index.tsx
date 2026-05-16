@@ -5179,7 +5179,7 @@ export default function AUTClock() {
                 {showCoords ? "Hide" : "Show"}
               </button>
               <span className="text-[11px] text-zinc-400">
-                Lat/Lon: {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
+                Lat/Lon: {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : null}
               </span>
             </div>
             {locationHint ? (
@@ -5633,7 +5633,7 @@ export default function AUTClock() {
                     {showCoords ? "Hide" : "Show"} Lat/Lon
                   </button>
                   <span className="text-[11px] text-zinc-300">
-                    {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : "—"}
+                    {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : null}
                   </span>
                 </div>
                 {locationHint ? (
