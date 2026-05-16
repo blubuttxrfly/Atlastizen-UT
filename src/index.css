@@ -120,18 +120,13 @@ body {
   background: var(--button-bg);
   border: 1px solid var(--button-border);
   color: var(--text);
-  transition: background 220ms ease, border-color 220ms ease, transform 150ms ease, box-shadow 200ms ease;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--button-border) 80%, transparent);
+  transition: background 220ms ease, border-color 220ms ease, transform 150ms ease;
   border-radius: 999px;
 }
 
 .themed-button:hover {
   background: color-mix(in srgb, var(--button-bg) 80%, #ffffff 20%);
   transform: translateY(-1px);
-  box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.42),
-    0 0 0 1px color-mix(in srgb, var(--button-border) 90%, transparent),
-    0 0 22px var(--accent-soft);
 }
 
 .themed-input {
