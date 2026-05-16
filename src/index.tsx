@@ -22,7 +22,7 @@ import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EAR
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 
 /**
- * Alastizen Universal Time (AUT) — Live Clock ✨
+ * Atlastizen Universal Time (AUT) — Live Clock ✨
  * Sunrise→Sunset maps to 00:00→12:00 AUT; Sunset→Next Sunrise maps to 12:00→24:00 AUT.
  * Includes:
  *  • Polar/Solstice continuity via Equilux fallback using Apparent Solar Time (AST)
@@ -1965,7 +1965,7 @@ function useAliceAndPWA() {
 
     // Manifest via Blob
     const manifest = {
-      name: "AUT — Alastizen Universal Time",
+      name: "AUT — Atlastizen Universal Time",
       short_name: "AUT",
       start_url: ".",
       display: "standalone",
@@ -5597,10 +5597,10 @@ export default function AUTClock() {
           <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-6 shadow-inner">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-sm uppercase tracking-wide text-zinc-300">
-                  AUT (Alastizen Universal Time)
+                <div className="text-sm uppercase tracking-wide text-zinc-300 whitespace-nowrap sm:whitespace-normal">
+                  AUT (Atlastizen Universal Time)
                 </div>
-                <div className="text-xs text-zinc-400">
+                <div className="text-[10px] sm:text-xs text-zinc-400">
                   Sunrise → 00:00 AUT • Sunset → 12:00 AUT • Next Sunrise → 24:00/00:00 AUT
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
