@@ -5658,8 +5658,8 @@ export default function AUTClock() {
                     <span className="text-zinc-500">
                       {" "}·{" "}
                       {data.autHours < 12
-                        ? `1 AUT second = ${(data.dayLenMin / 12).toFixed(1)} real seconds`
-                        : `1 AUT second = ${(data.nightLenMin / 12).toFixed(1)} real seconds`}
+                        ? `1 AUT sec = ${(data.dayLenMin / 720).toFixed(2)} real sec`
+                        : `1 AUT sec = ${(data.nightLenMin / 720).toFixed(2)} real sec`}
                     </span>
                   )}
                 </div>
@@ -7149,7 +7149,7 @@ export default function AUTClock() {
           >
             www.atlasisland.co
           </a>{" "}
-          • V5.9.3
+          • V6.6.6
         </footer>
       </div>
       {secretOpen && (
