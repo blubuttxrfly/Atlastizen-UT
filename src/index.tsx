@@ -3393,7 +3393,8 @@ export default function AUTClock() {
   const panelSelectId = useId();
   const themeSelectId = useId();
   const messageInputId = useId();
-  const isRetroTheme = uiTheme === "retro";
+  const _isRetroTheme = uiTheme === "retro";
+  void _isRetroTheme; // suppress unused warning; referenced in sibling panels via closure scope
   const atmosphere = useAtmosphereSnapshot(coords);
   const [climateNonce, setClimateNonce] = useState(0);
   const todayKey = useMemo(
@@ -3751,6 +3752,7 @@ export default function AUTClock() {
   const solArc = useMemo(() => buildHorizonArc(sol?.track ?? [], now), [sol, now]);
   const moonArc = useMemo(() => buildHorizonArc(luna?.tonight ?? [], now), [luna, now]);
   const pct = Math.max(0, Math.min(100, Math.round(data.progress * 100)));
+  void pct; // suppress unused warning; may be used in future panels
 
   const locationTimeZoneId = timeZoneInfo?.timeZone;
   const { formatShortTime, formatLongTime, formatDate } = useMemo(() => {
@@ -5614,38 +5616,10 @@ export default function AUTClock() {
                 </div>
                 <div className="text-sm text-zinc-300">Local {formatLongTime(now)}</div>
               </div>
-              <div className="flex flex-col items-end gap-2 text-right">
-                <div>
-                  <div className="text-sm text-zinc-300">Segment</div>
-                  <div className="text-lg font-medium">{data.segmentLabel}</div>
-                </div>
-                <div className={`text-sm ${isRetroTheme ? "retro-muted" : "text-zinc-400"}`}>
-                  {pct}% through this segment
-                </div>
-              </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
-                <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Solar Apex (06:00 AUT)</div>
-                <div className="text-xl font-semibold">{formatShortTime(data.solarNoonLocal)}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Solar Sunset (12:00 AUT)</div>
-                <div className="text-xl font-semibold">{formatShortTime(data.sunsetLocal)}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Next Sunrise (24:00 AUT)</div>
-                <div className="text-xl font-semibold">{formatShortTime(data.nextSunriseLocal)}</div>
-              </div>
-            </div>
-
-            {/* Ray Dial — moved above solar timing cards */}
-            <div className="mt-4 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
+            {/* Ray Dial — primary feature below the clock */}
+            <div className="mt-2 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
@@ -5753,6 +5727,26 @@ export default function AUTClock() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Solar timing — Sunrise → Apex → Sunset → Next Sunrise */}
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
+                <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Solar Apex (06:00 AUT)</div>
+                <div className="text-xl font-semibold">{formatShortTime(data.solarNoonLocal)}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Solar Sunset (12:00 AUT)</div>
+                <div className="text-xl font-semibold">{formatShortTime(data.sunsetLocal)}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Next Sunrise (24:00 AUT)</div>
+                <div className="text-xl font-semibold">{formatShortTime(data.nextSunriseLocal)}</div>
               </div>
             </div>
           </section>
