@@ -960,7 +960,7 @@ function HeartlightSystemMap() {
                     </div>
                   </div>
                 </div>
-                <div className="text-right text-[0.75rem] text-slate-300">
+                <div className="text-right text-[0.6rem] text-slate-300 whitespace-nowrap">
                   λ {placement.longitude.toFixed(2)}° • β {placement.latitude.toFixed(2)}° • Δ {placement.distanceAu.toFixed(3)} AU
                 </div>
               </div>
