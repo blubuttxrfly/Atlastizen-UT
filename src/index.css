@@ -382,6 +382,19 @@ textarea {
   background-color: color-mix(in srgb, var(--button-bg) 72%, #ffffff 28%) !important;
 }
 
+/* Small inline utility buttons — subtle, no glow */
+.retro-theme .retro-panel .retro-clean-btn {
+  background-color: rgba(0,0,0,0.08) !important;
+  border: 1px solid rgba(96, 255, 176, 0.12) !important;
+  color: rgba(170, 255, 200, 0.85) !important;
+  text-shadow: none !important;
+  letter-spacing: 0.04em !important;
+}
+.retro-theme .retro-panel .retro-clean-btn:hover {
+  background-color: rgba(96, 255, 176, 0.06) !important;
+  border-color: rgba(96, 255, 176, 0.28) !important;
+}
+
 .retro-theme .retro-panel input,
 .retro-theme .retro-panel select,
 .retro-theme .retro-panel textarea {

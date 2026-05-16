@@ -5150,7 +5150,7 @@ export default function AUTClock() {
                   <span>Location:</span>
                   <span className="text-[12px] text-zinc-300">{locationPrimary}</span>
                   <button
-                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    className="retro-clean-btn rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wide transition"
                     onClick={() => {
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
@@ -5173,7 +5173,7 @@ export default function AUTClock() {
             <div className={`flex flex-wrap items-center gap-2 text-[11px] ${timeZoneTone}`}>
               <span>{timeZoneLine}</span>
               <button
-                className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                className="retro-clean-btn rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wide transition"
                 onClick={() => setShowCoords((v) => !v)}
               >
                 {showCoords ? "Hide" : "Show"}
@@ -5606,7 +5606,7 @@ export default function AUTClock() {
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
                   <span className="font-medium text-white">{locationPrimary}</span>
                   <button
-                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    className="retro-clean-btn rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wide transition"
                     onClick={() => {
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
@@ -5627,7 +5627,7 @@ export default function AUTClock() {
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
                   <span className={timeZoneTone}>{timeZoneLine}</span>
                   <button
-                    className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    className="retro-clean-btn rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wide transition"
                     onClick={() => setShowCoords((v) => !v)}
                   >
                     {showCoords ? "Hide" : "Show"} Lat/Lon
