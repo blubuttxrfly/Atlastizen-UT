@@ -277,6 +277,59 @@ function planetIconSrc(body: BodyName): string {
   return `/hsm-planets/${body}.png`;
 }
 
+// ── Module-level planet image cache ────────────────────────────────────────
+const planetImageCache = new Map<BodyName, HTMLImageElement>();
+let planetImagesLoading = false;
+
+function loadPlanetImages(): Promise<void> {
+  if (planetImagesLoading) return Promise.resolve();
+  planetImagesLoading = true;
+  const bodies: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
+  let loaded = 0;
+  return new Promise((resolve) => {
+    bodies.forEach((body) => {
+      const img = new Image();
+      img.src = planetIconSrc(body);
+      img.onload = () => {
+        planetImageCache.set(body, img);
+        loaded++;
+        if (loaded === bodies.length) resolve();
+      };
+      img.onerror = () => {
+        loaded++;
+        if (loaded === bodies.length) resolve();
+      };
+    });
+  });
+}
+
+function getPlanetImage(body: BodyName): HTMLImageElement | undefined {
+  return planetImageCache.get(body);
+}
+
+function drawPlanetImage(
+  ctx: CanvasRenderingContext2D,
+  center: Vec2,
+  radius: number,
+  body: BodyName,
+  glow?: { color: string; blur: number }
+) {
+  const img = getPlanetImage(body);
+  if (!img || !img.complete) return false;
+
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = glow.color;
+    ctx.shadowBlur = glow.blur;
+  }
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(img, center.x - radius, center.y - radius, radius * 2, radius * 2);
+  ctx.restore();
+  return true;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -534,6 +587,10 @@ function HeartlightSystemMap() {
       cache.set(planet.name, sampleOrbit(planet));
     });
     return cache;
+  }, []);
+
+  useEffect(() => {
+    loadPlanetImages();
   }, []);
 
   useEffect(() => {
@@ -1671,32 +1728,52 @@ function drawEclipticGrid(
 function drawSun(ctx: CanvasRenderingContext2D, worldToScreen: (point: Vec2) => Vec2, scale: number) {
   const radius = BODY_PX["Sun"] * scale;
   const center = worldToScreen({ x: 0, y: 0 });
-  const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.1, center.x, center.y, radius);
-  gradient.addColorStop(0, "#ffe7a3");
-  gradient.addColorStop(1, "#f59e0b");
-  ctx.beginPath();
-  ctx.fillStyle = gradient;
-  ctx.shadowColor = "rgba(253, 211, 107, 0.6)";
-  ctx.shadowBlur = 35 * scale;
-  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
+
+  // Try real Sun image first
+  const didDraw = drawPlanetImage(ctx, center, radius, "Sun", {
+    color: "rgba(253, 211, 107, 0.6)",
+    blur: 35 * scale,
+  });
+
+  if (!didDraw) {
+    // Fallback gradient
+    const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.1, center.x, center.y, radius);
+    gradient.addColorStop(0, "#ffe7a3");
+    gradient.addColorStop(1, "#f59e0b");
+    ctx.beginPath();
+    ctx.fillStyle = gradient;
+    ctx.shadowColor = "rgba(253, 211, 107, 0.6)";
+    ctx.shadowBlur = 35 * scale;
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
 }
 
 function drawSunMarker(ctx: CanvasRenderingContext2D, center: Vec2, scale: number) {
   const radius = BODY_PX["Sun"] * 0.85 * scale;
-  const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.15, center.x, center.y, radius);
-  gradient.addColorStop(0, "#fff7d6");
-  gradient.addColorStop(1, "#f59e0b");
-  ctx.save();
-  ctx.beginPath();
-  ctx.fillStyle = gradient;
-  ctx.shadowColor = "rgba(253, 211, 107, 0.45)";
-  ctx.shadowBlur = 18 * scale;
-  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.restore();
+
+  // Try real Sun image first
+  const didDraw = drawPlanetImage(ctx, center, radius, "Sun", {
+    color: "rgba(253, 211, 107, 0.45)",
+    blur: 18 * scale,
+  });
+
+  if (!didDraw) {
+    // Fallback gradient
+    const gradient = ctx.createRadialGradient(center.x - radius * 0.3, center.y - radius * 0.3, radius * 0.15, center.x, center.y, radius);
+    gradient.addColorStop(0, "#fff7d6");
+    gradient.addColorStop(1, "#f59e0b");
+    ctx.save();
+    ctx.beginPath();
+    ctx.fillStyle = gradient;
+    ctx.shadowColor = "rgba(253, 211, 107, 0.45)";
+    ctx.shadowBlur = 18 * scale;
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 }
 
 function drawBodies(
@@ -1796,6 +1873,11 @@ function drawBodies(
 }
 
 function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: number, planet: Planet) {
+  // Try real planet image first (replaces the gradient body)
+  const bodyName = planet.name as BodyName;
+  const didDrawImage = drawPlanetImage(ctx, center, radius, bodyName);
+
+  // Saturn ring always drawn on top of image
   if (planet.ring) {
     ctx.save();
     ctx.strokeStyle = planet.ring.color;
@@ -1807,42 +1889,45 @@ function drawPlanetGlyph(ctx: CanvasRenderingContext2D, center: Vec2, radius: nu
     ctx.restore();
   }
 
-  if (planet.bands && planet.bands.length > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctx.clip();
-    const bandHeight = (radius * 2) / planet.bands.length;
-    planet.bands.forEach((color, index) => {
-      const y = center.y - radius + index * bandHeight;
-      ctx.fillStyle = color;
-      ctx.fillRect(center.x - radius, y, radius * 2, bandHeight + 1);
-    });
-    ctx.restore();
-  } else {
-    const gradient = ctx.createRadialGradient(
-      center.x - radius * 0.35,
-      center.y - radius * 0.35,
-      radius * 0.1,
-      center.x,
-      center.y,
-      radius
-    );
-    gradient.addColorStop(0, planet.gradient?.inner ?? lighten(planet.baseColor, 0.2));
-    gradient.addColorStop(1, planet.gradient?.outer ?? planet.baseColor);
-    ctx.beginPath();
-    ctx.fillStyle = gradient;
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  if (planet.spots) {
-    planet.spots.forEach((spot) => {
+  if (!didDrawImage) {
+    // Fallback: gradient + bands + spots (original logic)
+    if (planet.bands && planet.bands.length > 0) {
+      ctx.save();
       ctx.beginPath();
-      ctx.fillStyle = spot.color;
-      ctx.arc(center.x + spot.offset.x * radius, center.y + spot.offset.y * radius, radius * spot.radius, 0, Math.PI * 2);
+      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      ctx.clip();
+      const bandHeight = (radius * 2) / planet.bands.length;
+      planet.bands.forEach((color, index) => {
+        const y = center.y - radius + index * bandHeight;
+        ctx.fillStyle = color;
+        ctx.fillRect(center.x - radius, y, radius * 2, bandHeight + 1);
+      });
+      ctx.restore();
+    } else {
+      const gradient = ctx.createRadialGradient(
+        center.x - radius * 0.35,
+        center.y - radius * 0.35,
+        radius * 0.1,
+        center.x,
+        center.y,
+        radius
+      );
+      gradient.addColorStop(0, planet.gradient?.inner ?? lighten(planet.baseColor, 0.2));
+      gradient.addColorStop(1, planet.gradient?.outer ?? planet.baseColor);
+      ctx.beginPath();
+      ctx.fillStyle = gradient;
+      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       ctx.fill();
-    });
+    }
+
+    if (planet.spots) {
+      planet.spots.forEach((spot) => {
+        ctx.beginPath();
+        ctx.fillStyle = spot.color;
+        ctx.arc(center.x + spot.offset.x * radius, center.y + spot.offset.y * radius, radius * spot.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
   }
 }
 
