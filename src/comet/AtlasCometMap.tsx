@@ -494,7 +494,8 @@ function HeartlightSystemMap() {
   const [when, setWhen] = useState(INITIAL_DATE);
   const [running, setRunning] = useState(false);
   const [timeScale] = useState(4);
-  const [viewMode, setViewMode] = useState<ViewMode>("heliocentric");
+  const [hsmViewMode, setHsmViewMode] = useState<ViewMode>("heliocentric");
+  const [rayViewMode, setRayViewMode] = useState<"gaian" | "solar">("gaian");
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [scaleLabels, setScaleLabels] = useState(true);
@@ -688,7 +689,7 @@ function HeartlightSystemMap() {
         new Date(timeRef.current),
         worldToScreen,
         viewportScaleRef.current,
-        { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode },
+        { showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode: hsmViewMode },
         THEME_FONT[uiTheme],
         THEME_TEXT[uiTheme]
       );
@@ -698,7 +699,7 @@ function HeartlightSystemMap() {
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [orbitCache, showZodiac, showEclipticGrid, scaleLabels, showRayZones, viewMode, uiTheme]);
+  }, [orbitCache, showZodiac, showEclipticGrid, scaleLabels, showRayZones, hsmViewMode, uiTheme]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -771,15 +772,16 @@ function HeartlightSystemMap() {
 
   const resetView = () => {
     cameraRef.current = { x: 0, y: 0 };
-    scaleRef.current = DEFAULT_SCALE[viewMode];
+    scaleRef.current = DEFAULT_SCALE[hsmViewMode];
   };
 
   useEffect(() => {
     resetView();
-  }, [viewMode]);
+  }, [hsmViewMode]);
 
   const zodiacPlacements = useMemo<ZodiacPlacement[]>(() => {
-    const placements = getPlacements("geocentric", when);
+    const mode = rayViewMode === "solar" ? "heliocentric" : "geocentric";
+    const placements = getPlacements(mode, when);
     const byBody = new Map<BodyName, Placement>();
     placements.forEach((placement) => {
       byBody.set(placement.body, placement);
@@ -790,13 +792,31 @@ function HeartlightSystemMap() {
         if (!placement) {
           return null;
         }
-        // Show Earth opposite the Sun for an intuitive heliocentric sense:
-        // Earth longitude = Sun longitude + 180° (geocentric Sun is already apparent ecliptic lon).
-        const effectiveLon =
-          body === "Earth" && byBody.get("Sun")
-            ? normalizeDegrees((byBody.get("Sun")?.lon ?? 0) + 180)
-            : placement.lon;
-        const zodiac = zodiacFromLongitude(effectiveLon);
+
+        let effectivePlacement = placement;
+
+        // Gaian (geocentric) lens: Earth faces the anti-solar point.
+        // The zodiac belt wraps around Earth, so Earth’s astrological
+        // position is opposite the Sun — same distance, 180° apart.
+        if (mode === "geocentric" && body === "Earth") {
+          const sun = byBody.get("Sun");
+          if (sun) {
+            effectivePlacement = {
+              ...placement,
+              lon: normalizeDegrees(sun.lon + 180),
+              lat: sun.lat,
+              dist: sun.dist,
+            };
+          }
+        }
+
+        // Solar (heliocentric) lens: Sun shows its geocentric sign
+        // (Solar Returns are defined by the Sun's geocentric longitude).
+        if (mode === "heliocentric" && body === "Sun") {
+          effectivePlacement = geocentricPlacement("Sun", when);
+        }
+
+        const zodiac = zodiacFromLongitude(effectivePlacement.lon);
         return {
           body,
           signName: zodiac.sign.name,
@@ -805,12 +825,12 @@ function HeartlightSystemMap() {
           degrees: zodiac.degrees,
           minutes: zodiac.minutes,
           longitude: zodiac.longitude,
-          latitude: placement.lat,
-          distanceAu: placement.dist,
+          latitude: effectivePlacement.lat,
+          distanceAu: effectivePlacement.dist,
         };
       })
       .filter(Boolean) as ZodiacPlacement[];
-  }, [when]);
+  }, [when, rayViewMode]);
 
   const formatDateForInput = (date: Date) => {
     // Keep the local calendar day (avoid UTC conversion that can shift the date).
@@ -828,11 +848,25 @@ function HeartlightSystemMap() {
       }),
     [when]
   );
-  const heliocentricButtonClass = `px-3 py-1 text-xs font-semibold transition ${
-    viewMode === "heliocentric" ? "bg-sky-500 text-sky-950" : "text-sky-100 hover:bg-sky-500/20"
+  const heliocentricButtonClass = `px-3 py-1 text-xs font-bold transition ${
+    hsmViewMode === "heliocentric"
+      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
+      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
   }`;
-  const gaianButtonClass = `px-3 py-1 text-xs font-semibold transition ${
-    viewMode === "geocentric" ? "bg-sky-500 text-sky-950" : "text-sky-100 hover:bg-sky-500/20"
+  const gaianButtonClass = `px-3 py-1 text-xs font-bold transition ${
+    hsmViewMode === "geocentric"
+      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
+      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+  }`;
+  const raySolarButtonClass = `px-3 py-1 text-xs font-bold transition ${
+    rayViewMode === "solar"
+      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
+      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
+  }`;
+  const rayGaianButtonClass = `px-3 py-1 text-xs font-bold transition ${
+    rayViewMode === "gaian"
+      ? "bg-sky-500 text-sky-950 shadow-md shadow-sky-500/30 ring-1 ring-sky-300/50"
+      : "text-sky-300/40 bg-slate-800/50 hover:bg-sky-500/10 hover:text-sky-200/60 font-semibold"
   }`;
 
   return (
@@ -872,6 +906,24 @@ function HeartlightSystemMap() {
             >
               Current Date
             </button>
+            <div className="inline-flex overflow-hidden rounded-xl border border-sky-500/60 ml-1">
+              <button
+                type="button"
+                className={`${raySolarButtonClass}`}
+                aria-pressed={rayViewMode === "solar"}
+                onClick={() => setRayViewMode("solar")}
+              >
+                Solar
+              </button>
+              <button
+                type="button"
+                className={`${rayGaianButtonClass}`}
+                aria-pressed={rayViewMode === "gaian"}
+                onClick={() => setRayViewMode("gaian")}
+              >
+                Gaian
+              </button>
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -929,7 +981,7 @@ function HeartlightSystemMap() {
                   </div>
                 </div>
                 <div className="text-right text-[0.6rem] text-slate-300 whitespace-nowrap">
-                  λ {placement.longitude.toFixed(2)}° • β {placement.latitude.toFixed(2)}° • Δ {placement.distanceAu.toFixed(3)} AU
+                  λ {placement.longitude.toFixed(2)}° • β {Math.abs(placement.latitude || 0) < 0.0001 ? "0.00" : (placement.latitude || 0).toFixed(2)}° • Δ {placement.distanceAu.toFixed(3)} AU
                 </div>
               </div>
             );
@@ -1255,16 +1307,16 @@ function HeartlightSystemMap() {
           <button
             type="button"
             className={`${heliocentricButtonClass}`}
-            aria-pressed={viewMode === "heliocentric"}
-            onClick={() => setViewMode("heliocentric")}
+            aria-pressed={hsmViewMode === "heliocentric"}
+            onClick={() => setHsmViewMode("heliocentric")}
           >
             Solar
           </button>
           <button
             type="button"
             className={`${gaianButtonClass}`}
-            aria-pressed={viewMode === "geocentric"}
-            onClick={() => setViewMode("geocentric")}
+            aria-pressed={hsmViewMode === "geocentric"}
+            onClick={() => setHsmViewMode("geocentric")}
           >
             Gaian
           </button>
