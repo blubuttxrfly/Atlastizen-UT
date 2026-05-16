@@ -5652,7 +5652,17 @@ export default function AUTClock() {
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
                   {data.autClock}
                 </div>
-                <div className="text-sm text-zinc-300">Local {formatLongTime(now)}</div>
+                <div className="text-sm text-zinc-300">
+                  Local {formatLongTime(now)}
+                  {data.dayLenMin > 0 && (
+                    <span className="text-zinc-500">
+                      {" "}·{" "}
+                      {data.autHours < 12
+                        ? `1 AUT second = ${(data.dayLenMin / 12).toFixed(1)} real seconds`
+                        : `1 AUT second = ${(data.nightLenMin / 12).toFixed(1)} real seconds`}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
