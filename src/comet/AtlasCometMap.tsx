@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Astronomy from "astronomy-engine";
 import { useSolarReturn, type SolarReturnProfile } from "../hooks/useSolarReturn";
 import { useForwardGeocode } from "../hooks/useForwardGeocode";
@@ -273,123 +273,8 @@ const BODY_GLYPHS: Record<BodyName, string> = {
   Pluto: "♇",
 };
 
-const BODY_COLORS: Record<BodyName, string> = {
-  Sun: "#f59e0b",
-  Moon: "#d4d4d8",
-  Mercury: "#a8a8a8",
-  Venus: "#e0c080",
-  Earth: "#38bdf8",
-  Mars: "#fb6a3d",
-  Jupiter: "#f2c078",
-  Saturn: "#d8c59f",
-  Uranus: "#7dd3fc",
-  Neptune: "#7aa2ff",
-  Pluto: "#cdb4ff",
-};
-
-
-function planetIconStyle(body: BodyName): CSSProperties {
-  if (body === "Sun") {
-    return {
-      background: "radial-gradient(circle at 30% 30%, #fff7d6 10%, #ffd166 45%, #f59e0b 80%, #d97706 100%)",
-      boxShadow: "0 0 18px rgba(245, 158, 11, 0.55)",
-      border: "1px solid rgba(234, 179, 8, 0.45)",
-    };
-  }
-  if (body === "Moon") {
-    return {
-      background: "radial-gradient(circle at 25% 30%, #f8fafc 8%, #d6d6da 55%, #9ca3af 95%)",
-      boxShadow: "inset 0 0 8px rgba(0,0,0,0.15)",
-      border: "1px solid rgba(148,163,184,0.35)",
-    };
-  }
-
-  // Hand-tuned icon treatments to echo each body's visual character.
-  switch (body) {
-    case "Mercury":
-      return {
-        background:
-          "radial-gradient(circle at 30% 30%, #f5f5f5 10%, #cfcfcf 32%, #8f8f92 70%, #5d6066 100%), radial-gradient(circle at 65% 65%, rgba(40,40,48,0.35) 0%, rgba(0,0,0,0) 55%)",
-        boxShadow: "inset 0 0 8px rgba(0,0,0,0.18)",
-        border: "1px solid rgba(148,163,184,0.45)",
-      };
-    case "Venus":
-      return {
-        background:
-          "radial-gradient(circle at 28% 28%, #fff3d1 18%, #f3cf88 45%, #d6a44f 78%, #b8792e 100%), linear-gradient(145deg, rgba(255,236,179,0.55) 0%, rgba(214,160,79,0.35) 45%, rgba(140,95,28,0.15) 100%)",
-        boxShadow: "inset 0 0 10px rgba(0,0,0,0.12)",
-        border: "1px solid rgba(214,160,79,0.55)",
-      };
-    case "Earth":
-      return {
-        background:
-          [
-            "radial-gradient(circle at 32% 30%, #9be7ff 0%, #4ab5ff 55%, #0f4aa5 90%)", // ocean depth
-            "radial-gradient(ellipse at 58% 60%, rgba(52,199,89,0.85) 0%, rgba(52,199,89,0) 52%)", // continent 1
-            "radial-gradient(ellipse at 36% 68%, rgba(34,197,94,0.78) 0%, rgba(34,197,94,0) 60%)", // continent 2
-            "radial-gradient(ellipse at 64% 36%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 55%)", // cloud 1
-            "radial-gradient(ellipse at 30% 44%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 50%)", // cloud 2
-          ].join(", "),
-        boxShadow: "inset 0 0 9px rgba(0,0,0,0.14), 0 0 0 1px rgba(59,130,246,0.35)",
-        border: "1px solid rgba(59,130,246,0.6)",
-      };
-    case "Mars":
-      return {
-        background:
-          "radial-gradient(circle at 30% 28%, #ffb48a 15%, #e46b3c 52%, #a73925 85%, #71241b 100%), radial-gradient(circle at 65% 65%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 55%), radial-gradient(circle at 70% 40%, rgba(46,20,10,0.35) 0%, rgba(46,20,10,0) 60%)",
-        boxShadow: "inset 0 0 8px rgba(0,0,0,0.18)",
-        border: "1px solid rgba(244,114,82,0.55)",
-      };
-    case "Jupiter":
-      return {
-        background:
-          "linear-gradient(180deg, #f6e5c7 0%, #d8b27a 22%, #f3d8ab 36%, #c9975f 50%, #f3d8ab 64%, #d8b27a 78%, #f6e5c7 100%), radial-gradient(circle at 68% 46%, rgba(210,93,52,0.65) 0%, rgba(210,93,52,0.0) 48%)",
-        boxShadow: "0 0 0 3px rgba(210,180,140,0.35), inset 0 0 10px rgba(0,0,0,0.12)",
-        border: "1px solid rgba(217,119,6,0.45)",
-      };
-    case "Saturn":
-      return {
-        background:
-          "linear-gradient(180deg, #f6e7c4 0%, #d9be8e 28%, #f3e2bc 55%, #cda878 78%, #f6e7c4 100%)",
-        boxShadow: "0 0 0 5px rgba(220,202,166,0.7), inset 0 0 10px rgba(0,0,0,0.1)",
-        border: "1px solid rgba(214,184,140,0.6)",
-      };
-    case "Uranus":
-      return {
-        background:
-          "radial-gradient(circle at 32% 28%, #c4f4ff 12%, #9be5f8 45%, #5fb7d8 85%, #3b8fb4 100%)",
-        boxShadow: "inset 0 0 8px rgba(0,0,0,0.08)",
-        border: "1px solid rgba(125,211,252,0.6)",
-      };
-    case "Neptune":
-      return {
-        background:
-          "radial-gradient(circle at 30% 30%, #7cc2ff 12%, #4e88ff 55%, #1f3fad 88%, #142a7d 100%), radial-gradient(ellipse at 65% 70%, rgba(124,194,255,0.22) 0%, rgba(124,194,255,0) 60%)",
-        boxShadow: "inset 0 0 9px rgba(0,0,0,0.12)",
-        border: "1px solid rgba(96,165,250,0.55)",
-      };
-    case "Pluto":
-      return {
-        background:
-          "radial-gradient(circle at 35% 30%, #f3e9ff 10%, #d6c8ec 45%, #a493c7 80%, #7a699c 100%), radial-gradient(circle at 65% 60%, rgba(60,50,80,0.35) 0%, rgba(60,50,80,0) 55%)",
-        boxShadow: "inset 0 0 8px rgba(0,0,0,0.14)",
-        border: "1px solid rgba(205,180,255,0.6)",
-      };
-    default: {
-      const planet = PLANETS.find((p) => p.name === body);
-      if (planet?.gradient) {
-        return {
-          background: `radial-gradient(circle at 30% 30%, ${planet.gradient.inner} 20%, ${planet.gradient.outer} 90%)`,
-          boxShadow: "inset 0 0 8px rgba(0,0,0,0.12)",
-          border: "1px solid rgba(148,163,184,0.35)",
-        };
-      }
-      return {
-        background: BODY_COLORS[body] ?? "#94a3b8",
-        border: "1px solid rgba(148,163,184,0.35)",
-      };
-    }
-  }
+function planetIconSrc(body: BodyName): string {
+  return `/hsm-planets/${body}.png`;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -925,9 +810,10 @@ function HeartlightSystemMap() {
                 />
                 <div className="flex w-full items-start justify-between gap-x-1 pt-0.5 text-sm leading-[1.05] text-slate-200">
                   <div className="flex items-center gap-2 leading-[1.05] shrink-0">
-                    <span
-                      className="h-8 w-8 rounded-full shadow-[0_0_12px_rgba(56,189,248,0.25)]"
-                      style={planetIconStyle(placement.body)}
+                    <img
+                      src={planetIconSrc(placement.body)}
+                      alt={placement.body}
+                      className="h-8 w-8 rounded-full object-cover shadow-[0_0_12px_rgba(56,189,248,0.25)]"
                       aria-hidden
                     />
                     <div className="flex items-center gap-1.5 leading-tight">
