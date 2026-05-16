@@ -851,22 +851,22 @@ function HeartlightSystemMap() {
   const heliocentricButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "heliocentric"
       ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
+      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
   }`;
   const gaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "geocentric"
       ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
+      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
   }`;
   const raySolarButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "solar"
       ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
+      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
   }`;
   const rayGaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "gaian"
       ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
+      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
   }`;
 
   return (
