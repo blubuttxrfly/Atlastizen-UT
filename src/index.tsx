@@ -4889,8 +4889,8 @@ export default function AUTClock() {
                 className="inline-flex h-12 w-12 items-center justify-center rounded-full hover:opacity-80 transition"
                 onClick={() => setActivePanel("coreSignature")}
               >
-                <span className="h-11 w-11 rounded-full overflow-hidden">
-                  <span className="h-full w-full rounded-full flex items-center justify-center overflow-hidden">
+                <span className="h-11 w-11 rounded-full border border-white/20 overflow-hidden" style={{ background: signatureGradient }}>
+                  <span className="h-full w-full rounded-full bg-zinc-950/75 flex items-center justify-center overflow-hidden">
                     {profileImageSrc ? (
                       <img src={profileImageSrc} alt="Profile" className="h-full w-full object-cover" />
                     ) : (
