@@ -315,17 +315,42 @@ function drawPlanetImage(
   glow?: { color: string; blur: number }
 ) {
   const img = getPlanetImage(body);
-  if (!img || !img.complete) return false;
+  if (!img || !img.complete || img.naturalWidth === 0) return false;
 
   ctx.save();
   if (glow) {
     ctx.shadowColor = glow.color;
     ctx.shadowBlur = glow.blur;
   }
+
+  // Clip to circle
   ctx.beginPath();
   ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
   ctx.clip();
-  ctx.drawImage(img, center.x - radius, center.y - radius, radius * 2, radius * 2);
+
+  // Cover crop: maintain aspect ratio, crop from center
+  const destSize = radius * 2;
+  const srcAspect = img.naturalWidth / img.naturalHeight;
+  const destAspect = 1; // square destination
+
+  let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+
+  if (srcAspect > destAspect) {
+    // Image wider than tall — crop sides
+    sw = img.naturalHeight * destAspect;
+    sx = (img.naturalWidth - sw) / 2;
+  } else {
+    // Image taller than wide — crop top/bottom
+    sh = img.naturalWidth / destAspect;
+    sy = (img.naturalHeight - sh) / 2;
+  }
+
+  ctx.drawImage(
+    img,
+    sx, sy, sw, sh,           // source crop (centered)
+    center.x - radius, center.y - radius, destSize, destSize  // destination
+  );
+
   ctx.restore();
   return true;
 }
