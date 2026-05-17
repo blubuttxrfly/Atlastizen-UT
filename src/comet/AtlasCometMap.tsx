@@ -102,6 +102,18 @@ const BODY_PX: Record<BodyName, number> = {
 // Default font for canvas labels
 const BODY_FONT = "11px 'JetBrains Mono', ui-monospace, monospace";
 const GEO_RING_PX = 210;
+// Geocentric ring radii: spread bodies across the zodiacal band
+const GEO_BODY_RADIUS: Partial<Record<BodyName, number>> = {
+  Sun: 145,
+  Mercury: 165,
+  Venus: 180,
+  Mars: 190,
+  Jupiter: 205,
+  Saturn: 220,
+  Uranus: 235,
+  Neptune: 248,
+  Pluto: 258,
+};
 const ZODIAC_SIGNS = [
   { name: "Aries", symbol: "♈︎" },
   { name: "Taurus", symbol: "♉︎" },
@@ -404,16 +416,6 @@ function heliocentricPlacement(body: BodyName, when: Date): Placement {
   return { body, lon, lat, dist, vector, world, mode: "heliocentric" };
 }
 
-function geocentricWorld(lon: number, lat: number): Vec2 {
-  const rad = lon * DEG2RAD;
-  const latFactor = clamp(lat / 40, -1.5, 1.5);
-  const radius = GEO_RING_PX * (1 + latFactor * 0.12);
-  return {
-    x: radius * Math.cos(rad),
-    y: radius * Math.sin(rad),
-  };
-}
-
 function geocentricPlacement(body: BodyName, when: Date): Placement {
   if (body === "Earth") {
     const time = asTime(when);
@@ -431,7 +433,16 @@ function geocentricPlacement(body: BodyName, when: Date): Placement {
   const time = asTime(when);
   const vector = Astronomy.GeoVector(body as Astronomy.Body, time, true);
   const { lon, lat, dist } = toEcliptic(vector);
-  const world = geocentricWorld(lon, lat);
+
+  // In geocentric mode Earth is at the center; each body gets its own
+  // visually-placed ring radius so planets don't cluster on one line.
+  const radius = GEO_BODY_RADIUS[body] ?? GEO_RING_PX;
+  const rad = lon * DEG2RAD;
+  const latitudeFactor = clamp(lat / 40, -1, 1);
+  const world: Vec2 = {
+    x: radius * Math.cos(rad),
+    y: radius * Math.sin(rad) * (1 - 0.12 * Math.abs(latitudeFactor)),
+  };
   return { body, lon, lat, dist, vector, world, mode: "geocentric" };
 }
 
@@ -563,7 +574,7 @@ function HeartlightSystemMap() {
   const [running, setRunning] = useState(false);
   const [timeScale] = useState(4);
   const [hsmViewMode, setHsmViewMode] = useState<ViewMode>("geocentric");
-  const [rayViewMode, setRayViewMode] = useState<"gaian" | "solar">("solar");
+  const [rayViewMode, setRayViewMode] = useState<"gaian" | "solar">("gaian");
   const [showZodiac, setShowZodiac] = useState(true);
   const [showEclipticGrid, setShowEclipticGrid] = useState(false);
   const [scaleLabels, setScaleLabels] = useState(true);
@@ -994,19 +1005,19 @@ function HeartlightSystemMap() {
             <div className="inline-flex overflow-hidden rounded-xl ml-1">
               <button
                 type="button"
-                className={`atlas-theme-toggle ${raySolarButtonClass}`}
-                aria-pressed={rayViewMode === "solar"}
-                onClick={() => setRayViewMode("solar")}
-              >
-                Solar
-              </button>
-              <button
-                type="button"
                 className={`atlas-theme-toggle ${rayGaianButtonClass}`}
                 aria-pressed={rayViewMode === "gaian"}
                 onClick={() => setRayViewMode("gaian")}
               >
                 Gaian
+              </button>
+              <button
+                type="button"
+                className={`atlas-theme-toggle ${raySolarButtonClass}`}
+                aria-pressed={rayViewMode === "solar"}
+                onClick={() => setRayViewMode("solar")}
+              >
+                Solar
               </button>
             </div>
           </div>
@@ -1391,19 +1402,19 @@ function HeartlightSystemMap() {
         <div className="inline-flex overflow-hidden rounded-xl">
           <button
             type="button"
-            className={`atlas-theme-toggle ${heliocentricButtonClass}`}
-            aria-pressed={hsmViewMode === "heliocentric"}
-            onClick={() => setHsmViewMode("heliocentric")}
-          >
-            Solar
-          </button>
-          <button
-            type="button"
             className={`atlas-theme-toggle ${gaianButtonClass}`}
             aria-pressed={hsmViewMode === "geocentric"}
             onClick={() => setHsmViewMode("geocentric")}
           >
             Gaian
+          </button>
+          <button
+            type="button"
+            className={`atlas-theme-toggle ${heliocentricButtonClass}`}
+            aria-pressed={hsmViewMode === "heliocentric"}
+            onClick={() => setHsmViewMode("heliocentric")}
+          >
+            Solar
           </button>
         </div>
       </div>
