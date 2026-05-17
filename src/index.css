@@ -291,15 +291,43 @@ textarea {
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   box-shadow: 0 0 14px rgba(255, 215, 128, 0.5);
 }
-.atlas-panel button {
+/* Atlas Island: default golden buttons — excludes toggle, utility, and icon-only buttons */
+.atlas-panel button:not(.atlas-theme-toggle):not(.atlas-clean-btn):not(.atlas-icon-btn):not([role="switch"]):not([aria-pressed]) {
   border-color: var(--button-border) !important;
   background: var(--button-bg);
   color: var(--text) !important;
   box-shadow: 0 10px 32px rgba(14, 165, 233, 0.15), 0 0 0 1px rgba(255, 223, 128, 0.65);
   border-radius: 999px;
 }
-.atlas-panel button:hover {
+.atlas-panel button:not(.atlas-theme-toggle):not(.atlas-clean-btn):not(.atlas-icon-btn):not([role="switch"]):not([aria-pressed]):hover {
   background: color-mix(in srgb, rgba(255, 215, 128, 0.34) 60%, var(--button-bg) 40%);
+}
+/* Atlas Theme: Toggle buttons (Solar / Gaian) ── match CURRENT DATE golden-purple */
+.atlas-panel button.atlas-theme-toggle[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(255, 215, 128, 0.85), rgba(168, 85, 247, 0.65)) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 223, 128, 0.7) !important;
+  box-shadow:
+    0 0 12px rgba(255, 215, 128, 0.35),
+    0 0 24px rgba(168, 85, 247, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  font-weight: 600;
+}
+.atlas-panel button.atlas-theme-toggle[aria-pressed="false"] {
+  background: rgba(30, 25, 45, 0.55) !important;
+  color: rgba(180, 160, 210, 0.45) !important;
+  border-color: rgba(168, 85, 247, 0.25) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-weight: 500;
+}
+.atlas-panel button.atlas-theme-toggle[aria-pressed="false"]:hover {
+  background: rgba(45, 35, 65, 0.65) !important;
+  color: rgba(210, 190, 240, 0.65) !important;
+  border-color: rgba(168, 85, 247, 0.45) !important;
+  box-shadow:
+    0 0 8px rgba(168, 85, 247, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .atlas-panel input,
 .atlas-panel select,

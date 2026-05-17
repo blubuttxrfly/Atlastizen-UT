@@ -919,23 +919,39 @@ function HeartlightSystemMap() {
   );
   const heliocentricButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "heliocentric"
-      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
+      ? uiTheme === "atlas"
+        ? "bg-stone-100 text-amber-950 shadow-md shadow-amber-900/20 ring-1 ring-stone-300/50"
+        : "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : uiTheme === "atlas"
+      ? "text-stone-300/90 bg-stone-900/80 border border-stone-600/40 hover:bg-stone-700 hover:text-stone-100 font-medium"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
   const gaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     hsmViewMode === "geocentric"
-      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
+      ? uiTheme === "atlas"
+        ? "bg-stone-100 text-amber-950 shadow-md shadow-amber-900/20 ring-1 ring-stone-300/50"
+        : "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : uiTheme === "atlas"
+      ? "text-stone-300/90 bg-stone-900/80 border border-stone-600/40 hover:bg-stone-700 hover:text-stone-100 font-medium"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
   const raySolarButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "solar"
-      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
+      ? uiTheme === "atlas"
+        ? "bg-stone-100 text-amber-950 shadow-md shadow-amber-900/20 ring-1 ring-stone-300/50"
+        : "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : uiTheme === "atlas"
+      ? "text-stone-300/90 bg-stone-900/80 border border-stone-600/40 hover:bg-stone-700 hover:text-stone-100 font-medium"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
   const rayGaianButtonClass = `px-3 py-1.5 text-xs font-bold transition ${
     rayViewMode === "gaian"
-      ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
-      : "text-slate-300 bg-slate-800 border border-slate-600/80 hover:bg-slate-700 hover:text-slate-100 font-medium"
+      ? uiTheme === "atlas"
+        ? "bg-stone-100 text-amber-950 shadow-md shadow-amber-900/20 ring-1 ring-stone-300/50"
+        : "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+      : uiTheme === "atlas"
+      ? "text-stone-300/90 bg-stone-900/80 border border-stone-600/40 hover:bg-stone-700 hover:text-stone-100 font-medium"
+      : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200 font-medium"
   }`;
 
   return (
@@ -978,7 +994,7 @@ function HeartlightSystemMap() {
             <div className="inline-flex overflow-hidden rounded-xl ml-1">
               <button
                 type="button"
-                className={`${raySolarButtonClass}`}
+                className={`atlas-theme-toggle ${raySolarButtonClass}`}
                 aria-pressed={rayViewMode === "solar"}
                 onClick={() => setRayViewMode("solar")}
               >
@@ -986,7 +1002,7 @@ function HeartlightSystemMap() {
               </button>
               <button
                 type="button"
-                className={`${rayGaianButtonClass}`}
+                className={`atlas-theme-toggle ${rayGaianButtonClass}`}
                 aria-pressed={rayViewMode === "gaian"}
                 onClick={() => setRayViewMode("gaian")}
               >
@@ -1375,7 +1391,7 @@ function HeartlightSystemMap() {
         <div className="inline-flex overflow-hidden rounded-xl">
           <button
             type="button"
-            className={`${heliocentricButtonClass}`}
+            className={`atlas-theme-toggle ${heliocentricButtonClass}`}
             aria-pressed={hsmViewMode === "heliocentric"}
             onClick={() => setHsmViewMode("heliocentric")}
           >
@@ -1383,7 +1399,7 @@ function HeartlightSystemMap() {
           </button>
           <button
             type="button"
-            className={`${gaianButtonClass}`}
+            className={`atlas-theme-toggle ${gaianButtonClass}`}
             aria-pressed={hsmViewMode === "geocentric"}
             onClick={() => setHsmViewMode("geocentric")}
           >
