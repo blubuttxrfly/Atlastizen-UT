@@ -329,6 +329,17 @@ const LARB_HEAD_INDEX = 0;
 const LARB_EYE_INDICES: [number, number] = [1, 2];
 const LARB_AURA_COUNT = 9;
 const LARB_DEFAULT_CHORD: LarbRayId[] = ["red", "turquoise", "violet"];
+const LARB_RAY_TEMPO_FACTORS: Record<LarbRayId, number> = {
+  red: 0.38,
+  orange: 0.46,
+  yellow: 0.56,
+  green: 0.72,
+  turquoise: 0.88,
+  blue: 1.08,
+  indigo: 1.38,
+  violet: 1.88,
+  magenta: 2.95,
+};
 const LARB_ARCHIVE_LIMIT = 12;
 const LARB_CLUSTER_BASE = { x: 50, y: 40 };
 const LARB_CLUSTER_LIMIT = { x: 16, y: 12 };
@@ -2826,8 +2837,11 @@ function SecretLarbSanctum({
   }, [clusterSize.height, clusterSize.width, computedOrbs, pointerSnapshot]);
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-zinc-950/95 p-4 sm:p-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 rounded-3xl border border-zinc-800 bg-zinc-900/70 p-6 shadow-2xl backdrop-blur-2xl">
+    <div
+      className="fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-zinc-950/95 p-3 sm:p-6"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
+      <div className="mx-auto w-full max-w-6xl flex flex-col gap-4 sm:gap-6 rounded-3xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-6 shadow-2xl backdrop-blur-2xl">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.4em] text-zinc-400">Secret Portal</p>
@@ -2848,7 +2862,7 @@ function SecretLarbSanctum({
         <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/50 to-zinc-950/70 p-5 shadow-inner shadow-black/30 space-y-6">
               <div
                 ref={clusterRef}
-                className="relative h-[460px] overflow-hidden rounded-[2.25rem] border border-white/10 bg-gradient-to-b from-zinc-950/85 via-zinc-900/40 to-zinc-950/85 shadow-[0_0_90px_rgba(8,8,15,0.9)]"
+                className="relative h-[320px] sm:h-[400px] md:h-[460px] overflow-hidden rounded-[2.25rem] border border-white/10 bg-gradient-to-b from-zinc-950/85 via-zinc-900/40 to-zinc-950/85 shadow-[0_0_90px_rgba(8,8,15,0.9)]"
                 role="button"
                 tabIndex={0}
             aria-label="Living Aura Ray Being"
@@ -2875,6 +2889,17 @@ function SecretLarbSanctum({
             {computedOrbs.map(({ orb, left, top, color }) => {
               const pupilOffset = eyeOffsets[orb.id] ?? { dx: 0, dy: 0 };
               const pupilDiameter = orb.kind === "eye" ? orb.size * 0.55 : orb.size;
+
+              const auraRay =
+                orb.kind === "aura" ? LARB_RAYS[orb.band % LARB_RAYS.length] : null;
+              const auraTempo = auraRay ? LARB_RAY_TEMPO_FACTORS[auraRay.id] ?? 1 : 1;
+              const auraDriftX = auraRay
+                ? orb.wobble * 1.6 + Math.sin(orb.band * 1.31 + orb.radius) * 18
+                : 0;
+              const auraDriftY = auraRay
+                ? -orb.wobble * 2.1 + Math.cos(orb.band * 1.07 + orb.radius) * 16
+                : 0;
+
               const containerStyle: CSSProperties = {
                 position: "absolute",
                 left: `${left}%`,
@@ -2882,6 +2907,13 @@ function SecretLarbSanctum({
                 width: `${orb.size}px`,
                 height: `${orb.size}px`,
                 transform: "translate(-50%, -50%)",
+                ...(auraRay
+                  ? ({
+                      "--larb-drift-x": `${auraDriftX.toFixed(2)}px`,
+                      "--larb-drift-y": `${auraDriftY.toFixed(2)}px`,
+                      "--larb-tempo": `${auraTempo}`,
+                    } as CSSProperties)
+                  : {}),
               };
               const buttonStyle: CSSProperties = {
                 position: "absolute",
@@ -2932,10 +2964,10 @@ function SecretLarbSanctum({
                     : orb.kind === "head"
                     ? `drop-shadow(0 0 40px ${hexToRgba(auraPalette[0] ?? "#f472b6", 0.35)})`
                     : `blur(${orb.blur}px)`,
-                animationDuration: `${orb.speed}s`,
+                ...(orb.kind === "aura" ? {} : { animationDuration: `${orb.speed}s` }),
               };
               return (
-                <div key={orb.id} style={containerStyle}>
+                <div key={orb.id} className={orb.kind === "aura" ? "larb-orb" : ""} style={containerStyle}>
                   <button
                     type="button"
                     data-orb-id={orb.id}

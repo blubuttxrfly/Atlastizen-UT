@@ -527,9 +527,38 @@ textarea {
 }
 
 .larb-orb {
-  animation-name: larbFloat;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
+  --larb-drift-x: 0px;
+  --larb-drift-y: 0px;
+  --larb-tempo: 1;
+  animation-name: larbDrift, larbOrbSway, larbOrbGlow;
+  animation-duration:
+    calc(var(--larb-tempo) * 16s),
+    calc(var(--larb-tempo) * 18s),
+    calc(var(--larb-tempo) * 14s);
+  animation-timing-function: ease-in-out, ease-in-out, ease-in-out;
+  animation-iteration-count: infinite, infinite, infinite;
+  animation-delay: calc(var(--larb-tempo) * -2s), calc(var(--larb-tempo) * -1s), calc(var(--larb-tempo) * -3s);
+}
+
+@keyframes larbDrift {
+  0% { transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(1); }
+  20% { transform: translate(-50%, -50%) translate3d(calc(var(--larb-drift-x) * 0.4), calc(var(--larb-drift-y) * -0.2), 0) scale(1.04); }
+  40% { transform: translate(-50%, -50%) translate3d(calc(var(--larb-drift-x) * 0.9), calc(var(--larb-drift-y) * -0.65), 0) scale(1.08); }
+  60% { transform: translate(-50%, -50%) translate3d(calc(var(--larb-drift-x) * -0.35), calc(var(--larb-drift-y) * 0.55), 0) scale(1.02); }
+  80% { transform: translate(-50%, -50%) translate3d(calc(var(--larb-drift-x) * -0.75), calc(var(--larb-drift-y) * 0.85), 0) scale(0.98); }
+  100% { transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes larbOrbSway {
+  0%, 100% { filter: saturate(1) brightness(1); }
+  25% { filter: saturate(1.08) brightness(1.05); }
+  50% { filter: saturate(1.05) brightness(1.03); }
+  75% { filter: saturate(1.02) brightness(0.98); }
+}
+
+@keyframes larbOrbGlow {
+  0%, 100% { box-shadow: 0 0 24px rgba(255,255,255,0.12), inset 0 0 14px rgba(255,255,255,0.06); }
+  50% { box-shadow: 0 0 46px rgba(255,255,255,0.22), inset 0 0 22px rgba(255,255,255,0.1); }
 }
 
 .larb-aura-shell {
