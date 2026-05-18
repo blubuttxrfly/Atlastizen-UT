@@ -11,6 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { PRESENT_ONLY } from "./config/rays";
 import { ZIP_LOOKUP_ENDPOINT, ZIP_LOOKUP_USER_AGENT } from "./config/geocode";
@@ -7155,17 +7156,19 @@ export default function AUTClock() {
           • V6.6.6
         </footer>
       </div>
-      {secretOpen && (
-        <SecretLarbSanctum
-          onClose={closeSecretSanctum}
-          activeRayWindow={activeRay}
-          activeLarbRayId={activeLarbRayId}
-          rayProgressPct={progressPct}
-          rayWindowTimes={rayWindowTimes}
-          autClock={smoothClock}
-          remainingMinutes={remainingRealMin}
-        />
-      )}
+      {secretOpen &&
+        createPortal(
+          <SecretLarbSanctum
+            onClose={closeSecretSanctum}
+            activeRayWindow={activeRay}
+            activeLarbRayId={activeLarbRayId}
+            rayProgressPct={progressPct}
+            rayWindowTimes={rayWindowTimes}
+            autClock={smoothClock}
+            remainingMinutes={remainingRealMin}
+          />,
+          document.body
+        )}
     </div>
   );
 }
