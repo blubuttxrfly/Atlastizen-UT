@@ -20,6 +20,7 @@ import { AtlasCometMap } from "./comet/AtlasCometMap";
 import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
+import { useSmoothAUT } from "./hooks/useSmoothAUT";
 
 /**
  * Atlastizen Universal Time (AUT) — Live Clock ✨
@@ -3462,7 +3463,7 @@ export default function AUTClock() {
   }, [coreProfile]);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(new Date()), 100);
     return () => clearInterval(id);
   }, []);
 
@@ -3735,6 +3736,8 @@ export default function AUTClock() {
     () => computeAUT(now, coords.lat, coords.lon),
     [now, coords]
   );
+  const smoothClock = useSmoothAUT(data.autHours, data.segLenMin);
+
   const sol = useMemo(() => {
     try {
       return SolRuntime.now(coords.lat, coords.lon, now);
@@ -5144,7 +5147,7 @@ export default function AUTClock() {
             <div className="flex flex-col gap-3">
               <div className="space-y-1">
                 <div className="text-xs md:text-sm uppercase text-zinc-400">AUT</div>
-                <div className="text-3xl md:text-4xl font-semibold text-white leading-tight">{data.autClock}</div>
+                <div className="text-3xl md:text-4xl font-semibold text-white leading-tight">{smoothClock}</div>
                 <div className="text-sm md:text-base text-zinc-200">Local {formatLongTime(now)}</div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
                   <span>Location:</span>
@@ -5650,7 +5653,7 @@ export default function AUTClock() {
                   </div>
                 ) : null}
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
-                  {data.autClock}
+                  {smoothClock}
                 </div>
                 <div className="text-sm text-zinc-300">
                   Local {formatLongTime(now)}
@@ -5802,7 +5805,7 @@ export default function AUTClock() {
 
         {activePanel === "cosmic" && (
           <CosmicCalendarPanel
-            autClock={data.autClock}
+            autClock={smoothClock}
             autDateLabel={autDateLabel}
             autEarthSolarCyclesLabel={autEarthSolarCycles}
             autLunarCyclesLabel={autLunarCycles}
@@ -7159,7 +7162,7 @@ export default function AUTClock() {
           activeLarbRayId={activeLarbRayId}
           rayProgressPct={progressPct}
           rayWindowTimes={rayWindowTimes}
-          autClock={data.autClock}
+          autClock={smoothClock}
           remainingMinutes={remainingRealMin}
         />
       )}
