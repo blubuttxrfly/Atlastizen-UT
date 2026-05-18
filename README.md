@@ -8,9 +8,11 @@ AUT (Atlastizen Universal Time) is a location-aware, sun-centered time format th
 
 ## 🌞 Core Philosophy
 
-Traditional clocks ignore our Sun. AUT listens. By anchoring midnight to solar noon and scaling the day into 12 equal "hours" between sunrise and sunset, AUT reconnects human rhythm with the actual light cycle of your exact coordinates.
+Traditional clocks ignore our Sun. AUT listens. By anchoring midnight to solar noon and scaling the day into 12 sacred "hours" between sunrise and sunset, AUT reconnects human rhythm with the actual light cycle of your exact coordinates.
 
-> *"Our Sun is the oldest clock. We are only remembering how to read them."*
+Our life ancestry on Earth has ALL-ways had a sacred interconnection with our Sun. We have been reading our Sun for eons as our internal compass. Our Sun set forth life beginning, melting away icy terrains over eons, revealing the sacred divine spark of life from our ocean. Our Sun is our most ancient clock that we & our ancestors have been blessed with.
+
+> *"Our Sun is the oldest clock. We are only remembering how to read it."*
 
 ---
 
