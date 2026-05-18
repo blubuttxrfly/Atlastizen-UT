@@ -2321,10 +2321,10 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
   Orange: {
     title: "Orange",
-    core: "Joy + creative lifeblood.",
+    core: "Art of Life & Essence expression.",
     gifts: "Play, sensual alchemy, emotional flow, art through the body.",
     ideal: "Creating, dancing, connecting, pleasure with presence, inner-child medicine.",
-    affirmation: "My joy creates worlds.",
+    affirmation: "My Art of Life co-creates our world.",
   },
   Yellow: {
     title: "Yellow",
