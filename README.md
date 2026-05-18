@@ -1,4 +1,4 @@
-# ⏳ Atlastizen Universal Time & Tools
+# Atlastizen Universal Time & Tools 📟
 
 **A solar-resonant time system and living toolkit for sovereign beings.**
 
@@ -6,17 +6,15 @@ AUT (Atlastizen Universal Time) is a location-aware, sun-centered time format th
 
 ---
 
-## 🌞 Core Philosophy
+## Core Philosophy 🌞
 
-Traditional clocks ignore our Sun. AUT listens. By anchoring midnight to solar noon and scaling the day into 12 sacred "hours" between sunrise and sunset, AUT reconnects human rhythm with the actual light cycle of your exact coordinates.
+Most clocks divide the day into 24 fixed hours without regard for where you stand or what the sky is doing. AUT is different. It measures the living rhythm of light and shadow at your exact coordinates. Sunrise marks the beginning. Sunset marks the halfway point. From there, daylight and night are each divided into 12 sacred intervals that stretch and contract with the season — because our Sun is not a fixed point in the sky.
 
 Our life ancestry on Earth has ALL-ways had a sacred interconnection with our Sun. We have been reading our Sun for eons as our internal compass. Our Sun set forth life beginning, melting away icy terrains over eons, revealing the sacred divine spark of life from our ocean. Our Sun is our most ancient clock that we & our ancestors have been blessed with.
 
-> *"Our Sun is the oldest clock. We are only remembering how to read it."*
-
 ---
 
-## 🛠 Tech Stack
+## Tech Stack 🛠
 
 | Layer | Technology |
 |-------|-----------|
@@ -30,16 +28,16 @@ Our life ancestry on Earth has ALL-ways had a sacred interconnection with our Su
 
 ---
 
-## 🎛 The 15 Living Panels
+## The 15 Living Panels 🎛
 
 | Panel | Purpose |
 |-------|---------|
+| **Ray Astrology ⭐** | Dual-frame astrological system: Gaian Birth (geocentric from Earth) and Solar Heartlight (heliocentric from our Sun). 12 Rays map to zodiac signs, planets, and sacred frequencies. Dimensional layer coming soon. |
 | **AUT Clock** | The heart — live solar time, sunrise/sunset, equilux mode, smooth second interpolation |
 | **Cosmic Calendar** | 13.8-billion-year timeline from Universe birth to now, layered by cosmos → galaxy → star → planet → life |
 | **Sol Panel** | Solar position, golden hour, day length, solar return tracking |
 | **Luna Panel** | Moon phase, rise/set times, illumination percentage, lunar iconography |
 | **Gyro Compass** | Device-orientation heading, pitch, roll — with iOS permission handling |
-| **Ray Astrology** | Interactive heliocentric/geocentric solar system canvas with zodiac wheel, planetary positions, and configurable orbital overlays |
 | **Ray Dial** | 12 color-coded Ray windows of the day with live progress through the current window |
 | **Rays of the Week** | 7-day dual-cycle Ray calendar (2 cycles per day) |
 | **Ray Reading** | Deep spiritual readings for all 12 Rays: core signature, gifts, ideal activities, and affirmations |
@@ -51,23 +49,43 @@ Our life ancestry on Earth has ALL-ways had a sacred interconnection with our Su
 
 ---
 
-## 🔮 The Secret Portal
+## Ray Astrology ⭐
 
-Triple-tap the **Atlas Island** emblem at the bottom of the app to open a hidden overlay:
+Ray Astrology is the living heart of the AUT system — a dual-frame astrological map that tracks the sacred geometry of our solar system through **two perspectives that must never be confused:**
 
-- **Living Aura Ray Being** — A cluster of 12 interactive orbs (1 head, 2 eyes, 9 aura orbs)
-- **Ray Wheel** — Select any chord of Rays to attune the being's palette
-- **Plasma Eye Canvas** — Reactive pupils that track your pointer across the screen
-- **Eye Shapes** — Round (gentle), Nova (faceted), Crescent (dreaming)
-- **Resonance Scoring** — Live percentage based on chord harmony with the active Ray
-- **Archetype Saving** — Name and store your favorite configurations to localStorage
-- **Wisdom Bubbles** — Random affirmations and live-cycle messages
-- **Draggable Physics** — Drag the cluster or nudge individual orbs; they share one gravity
-- **Frequency-Scaled Animation** — Aura orbs drift at speeds mapped to their Ray frequency (Red = majestic slow, Magenta = energetic fast)
+| Frame | Coordinates | Perspective | Function |
+|-------|-------------|-------------|----------|
+| **Gaian Birth** | Geocentric | From Earth (Gaia) | Incarnation imprint — body, psyche, lived experience |
+| **Solar Heartlight** | Heliocentric | From our Sun (Heartlight) | Soul curriculum — higher purpose, annual evolution |
+
+### The 12 Rays of the Zodiac
+
+Each zodiac sign carries a sacred Ray frequency, mapping the soul's journey through color, virtue, and cosmic timing:
+
+| Zodiac Sign | Ray | Color | Essence |
+|-------------|-----|-------|---------|
+| ♈︎ Aries | **Red** | #ef4444 | Initiation • courage • first-breath action |
+| ♉︎ Taurus | **Orange** | #f97316 | Sensory stability • value • embodiment |
+| ♊︎ Gemini | **Yellow** | #facc15 | Curiosity • cognition • connection |
+| ♋︎ Cancer | **Green** | #22c55e | Nurture • belonging • home-field manifestation |
+| ♌︎ Leo | **Turquoise** | #2dd4bf | Radiance • heart-expression • creative leadership |
+| ♍︎ Virgo | **Blue** | #3b82f6 | Refinement • sacred craft • clarity |
+| ♎︎ Libra | **Indigo** | #6366f1 | Discernment • harmony • relational truth |
+| ♏︎ Scorpio | **Violet** | #8b5cf6 | Depth • transmutation • shadow alchemy |
+| ♐︎ Sagittarius | **Magenta** | #d946ef | Expansion • prophecy • horizon-seeking |
+| ♑︎ Capricorn | **Omni/Carbon** | #fafafa | Structure • endurance • legacy-building |
+| ♒︎ Aquarius | **Crystalline-Carbon** | #a5f3fc | Future codes • networks • innovation |
+| ♓︎ Pisces | **Infinite of ALL** | #7dd3fc | Mysticism • compassion • unity consciousness |
+
+### How It Works
+
+The **Heartlight System Map (HSM)** renders an interactive canvas of our solar system. Toggle between **Gaian** and **Solar** lenses to shift between Earth-centered and Sun-centered consciousness. The zodiac wheel, planetary glyphs, and Ray Zones all update in real time as you navigate dates, places, and profiles.
+
+**Coming soon:** The **Dimensional Layer** — each Rays' harmonic frequencies will extend beyond the physical plane into energetic dimensions, mapping the soul's multi-layered architecture through sacred geometry and resonance.
 
 ---
 
-## 🎨 Themes
+## Themes 🎨
 
 | Theme | Vibe |
 |-------|------|
@@ -77,7 +95,7 @@ Triple-tap the **Atlas Island** emblem at the bottom of the app to open a hidden
 
 ---
 
-## 🌐 External APIs
+## External APIs 🌐
 
 - **timeapi.io** — Timezone lookup by coordinates
 - **Open-Meteo** — Weather and historical temperature data
@@ -85,7 +103,7 @@ Triple-tap the **Atlas Island** emblem at the bottom of the app to open a hidden
 
 ---
 
-## 🚀 Scripts
+## Scripts 🚀
 
 ```bash
 npm run dev          # Vite dev server
@@ -98,7 +116,7 @@ npm run version:deploy  # Bump minor version
 
 ---
 
-## 📁 Architecture Notes
+## Architecture Notes 📁
 
 The app is intentionally structured as a **single-file application** (`src/index.tsx`, ~7,200 lines) containing all panels, state, and logic. Supporting modules are organized by concern:
 
@@ -111,7 +129,7 @@ The app is intentionally structured as a **single-file application** (`src/index
 
 ---
 
-## 🪪 License
+## License 🪪
 
 Sovereign Source — built for beings, not corporations.
 
