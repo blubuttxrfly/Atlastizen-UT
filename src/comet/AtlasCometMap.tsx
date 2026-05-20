@@ -876,8 +876,8 @@ function HeartlightSystemMap() {
         let effectivePlacement = placement;
 
         // Gaian (geocentric) lens: Earth faces the anti-solar point.
-        // The zodiac belt wraps around Earth, so Earth’s astrological
-        // position is opposite the Sun — same distance, 180° apart.
+        // The zodiac belt wraps around Earth, so Earth's astrological
+        // position is opposite the Sun at 180° — distance is 0 in this frame.
         if (mode === "geocentric" && body === "Earth") {
           const sun = byBody.get("Sun");
           if (sun) {
@@ -885,7 +885,7 @@ function HeartlightSystemMap() {
               ...placement,
               lon: normalizeDegrees(sun.lon + 180),
               lat: sun.lat,
-              dist: sun.dist,
+              dist: 0,
             };
           }
         }
