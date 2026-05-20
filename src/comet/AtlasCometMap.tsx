@@ -1561,17 +1561,33 @@ function HeartlightSystemMap() {
           </button>
           {keyOpen ? (
             <>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>λ: Geocentric ecliptic longitude (degrees along the zodiac band).</div>
-                <div>β: Geocentric ecliptic latitude (degrees above/below the ecliptic plane).</div>
-                <div>Δ: Distance from Earth in astronomical units (AU).</div>
-                <div>Sign symbol & name: Zodiac sector containing the body at this moment.</div>
-                <div>Earth placement: shown at Sun λ + 180° to reflect its heliocentric opposition to the Sun.</div>
-              </div>
-              <p className="mt-2 text-slate-300">
-                In the heliocentric view, Earth is always 180° from the Sun along the ecliptic. Displaying Earth opposite the Sun lets the zodiac
-                label align with the star field that Earth is “facing” in space.
-              </p>
+              {rayViewMode === "gaian" ? (
+                <>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>λ: Geocentric ecliptic longitude — degrees along the zodiac band from Earth's view.</div>
+                    <div>β: Geocentric ecliptic latitude — degrees above/below the ecliptic plane from Earth.</div>
+                    <div>Δ: Distance from Earth in AU. Earth is the Heartlight center of this frame — its own distance is 0.</div>
+                    <div>Sign symbol &amp; name: Zodiac sector containing the body at this moment.</div>
+                    <div>Earth: Faces the anti-solar point (Sun λ + 180°), the star field Earth gazes toward.</div>
+                  </div>
+                  <p className="mt-2 text-slate-300">
+                    In the Gaian view, Earth is the center of our Universe's Heartlight. The zodiac wraps around her, and all bodies are measured from her sacred soil. Earth faces the star field opposite our Sun — the window through which Gaia gazes into the cosmos.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>λ: Ecliptic longitude — geocentric for our Sun, heliocentric for all other bodies.</div>
+                    <div>β: Ecliptic latitude — geocentric for our Sun, heliocentric for all other bodies.</div>
+                    <div>Δ: Distance from our Sun in AU. Sol is the center of this frame — its own distance is 0.</div>
+                    <div>Sign symbol &amp; name: Zodiac sector containing the body at this moment.</div>
+                    <div>Earth: Real heliocentric orbit around the sovereign fire.</div>
+                  </div>
+                  <p className="mt-2 text-slate-300">
+                    In the Solar view, our Sun is the center of the system. The Sun card shows its geocentric sign (for Solar Return readings), while all other bodies show their true heliocentric positions. Earth orbits the sovereign fire with all her sister worlds.
+                  </p>
+                </>
+              )}
             </>
           ) : null}
         </div>
