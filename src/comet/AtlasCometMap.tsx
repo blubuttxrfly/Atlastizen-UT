@@ -892,8 +892,12 @@ function HeartlightSystemMap() {
 
         // Solar (heliocentric) lens: Sun shows its geocentric sign
         // (Solar Returns are defined by the Sun's geocentric longitude).
+        // The Sun is the center of this frame — distance is 0.
         if (mode === "heliocentric" && body === "Sun") {
-          effectivePlacement = geocentricPlacement("Sun", when);
+          effectivePlacement = {
+            ...geocentricPlacement("Sun", when),
+            dist: 0,
+          };
         }
 
         const zodiac = zodiacFromLongitude(effectivePlacement.lon);
