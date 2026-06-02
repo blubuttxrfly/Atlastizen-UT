@@ -11,6 +11,7 @@ export type SolarReturnProfile = {
   birthYear?: number;
   birthHour?: number;   // 0-23
   birthMinute?: number; // 0-59
+  birthTimezoneOffset?: number; // minutes offset from UTC (e.g., -300 for EST)
   birthLat: number;
   birthLon: number;
   birthPlaceLabel: string;

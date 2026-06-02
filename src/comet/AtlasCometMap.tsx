@@ -2,6 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Astronomy from "astronomy-engine";
 import { useSolarReturn, type SolarReturnProfile } from "../hooks/useSolarReturn";
 import { useForwardGeocode } from "../hooks/useForwardGeocode";
+import {
+  type ExtendedChartData,
+  type ChartAngle,
+  HOUSE_THEMES,
+  buildChart,
+  buildLiveChart,
+  buildNatalChart,
+  makeBirthDateUTC,
+  findSolarReturnMoment,
+} from "../lib/extendedChart";
+import { estimateFromLongitude } from "../lib/timezone";
+import { fetchTimezoneOffset } from "../lib/timezone";
 type Vec2 = { x: number; y: number };
 
 type ViewMode = "heliocentric" | "geocentric";
@@ -143,6 +155,20 @@ const ZODIAC_HUES = [
   "#a5f3fc", // Aquarius (Crystalline-Carbon)
   "#7dd3fc", // Pisces (Infinite of ALL)
 ];
+
+const CAPRICORN_INDEX = 9; // Carbon — needs white border on dark bg
+
+function carbonTextStyle(index: number): React.CSSProperties {
+  const color = ZODIAC_HUES[index] ?? "#e2e8f0";
+  if (index === CAPRICORN_INDEX) {
+    return {
+      color,
+      WebkitTextStroke: "0.4px rgba(255,255,255,0.7)",
+      textShadow: "0 0 3px rgba(255,255,255,0.5), 0 0 6px rgba(255,255,255,0.25)",
+    };
+  }
+  return { color };
+}
 
 const ZODIAC_RAY_NAMES = [
   "Red Ray",
@@ -611,6 +637,33 @@ function HeartlightSystemMap() {
     atlas: "#fffbef",
   };
   const [keyOpen, setKeyOpen] = useState(false);
+  /* ── Extended Chart ──────────────────────────────────────────────── */
+  const [houseInfoOpen, setHouseInfoOpen] = useState(false);
+  const [extChartOpen, setExtChartOpen] = useState(false);
+  const [extChartMode, setExtChartMode] = useState<"live" | "solar" | "natal">("live");
+  const [srTargetYear, setSrTargetYear] = useState(() => new Date().getFullYear());
+
+  /* ── Live Sky location (can differ from birth location) ──────────── */
+  const [liveLocation, setLiveLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const [liveLocQuery, setLiveLocQuery] = useState("");
+  const { results: liveGeocodeResults } = useForwardGeocode(liveLocQuery);
+  const detectCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by this browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setLiveLocation({ lat: latitude, lon: longitude, displayName: "Current Location" });
+        setLiveLocQuery("");
+      },
+      (err) => {
+        console.error("Geolocation error:", err);
+        alert("Unable to retrieve your location.");
+      }
+    );
+  }, []);
 
   /* ── Solar Return constellation ─────────────────────────────────────────── */
   const {
@@ -632,6 +685,7 @@ function HeartlightSystemMap() {
   const [addName, setAddName] = useState("");
   const [addDateStr, setAddDateStr] = useState("");
   const [addTimeStr, setAddTimeStr] = useState("12:00");
+  const [addTimezoneOffset, setAddTimezoneOffset] = useState(-300);
   const [addLocationQuery, setAddLocationQuery] = useState("");
   const [addSelectedLocation, setAddSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
   const { results: addGeocodeResults } = useForwardGeocode(addLocationQuery);
@@ -640,6 +694,7 @@ function HeartlightSystemMap() {
   const [editName, setEditName] = useState("");
   const [editDateStr, setEditDateStr] = useState("");
   const [editTimeStr, setEditTimeStr] = useState("12:00");
+  const [editTimezoneOffset, setEditTimezoneOffset] = useState(-300);
   const [editLocationQuery, setEditLocationQuery] = useState("");
   const [editSelectedLocation, setEditSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
   const { results: editGeocodeResults } = useForwardGeocode(editLocationQuery);
@@ -648,6 +703,7 @@ function HeartlightSystemMap() {
     setAddName("");
     setAddDateStr("");
     setAddTimeStr("12:00");
+    setAddTimezoneOffset(-300);
     setAddLocationQuery("");
     setAddSelectedLocation(null);
     setShowAddForm(true);
@@ -662,6 +718,7 @@ function HeartlightSystemMap() {
     const hStr = (profile.birthHour ?? 12).toString().padStart(2, "0");
     const minStr = (profile.birthMinute ?? 0).toString().padStart(2, "0");
     setEditTimeStr(`${hStr}:${minStr}`);
+    setEditTimezoneOffset(profile.birthTimezoneOffset ?? -300);
     setEditLocationQuery("");
     setEditSelectedLocation({ lat: profile.birthLat, lon: profile.birthLon, displayName: profile.birthPlaceLabel });
     setEditingId(profile.id);
@@ -669,13 +726,16 @@ function HeartlightSystemMap() {
 
   const applySolarReturn = useCallback(() => {
     if (!activeProfile) return;
-    const natalDate = new Date(
+    const tzOffset =
+      activeProfile.birthTimezoneOffset ??
+      estimateFromLongitude(activeProfile.birthLon);
+    const natalDate = makeBirthDateUTC(
       activeProfile.birthYear ?? 2000,
       activeProfile.birthMonth,
       activeProfile.birthDay,
       activeProfile.birthHour ?? 12,
       activeProfile.birthMinute ?? 0,
-      0
+      tzOffset
     );
     timeRef.current = natalDate.getTime();
     setWhen(new Date(natalDate));
@@ -1089,6 +1149,33 @@ function HeartlightSystemMap() {
         </div>
       </div>
 
+      {/* Extended Chart */}
+      <div className="rounded-xl border border-sky-500/20 bg-slate-800/60 p-3">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between font-semibold text-sky-100"
+          onClick={() => setExtChartOpen((v) => !v)}
+        >
+          <span>Extended Chart</span>
+          <span className="text-xs text-sky-200/80">{extChartOpen ? "Hide" : "Show"}</span>
+        </button>
+        {extChartOpen && (
+          <ChartPanel
+            activeProfile={activeProfile}
+            extChartMode={extChartMode}
+            setExtChartMode={setExtChartMode}
+            srTargetYear={srTargetYear}
+            setSrTargetYear={setSrTargetYear}
+            liveLocation={liveLocation}
+            setLiveLocation={setLiveLocation}
+            liveLocQuery={liveLocQuery}
+            setLiveLocQuery={setLiveLocQuery}
+            liveGeocodeResults={liveGeocodeResults}
+            detectCurrentLocation={detectCurrentLocation}
+          />
+        )}
+      </div>
+
       {/* 1b) Solar Return Constellation */}
       <div className="space-y-2 text-slate-100">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1187,6 +1274,20 @@ function HeartlightSystemMap() {
                       <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
                       <input type="date" value={editDateStr} onChange={(e) => setEditDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
                       <input type="time" step={60} value={editTimeStr} onChange={(e) => setEditTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs text-sky-200">UTC offset:</label>
+                        <select
+                          value={editTimezoneOffset}
+                          onChange={(e) => setEditTimezoneOffset(Number(e.target.value))}
+                          className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
+                        >
+                          {Array.from({ length: 29 }, (_, i) => i - 14).map((h) => (
+                            <option key={h} value={h * 60}>
+                              {h >= 0 ? `UTC+${h}` : `UTC${h}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="relative">
                       <input
@@ -1202,7 +1303,22 @@ function HeartlightSystemMap() {
                               <button
                                 type="button"
                                 className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                                onClick={() => { setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setEditLocationQuery(""); }}
+                                onClick={async () => {
+                                  const dateParts = editDateStr.split("-").map(Number);
+                                  const [year, month, day] = dateParts;
+                                  const [hour, minute] = editTimeStr.split(":").map(Number);
+                                  const tzOffset = await fetchTimezoneOffset(
+                                    r.lat, r.lon,
+                                    year || 2000,
+                                    (month || 1) - 1,
+                                    day || 1,
+                                    hour ?? 12,
+                                    minute ?? 0
+                                  );
+                                  setEditTimezoneOffset(tzOffset);
+                                  setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName });
+                                  setEditLocationQuery("");
+                                }}
                               >
                                 {r.displayName}
                               </button>
@@ -1226,6 +1342,7 @@ function HeartlightSystemMap() {
                             birthYear: yStr || 2000,
                             birthHour: hStr ?? 12,
                             birthMinute: minStr ?? 0,
+                            birthTimezoneOffset: editTimezoneOffset,
                             birthLat: loc.lat,
                             birthLon: loc.lon,
                             birthPlaceLabel: loc.displayName,
@@ -1259,6 +1376,20 @@ function HeartlightSystemMap() {
                 <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
                 <input type="date" value={addDateStr} onChange={(e) => setAddDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
                 <input type="time" step={60} value={addTimeStr} onChange={(e) => setAddTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
+                <div className="flex items-center gap-1">
+                  <label className="text-xs text-sky-200">UTC offset:</label>
+                  <select
+                    value={addTimezoneOffset}
+                    onChange={(e) => setAddTimezoneOffset(Number(e.target.value))}
+                    className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
+                  >
+                    {Array.from({ length: 29 }, (_, i) => i - 14).map((h) => (
+                      <option key={h} value={h * 60}>
+                        {h >= 0 ? `UTC+${h}` : `UTC${h}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="relative">
                 <input
@@ -1274,7 +1405,22 @@ function HeartlightSystemMap() {
                         <button
                           type="button"
                           className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                          onClick={() => { setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setAddLocationQuery(""); }}
+                          onClick={async () => {
+                            const dateParts = addDateStr.split("-").map(Number);
+                            const [year, month, day] = dateParts;
+                            const [hour, minute] = addTimeStr.split(":").map(Number);
+                            const tzOffset = await fetchTimezoneOffset(
+                              r.lat, r.lon,
+                              year || 2000,
+                              (month || 1) - 1,
+                              day || 1,
+                              hour ?? 12,
+                              minute ?? 0
+                            );
+                            setAddTimezoneOffset(tzOffset);
+                            setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName });
+                            setAddLocationQuery("");
+                          }}
                         >
                           {r.displayName}
                         </button>
@@ -1299,6 +1445,7 @@ function HeartlightSystemMap() {
                       birthYear: yStr || 2000,
                       birthHour: hStr ?? 12,
                       birthMinute: minStr ?? 0,
+                      birthTimezoneOffset: addTimezoneOffset,
                       birthLat: loc.lat,
                       birthLon: loc.lon,
                       birthPlaceLabel: loc.displayName,
@@ -1554,6 +1701,48 @@ function HeartlightSystemMap() {
           <button
             type="button"
             className="flex w-full items-center justify-between font-semibold text-sky-100"
+            onClick={() => setHouseInfoOpen((v) => !v)}
+          >
+            <span>House Information</span>
+            <span className="text-xs text-sky-200/80">{houseInfoOpen ? "Hide" : "Show"}</span>
+          </button>
+          {houseInfoOpen ? (
+            <div className="mt-2 space-y-3 text-[0.8rem] text-slate-100">
+              <p className="text-slate-200">
+                The 12 houses are the 12 slices of the sky at your birth moment. Each represents a sphere of life experience. Unlike the zodiac signs (fixed star patterns), the houses are determined by Earth&apos;s rotation and your location on the planet.
+              </p>
+              <p className="text-slate-200">
+                House 1 begins at the <strong className="text-sky-100">Ascendant</strong> — the eastern horizon. The remaining houses follow counter-clockwise.
+              </p>
+              <div className="mt-1 space-y-1.5">
+                {Array.from({ length: 12 }, (_, i) => {
+                  const hue = ZODIAC_HUES[i] ?? "#e2e8f0";
+                  const isCarbon = i === 9;
+                  const labelStyle = isCarbon
+                    ? { color: hue, textShadow: "-0.6px 0 #fff, 0.6px 0 #fff, 0 -0.6px #fff, 0 0.6px #fff, 0 0 8px rgba(0,0,0,0.25)" }
+                    : { color: hue };
+                  return (
+                    <div key={i} className="flex flex-wrap items-start gap-x-2 border-b border-sky-500/10 pb-1.5 last:border-b-0 last:pb-0">
+                      <span className="font-semibold shrink-0" style={labelStyle}>{`House ${i + 1} — ${ZODIAC_RAY_NAMES[i]}`}</span>
+                      <span className="text-slate-200">{HOUSE_THEMES[i]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="rounded-md border border-sky-500/20 bg-sky-900/20 p-2.5">
+                <span className="text-xs font-semibold text-sky-300">C.E.S. Cosmology: Elemental Ray</span>
+                <p className="mt-1 text-xs leading-relaxed text-sky-200/70">
+                  House 11 resonates with the <strong className="text-sky-300">Elemental Ray</strong> honoring our Universe&apos;s C.E.S. — Crystalline-Carbon. Carbon is the foundational element of our reality: carbon-based life forms and the structural basis of our Universe itself.
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-sky-500/20 bg-slate-800/60 p-3">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between font-semibold text-sky-100"
             onClick={() => setKeyOpen((v) => !v)}
           >
             <span>Ecliptic & Alignment Key</span>
@@ -1592,6 +1781,296 @@ function HeartlightSystemMap() {
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Extended Chart Panel ──────────────────────────────────────────────── */
+
+function ChartPanel({
+  activeProfile,
+  extChartMode,
+  setExtChartMode,
+  srTargetYear,
+  setSrTargetYear,
+  liveLocation,
+  setLiveLocation,
+  liveLocQuery,
+  setLiveLocQuery,
+  liveGeocodeResults,
+  detectCurrentLocation,
+}: {
+  activeProfile: import("../hooks/useSolarReturn").SolarReturnProfile | null;
+  extChartMode: "live" | "solar" | "natal";
+  setExtChartMode: (m: "live" | "solar" | "natal") => void;
+  srTargetYear: number;
+  setSrTargetYear: (y: number) => void;
+  liveLocation: { lat: number; lon: number; displayName: string } | null;
+  setLiveLocation: (loc: { lat: number; lon: number; displayName: string } | null) => void;
+  liveLocQuery: string;
+  setLiveLocQuery: (q: string) => void;
+  liveGeocodeResults: Array<{ lat: number; lon: number; displayName: string }>;
+  detectCurrentLocation: () => void;
+}) {
+  const [chartData, setChartData] = useState<ExtendedChartData | null>(null);
+
+  useEffect(() => {
+    if (extChartMode === "live") {
+      const lat = liveLocation?.lat ?? activeProfile?.birthLat ?? 35.25;
+      const lon = liveLocation?.lon ?? activeProfile?.birthLon ?? -80.8;
+      setChartData(buildLiveChart(lat, lon));
+      return;
+    }
+
+    if (!activeProfile) {
+      setChartData(null);
+      return;
+    }
+
+    if (extChartMode === "natal") {
+      const p = activeProfile;
+      const tzOffset =
+        p.birthTimezoneOffset ??
+        estimateFromLongitude(p.birthLon);
+      const data = buildNatalChart(
+        p.birthMonth, p.birthDay, p.birthYear ?? 2000,
+        p.birthHour ?? 12, p.birthMinute ?? 0,
+        p.birthLat, p.birthLon,
+        tzOffset
+      );
+      setChartData(data);
+      return;
+    }
+
+    if (extChartMode === "solar") {
+      const p = activeProfile;
+      const tzOffset =
+        p.birthTimezoneOffset ??
+        estimateFromLongitude(p.birthLon);
+      const srDate = findSolarReturnMoment(
+        p.birthMonth, p.birthDay, p.birthYear ?? 2000,
+        p.birthHour ?? 12, p.birthMinute ?? 0,
+        p.birthLat, p.birthLon,
+        srTargetYear,
+        tzOffset
+      );
+      if (srDate) {
+        setChartData(buildChart(srDate, p.birthLat, p.birthLon));
+      } else {
+        setChartData(null);
+      }
+    }
+  }, [extChartMode, activeProfile, srTargetYear, liveLocation]);
+
+  if (!activeProfile) {
+    return (
+      <div className="rounded-xl border border-sky-500/20 bg-slate-800/60 p-3 text-sm text-slate-300">
+        Add a Solar Return constellation below to unlock the Extended Chart.
+      </div>
+    );
+  }
+
+  const p = activeProfile;
+  const hasTime = p.birthHour != null && p.birthMinute != null;
+
+  return (
+    <div className="mt-2 space-y-3">
+      {/* Active profile banner */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-sky-900/30 px-2.5 py-1.5">
+        <span className="text-xs font-semibold text-sky-200">{p.name}</span>
+        <span className="text-[0.65rem] text-sky-500">•</span>
+        <span className="text-[0.65rem] text-slate-300">
+          {extChartMode === "live"
+            ? `Live Sky • ${liveLocation?.displayName ?? p.birthPlaceLabel ?? "Current Location"}`
+            : extChartMode === "natal"
+            ? `Natal Chart • ${p.birthMonth + 1}/${p.birthDay}/${p.birthYear ?? "??"} ${hasTime ? `@ ${p.birthHour}:${p.birthMinute?.toString().padStart(2, "0") ?? "00"}` : ""}`
+            : `Solar Return • ${srTargetYear}`}
+        </span>
+        <span className="ml-auto text-[0.65rem] text-slate-500 truncate max-w-[140px]">{extChartMode === "live" ? (liveLocation?.displayName ?? p.birthPlaceLabel) : p.birthPlaceLabel}</span>
+      </div>
+
+      {/* Mode selector — grouped: Chart (Natal / Solar) vs. Moment (Live) */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Primary: Natal — the native chart */}
+        <button
+          type="button"
+          onClick={() => setExtChartMode("natal")}
+          className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+            extChartMode === "natal"
+              ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+              : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200"
+          }`}
+        >
+          Natal Chart
+        </button>
+
+        {hasTime && (
+          <button
+            type="button"
+            onClick={() => setExtChartMode("solar")}
+            className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+              extChartMode === "solar"
+                ? "bg-white text-slate-900 shadow-lg shadow-white/25 ring-1 ring-white/70"
+                : "text-slate-400 bg-slate-900/70 border border-slate-700/50 hover:bg-slate-800 hover:text-slate-200"
+            }`}
+          >
+            Solar Return
+          </button>
+        )}
+
+        <span className="text-slate-700">|</span>
+
+        {/* Secondary: Current moment (transit) */}
+        <button
+          type="button"
+          onClick={() => setExtChartMode("live")}
+          className={`rounded-md px-2.5 py-1 text-xs font-bold transition ${
+            extChartMode === "live"
+              ? "bg-sky-600 text-white shadow-lg shadow-sky-600/30"
+              : "text-slate-500 bg-slate-900/40 border border-slate-700/30 hover:bg-slate-800 hover:text-slate-300"
+          }`}
+        >
+          Live Sky
+        </button>
+      </div>
+
+      {/* Live Sky location selector */}
+      {extChartMode === "live" && (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={detectCurrentLocation}
+              className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-[0.7rem] text-sky-200 transition hover:bg-sky-500/20"
+            >
+              Use Current Location
+            </button>
+            <span className="text-[0.65rem] text-slate-500">or search:</span>
+            <input
+              value={liveLocQuery}
+              onChange={(e) => setLiveLocQuery(e.target.value)}
+              placeholder="City, country..."
+              className="flex-1 min-w-[120px] rounded border border-sky-500/20 bg-slate-900/50 px-2 py-1 text-xs text-sky-100 placeholder-slate-500 outline-none"
+            />
+          </div>
+          {liveGeocodeResults.length > 0 && (
+            <ul className="rounded-md border border-sky-500/10 bg-slate-900/60 py-1 text-xs">
+              {liveGeocodeResults.slice(0, 6).map((r) => (
+                <li key={`${r.lat}-${r.lon}`}>
+                  <button
+                    type="button"
+                    className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
+                    onClick={() => { setLiveLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setLiveLocQuery(""); }}
+                  >
+                    {r.displayName}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {liveLocation && (
+            <div className="text-[0.65rem] text-slate-400">
+              Live location: <span className="text-sky-200">{liveLocation.displayName}</span>
+              {liveLocation.displayName !== "Current Location" && (
+                <button
+                  type="button"
+                  className="ml-2 text-slate-500 hover:text-slate-300"
+                  onClick={() => setLiveLocation(null)}
+                >
+                  (reset)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Year selector for Solar Return */}
+      {extChartMode === "solar" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Year:</span>
+          <input
+            type="number"
+            min={1900}
+            max={2100}
+            value={srTargetYear}
+            onChange={(e) => setSrTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+            className="w-20 rounded-md border border-sky-500/30 bg-slate-900/50 px-2 py-1 text-xs text-sky-100 outline-none"
+          />
+        </div>
+      )}
+
+      {/* Four angles */}
+      {chartData && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <AngleCard angle={chartData.ascendant} label="Ascendant (Rising)" />
+            <AngleCard angle={chartData.descendant} label="Descendant" />
+            <AngleCard angle={chartData.midheaven} label="Midheaven (MC)" />
+            <AngleCard angle={chartData.ic} label="IC (Imum Coeli)" />
+          </div>
+          {/* Sun */}
+          <div className="flex items-center gap-2 rounded-md border border-sky-500/10 bg-slate-900/40 px-2.5 py-1.5">
+            <span className="text-sm font-semibold text-sky-100">Sun:</span>
+            <span className="text-base" style={carbonTextStyle(chartData.sun.signIndex)}>{chartData.sun.signSymbol}</span>
+            <span className="text-sm font-medium text-slate-200">{chartData.sun.signName} {chartData.sun.degrees}°</span>
+            <span className="ml-auto text-xs" style={carbonTextStyle(chartData.sun.signIndex)}>{ZODIAC_RAY_NAMES[chartData.sun.signIndex]}</span>
+          </div>
+          {/* Houses: 1–6 left column, 7–12 right column */}
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              {chartData.houses.slice(0, 6).map((h) => (
+                <HouseRow key={h.houseNumber} house={h} />
+              ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              {chartData.houses.slice(6, 12).map((h) => (
+                <HouseRow key={h.houseNumber} house={h} />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AngleCard({ angle, label }: { angle: ChartAngle; label: string }) {
+  return (
+    <div className="rounded-md border border-sky-500/10 bg-slate-900/40 px-2.5 py-2 space-y-0.5">
+      <div className="text-[0.65rem] uppercase tracking-wide text-sky-200/60">{label}</div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-lg" style={carbonTextStyle(angle.signIndex)}>{angle.signSymbol}</span>
+        <span className="text-sm font-semibold text-slate-100">{angle.signName} {angle.degrees}°{angle.minutes > 0 ? ` ${angle.minutes}'` : ""}</span>
+      </div>
+      <div className="text-[0.65rem] font-medium" style={carbonTextStyle(angle.signIndex)}>{ZODIAC_RAY_NAMES[angle.signIndex]}</div>
+    </div>
+  );
+}
+
+function HouseRow({ house }: { house: import("../lib/extendedChart").House }) {
+  const isCarbon = house.cusp.signIndex === CAPRICORN_INDEX;
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-sky-500/10 bg-slate-900/40 px-2 py-1.5">
+      <div
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-bold ${isCarbon ? "text-white border border-white/40" : "text-white"}`}
+        style={{ backgroundColor: house.rayColor }}
+      >
+        {house.houseNumber}
+      </div>
+      <span
+        className="text-[0.8rem] font-medium text-slate-200 shrink-0"
+        style={isCarbon ? { WebkitTextStroke: "0.3px rgba(255,255,255,0.6)", textShadow: "0 0 4px rgba(255,255,255,0.4)" } : undefined}
+      >
+        {house.cusp.signSymbol} {house.cusp.signName}
+      </span>
+      <span className="text-[0.65rem] text-slate-400 truncate">{house.theme}</span>
+      <span
+        className="ml-auto text-[0.65rem] font-medium shrink-0"
+        style={carbonTextStyle(house.cusp.signIndex)}
+      >
+        {house.rayName}
+      </span>
     </div>
   );
 }
