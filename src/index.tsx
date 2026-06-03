@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { PRESENT_ONLY } from "./config/rays";
 import { ZIP_LOOKUP_ENDPOINT, ZIP_LOOKUP_USER_AGENT } from "./config/geocode";
+import { useForwardGeocode } from "./hooks/useForwardGeocode";
 import { LunaRuntime } from "./lib/lunaRuntime";
 import { SolRuntime } from "./lib/solRuntime";
 import { AtlasCometMap } from "./comet/AtlasCometMap";
@@ -197,7 +198,7 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "weekrays", label: "Rays of the Week" },
   { id: "rayreading", label: "Ray Reading" },
   { id: "atmosphere", label: "Atmosphere Panel" },
-  { id: "postal", label: "Postal Lookup" },
+  { id: "postal", label: "Location Lookup" },
   { id: "coreSignature", label: "CES Profile" },
   { id: "settings", label: "Settings" },
 ];
@@ -3354,10 +3355,13 @@ export default function AUTClock() {
   const fallback = useMemo<Coordinates>(() => ({ lat: 35.25, lon: -80.8 }), []);
   const { coords, status, setCoords } = useGeolocation(fallback);
   const { placeLabel, placeStatus, retry } = useReverseGeocode(coords, status, FALLBACK_PLACE_LABEL);
-  const [zipInput, setZipInput] = useState("");
+  // Legacy zip lookup state removed — Location Lookup now uses useForwardGeocode dropdown
+  const [lookupQuery, setLookupQuery] = useState("");
+  const [selectedLookupLocation, setSelectedLookupLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const { results: lookupResults } = useForwardGeocode(lookupQuery);
   const [zipStatus, setZipStatus] = useState<ZipStatus>("idle");
   const [zipError, setZipError] = useState<string | null>(null);
-  const zipControllerRef = useRef<AbortController | null>(null);
+
   const [timeZoneInfo, setTimeZoneInfo] = useState<TimeZoneInfo | null>(null);
   const [timeZoneStatus, setTimeZoneStatus] = useState<TimeZoneStatus>("idle");
   const [timeZoneError, setTimeZoneError] = useState<string | null>(null);
@@ -3505,12 +3509,6 @@ export default function AUTClock() {
     if (!("DeviceOrientationEvent" in window)) {
       setCompassStatus("unsupported");
     }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      zipControllerRef.current?.abort();
-    };
   }, []);
 
   useEffect(() => {
@@ -4460,95 +4458,7 @@ export default function AUTClock() {
       ? "Values above ~180 µg/m³ can trigger local air-quality alerts; <60 µg/m³ is typical of clean background air."
       : "Values below 220 DU signal potential ozone-hole conditions; 250–350 DU are common at mid-latitudes.";
 
-  const lookupZip = useCallback(async () => {
-    const raw = zipInput.trim();
-    if (!raw) {
-      setZipError("Enter a postal or ZIP code.");
-      setZipStatus("error");
-      return;
-    }
-
-    let country = "us";
-    let code = raw;
-    const prefixMatch = raw.match(/^([A-Za-z]{2})[:\s-]+(.+)$/);
-    if (prefixMatch) {
-      country = prefixMatch[1].toLowerCase();
-      code = prefixMatch[2];
-    }
-
-    let normalized = code.trim();
-    if (country === "us") {
-      normalized = normalized.replace(/[^0-9]/g, "");
-      if (normalized.length >= 5) {
-        normalized = normalized.slice(0, 5);
-      }
-      if (!/^\d{5}$/.test(normalized)) {
-        setZipError("US ZIP codes must include 5 digits (you can include the +4).");
-        setZipStatus("error");
-        return;
-      }
-    } else {
-      normalized = normalized.replace(/[\s-]+/g, "").toUpperCase();
-      if (!/^[A-Z0-9]{3,}$/u.test(normalized)) {
-        setZipError("Postal codes must be alphanumeric and at least 3 characters.");
-        setZipStatus("error");
-        return;
-      }
-    }
-
-    zipControllerRef.current?.abort();
-    const controller = new AbortController();
-    zipControllerRef.current = controller;
-    setZipStatus("loading");
-    setZipError(null);
-
-    try {
-      const url = new URL(ZIP_LOOKUP_ENDPOINT);
-      url.searchParams.set("format", "json");
-      url.searchParams.set("limit", "1");
-      url.searchParams.set("postalcode", normalized);
-      url.searchParams.set("countrycodes", country.toLowerCase());
-      url.searchParams.set("addressdetails", "1");
-
-      const res = await fetch(url.toString(), {
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          "User-Agent": ZIP_LOOKUP_USER_AGENT,
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`Lookup failed (${res.status})`);
-      }
-      const data = await res.json();
-      const place =
-        Array.isArray(data) && data.length > 0
-          ? data[0]
-          : data && Array.isArray(data.places) && data.places.length > 0
-          ? data.places[0]
-          : undefined;
-      const lat = place ? parseFloat(place.lat ?? place.latitude) : NaN;
-      const lon = place ? parseFloat(place.lon ?? place.longitude) : NaN;
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        throw new Error("Invalid coordinates in response");
-      }
-      setCoords({ lat, lon });
-      setZipStatus("success");
-      setZipError(null);
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      setZipStatus("error");
-      setZipError(err instanceof Error ? err.message : "Could not resolve that postal code.");
-    }
-  }, [zipInput, setCoords]);
-
-  const onZipSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      void lookupZip();
-    },
-    [lookupZip]
-  );
+  // Legacy lookupZip removed — Location Lookup now uses useForwardGeocode dropdown
 
   const computeProfileSnapshot = useCallback(
     (profile: CoreSignatureProfile) =>
@@ -7118,48 +7028,67 @@ export default function AUTClock() {
 
         {activePanel === "postal" && (
           <>
-        {/* Postal Lookup */}
+        {/* Location Lookup */}
         <section className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-700 space-y-4">
-          <div className="text-sm uppercase text-zinc-400">Postal / ZIP Lookup</div>
-          <form
-            onSubmit={onZipSubmit}
-            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start"
-          >
-            <input
-              type="text"
-              inputMode="text"
-              placeholder="e.g., 28205 or CA H0H0H0"
-              className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:w-64"
-              value={zipInput}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                setZipInput(e.target.value);
-                if (zipStatus !== "idle") {
-                  setZipStatus("idle");
-                  setZipError(null);
-                }
-              }}
-            />
-            <button
-              type="submit"
-              className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition shadow disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={zipStatus === "loading"}
-            >
-              {zipStatus === "loading" ? "Looking up…" : "Use Postal Code"}
-            </button>
-          </form>
+          <div className="text-sm uppercase text-zinc-400">Location Lookup 📍</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+            <div className="relative sm:w-64">
+              <input
+                type="text"
+                inputMode="text"
+                placeholder="Search location…"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                value={lookupQuery}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  setLookupQuery(e.target.value);
+                  setSelectedLookupLocation(null);
+                  if (zipStatus !== "idle") {
+                    setZipStatus("idle");
+                    setZipError(null);
+                  }
+                }}
+              />
+              {lookupResults.length > 0 && lookupQuery.trim().length >= 2 && !selectedLookupLocation && (
+                <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-600 bg-zinc-800 shadow-lg">
+                  {lookupResults.map((r, idx) => (
+                    <li key={idx}>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm text-zinc-100 transition hover:bg-emerald-500/20"
+                        onClick={() => {
+                          setSelectedLookupLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName });
+                          setLookupQuery(r.displayName);
+                          setCoords({ lat: r.lat, lon: r.lon });
+                          setZipStatus("success");
+                          setZipError(null);
+                        }}
+                      >
+                        {r.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {selectedLookupLocation && (
+              <span className="text-sm text-emerald-400">
+                Selected: {selectedLookupLocation.displayName}
+              </span>
+            )}
+          </div>
           <div className="text-xs">
             {zipStatus === "loading" ? (
               <span className="text-zinc-400">Fetching coordinates…</span>
             ) : zipStatus === "success" ? (
-              <span className="text-emerald-400">Updated location from postal code.</span>
+              <span className="text-emerald-400">Updated location from {selectedLookupLocation?.displayName ?? "search"}.</span>
             ) : zipStatus === "error" && zipError ? (
               <span className="text-rose-400">{zipError}</span>
             ) : (
-              <span className="text-zinc-500">Enter a postal/ZIP code; prefix with a country (e.g., “CA H0H0H0”).</span>
+              <span className="text-zinc-500">Type any city or postal code anywhere in the world. Click a result to set your AUT location.</span>
             )}
           </div>
           <p className="text-xs text-zinc-400">
-            Powered by Zippopotam.us — coordinates derived from the first matching place.
+            Powered by OpenStreetMap Nominatim.
           </p>
         </section>
           </>

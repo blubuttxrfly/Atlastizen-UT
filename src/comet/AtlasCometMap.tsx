@@ -1191,18 +1191,21 @@ function HeartlightSystemMap() {
                     <div className="relative">
                       <input
                         value={editLocationQuery}
-                        onChange={(e) => setEditLocationQuery(e.target.value)}
-                        placeholder={editSelectedLocation?.displayName || "Search location…"}
+                        onChange={(e) => {
+                          setEditLocationQuery(e.target.value);
+                          setEditSelectedLocation(null);
+                        }}
+                        placeholder="Search location…"
                         className="w-full max-w-xs rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
                       />
-                      {editGeocodeResults.length > 0 && editLocationQuery.trim().length >= 2 ? (
+                      {editGeocodeResults.length > 0 && editLocationQuery.trim().length >= 2 && !editSelectedLocation ? (
                         <ul className="absolute z-10 mt-1 max-h-48 w-full max-w-xs overflow-auto rounded border border-sky-500/40 bg-slate-800 shadow-lg">
                           {editGeocodeResults.map((r, idx) => (
                             <li key={idx}>
                               <button
                                 type="button"
                                 className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                                onClick={() => { setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setEditLocationQuery(""); }}
+                                onClick={() => { setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setEditLocationQuery(r.displayName); }}
                               >
                                 {r.displayName}
                               </button>
@@ -1263,18 +1266,21 @@ function HeartlightSystemMap() {
               <div className="relative">
                 <input
                   value={addLocationQuery}
-                  onChange={(e) => setAddLocationQuery(e.target.value)}
+                  onChange={(e) => {
+                    setAddLocationQuery(e.target.value);
+                    setAddSelectedLocation(null);
+                  }}
                   placeholder="Search location…"
                   className="w-full max-w-xs rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
                 />
-                {addGeocodeResults.length > 0 && addLocationQuery.trim().length >= 2 ? (
+                {addGeocodeResults.length > 0 && addLocationQuery.trim().length >= 2 && !addSelectedLocation ? (
                   <ul className="absolute z-10 mt-1 max-h-48 w-full max-w-xs overflow-auto rounded border border-sky-500/40 bg-slate-800 shadow-lg">
                     {addGeocodeResults.map((r, idx) => (
                       <li key={idx}>
                         <button
                           type="button"
                           className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                          onClick={() => { setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setAddLocationQuery(""); }}
+                          onClick={() => { setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName }); setAddLocationQuery(r.displayName); }}
                         >
                           {r.displayName}
                         </button>
