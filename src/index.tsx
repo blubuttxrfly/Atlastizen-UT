@@ -2151,10 +2151,10 @@ const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
     dayLabel: "Tuesday",
     dayAbbrev: "Tue",
     cycle: 2,
-    name: "True Green",
-    code: "GG",
-    description: "True Green (GG) repeats for Tuesday's second cycle.",
-    color: "#16a34a",
+    name: "Turquoise",
+    code: "T",
+    description: "Turquoise (T) carries Tuesday's second cycle.",
+    color: "#2dd4bf",
   },
   {
     id: "wed-c1",
@@ -2162,10 +2162,10 @@ const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
     dayLabel: "Wednesday",
     dayAbbrev: "Wed",
     cycle: 1,
-    name: "Green Turquoise Blue",
-    code: "GTB",
-    description: "Green Turquoise Blue (GTB) ushers in Wednesday.",
-    color: "#14b8a6",
+    name: "Turquoise Blue",
+    code: "TB",
+    description: "Turquoise Blue (TB) ushers in Wednesday.",
+    color: "#0ea5e9",
   },
   {
     id: "wed-c2",
@@ -2173,10 +2173,10 @@ const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
     dayLabel: "Wednesday",
     dayAbbrev: "Wed",
     cycle: 2,
-    name: "Turquoise Blue",
-    code: "TB",
-    description: "Turquoise Blue carries Wednesday's second arc.",
-    color: "#0ea5e9",
+    name: "Blue",
+    code: "B",
+    description: "Blue (B) carries Wednesday's second arc.",
+    color: "#3b82f6",
   },
   {
     id: "thu-c1",
@@ -2184,10 +2184,10 @@ const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
     dayLabel: "Thursday",
     dayAbbrev: "Thu",
     cycle: 1,
-    name: "Blue Indigo",
-    code: "BI",
-    description: "Blue Indigo (BI) sets the tone for Thursday.",
-    color: "#2563eb",
+    name: "Indigo",
+    code: "I",
+    description: "Indigo (I) sets the tone for Thursday.",
+    color: "#6366f1",
   },
   {
     id: "thu-c2",
@@ -2262,24 +2262,24 @@ const WEEK_RAY_READINGS: Record<string, WeekRayReading> = {
       "Abundance in motion. This current expands manifestation through gratitude, generosity, and grounded optimism. Ideal for building offers, tending home and body, nurturing friendships, and letting prosperity feel safe.",
   },
   "tue-c2": {
-    title: "Cycle 2 — True Green (GG)",
+    title: "Cycle 2 — Turquoise (T)",
     body:
-      "Deep-rooted growth: maturity, stamina, and long-game blessings. This current supports discipline that feels loving, steady devotion, and projects that want longevity. Perfect for systems, savings, health routines, and tending what matters most.",
+      "Flow-state communication and cleansing clarity. This current supports emotional release through water, breath, and sound—tears as medicine, laughter as liberation, voice as channel. Great for writing, sharing, singing, and ocean-minded recalibration.",
   },
   "wed-c1": {
-    title: "Cycle 1 — Green Turquoise Blue (GTB)",
+    title: "Cycle 1 — Turquoise Blue (TB)",
     body:
       "Heart-to-voice bridge. This current helps feelings become language, art, and honest expression. Powerful for poetry, healing conversations, creative communication, and speaking truth with tenderness.",
   },
   "wed-c2": {
-    title: "Cycle 2 — Turquoise Blue (TB)",
-    body:
-      "Flow-state communication and cleansing clarity. This current supports emotional release through water, breath, and sound—tears as medicine, laughter as liberation, voice as channel. Great for writing, sharing, singing, and ocean-minded recalibration.",
-  },
-  "thu-c1": {
-    title: "Cycle 1 — Blue Indigo (BI)",
+    title: "Cycle 2 — Blue (B)",
     body:
       "Truth with depth. This current sharpens discernment, integrity, and clear boundaries in communication. Great for study, research, proposals, accountability, and saying what you mean with clean energetic posture.",
+  },
+  "thu-c1": {
+    title: "Cycle 1 — Indigo (I)",
+    body:
+      "Vision opens into mystic knowing. This current supports dreams, intuition, symbols, and spiritual study—messages through synchronicities, ritual, and inner sight. Perfect for divination, shadow integration, and receiving lucid guidance.",
   },
   "thu-c2": {
     title: "Cycle 2 — Indigo Violet (IV)",
