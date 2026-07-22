@@ -685,7 +685,6 @@ function HeartlightSystemMap() {
   const [addName, setAddName] = useState("");
   const [addDateStr, setAddDateStr] = useState("");
   const [addTimeStr, setAddTimeStr] = useState("12:00");
-  const [addTimezoneOffset, setAddTimezoneOffset] = useState(-300);
   const [addLocationQuery, setAddLocationQuery] = useState("");
   const [addSelectedLocation, setAddSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
   const { results: addGeocodeResults } = useForwardGeocode(addLocationQuery);
@@ -694,7 +693,6 @@ function HeartlightSystemMap() {
   const [editName, setEditName] = useState("");
   const [editDateStr, setEditDateStr] = useState("");
   const [editTimeStr, setEditTimeStr] = useState("12:00");
-  const [editTimezoneOffset, setEditTimezoneOffset] = useState(-300);
   const [editLocationQuery, setEditLocationQuery] = useState("");
   const [editSelectedLocation, setEditSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
   const { results: editGeocodeResults } = useForwardGeocode(editLocationQuery);
@@ -703,7 +701,6 @@ function HeartlightSystemMap() {
     setAddName("");
     setAddDateStr("");
     setAddTimeStr("12:00");
-    setAddTimezoneOffset(-300);
     setAddLocationQuery("");
     setAddSelectedLocation(null);
     setShowAddForm(true);
@@ -718,7 +715,6 @@ function HeartlightSystemMap() {
     const hStr = (profile.birthHour ?? 12).toString().padStart(2, "0");
     const minStr = (profile.birthMinute ?? 0).toString().padStart(2, "0");
     setEditTimeStr(`${hStr}:${minStr}`);
-    setEditTimezoneOffset(profile.birthTimezoneOffset ?? -300);
     setEditLocationQuery("");
     setEditSelectedLocation({ lat: profile.birthLat, lon: profile.birthLon, displayName: profile.birthPlaceLabel });
     setEditingId(profile.id);
@@ -1274,20 +1270,6 @@ function HeartlightSystemMap() {
                       <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
                       <input type="date" value={editDateStr} onChange={(e) => setEditDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
                       <input type="time" step={60} value={editTimeStr} onChange={(e) => setEditTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
-                      <div className="flex items-center gap-1">
-                        <label className="text-xs text-sky-200">UTC offset:</label>
-                        <select
-                          value={editTimezoneOffset}
-                          onChange={(e) => setEditTimezoneOffset(Number(e.target.value))}
-                          className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
-                        >
-                          {Array.from({ length: 29 }, (_, i) => i - 14).map((h) => (
-                            <option key={h} value={h * 60}>
-                              {h >= 0 ? `UTC+${h}` : `UTC${h}`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
                     </div>
                     <div className="relative">
                       <input
@@ -1306,19 +1288,7 @@ function HeartlightSystemMap() {
                               <button
                                 type="button"
                                 className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                                onClick={async () => {
-                                  const dateParts = editDateStr.split("-").map(Number);
-                                  const [year, month, day] = dateParts;
-                                  const [hour, minute] = editTimeStr.split(":").map(Number);
-                                  const tzOffset = await fetchTimezoneOffset(
-                                    r.lat, r.lon,
-                                    year || 2000,
-                                    (month || 1) - 1,
-                                    day || 1,
-                                    hour ?? 12,
-                                    minute ?? 0
-                                  );
-                                  setEditTimezoneOffset(tzOffset);
+                                onClick={() => {
                                   setEditSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName });
                                   setEditLocationQuery(r.displayName);
                                 }}
@@ -1334,10 +1304,18 @@ function HeartlightSystemMap() {
                       <button
                         type="button"
                         className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
-                        onClick={() => {
+                        onClick={async () => {
                           const [yStr, mStr, dStr] = editDateStr.split("-").map(Number);
                           const [hStr, minStr] = editTimeStr.split(":").map(Number);
                           const loc = getFormLocation(editSelectedLocation);
+                          const tzOffset = await fetchTimezoneOffset(
+                            loc.lat, loc.lon,
+                            yStr || 2000,
+                            (mStr || 1) - 1,
+                            dStr || 1,
+                            hStr ?? 12,
+                            minStr ?? 0
+                          );
                           updateProfile(profile.id, {
                             name: editName.trim() || profile.name,
                             birthMonth: (mStr || 1) - 1,
@@ -1345,7 +1323,7 @@ function HeartlightSystemMap() {
                             birthYear: yStr || 2000,
                             birthHour: hStr ?? 12,
                             birthMinute: minStr ?? 0,
-                            birthTimezoneOffset: editTimezoneOffset,
+                            birthTimezoneOffset: tzOffset,
                             birthLat: loc.lat,
                             birthLon: loc.lon,
                             birthPlaceLabel: loc.displayName,
@@ -1379,20 +1357,6 @@ function HeartlightSystemMap() {
                 <input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="Name" className="w-full rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100 sm:w-28" />
                 <input type="date" value={addDateStr} onChange={(e) => setAddDateStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
                 <input type="time" step={60} value={addTimeStr} onChange={(e) => setAddTimeStr(e.target.value)} className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100" />
-                <div className="flex items-center gap-1">
-                  <label className="text-xs text-sky-200">UTC offset:</label>
-                  <select
-                    value={addTimezoneOffset}
-                    onChange={(e) => setAddTimezoneOffset(Number(e.target.value))}
-                    className="rounded border border-sky-500/50 bg-slate-900 px-2 py-1 text-sm text-sky-100"
-                  >
-                    {Array.from({ length: 29 }, (_, i) => i - 14).map((h) => (
-                      <option key={h} value={h * 60}>
-                        {h >= 0 ? `UTC+${h}` : `UTC${h}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
               <div className="relative">
                 <input
@@ -1411,19 +1375,7 @@ function HeartlightSystemMap() {
                         <button
                           type="button"
                           className="w-full px-2 py-1 text-left text-xs text-sky-100 transition hover:bg-sky-500/20"
-                          onClick={async () => {
-                            const dateParts = addDateStr.split("-").map(Number);
-                            const [year, month, day] = dateParts;
-                            const [hour, minute] = addTimeStr.split(":").map(Number);
-                            const tzOffset = await fetchTimezoneOffset(
-                              r.lat, r.lon,
-                              year || 2000,
-                              (month || 1) - 1,
-                              day || 1,
-                              hour ?? 12,
-                              minute ?? 0
-                            );
-                            setAddTimezoneOffset(tzOffset);
+                          onClick={() => {
                             setAddSelectedLocation({ lat: r.lat, lon: r.lon, displayName: r.displayName });
                             setAddLocationQuery(r.displayName);
                           }}
@@ -1439,11 +1391,19 @@ function HeartlightSystemMap() {
                 <button
                   type="button"
                   className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!addDateStr) return;
                     const [yStr, mStr, dStr] = addDateStr.split("-").map(Number);
                     const [hStr, minStr] = addTimeStr.split(":").map(Number);
                     const loc = getFormLocation(addSelectedLocation);
+                    const tzOffset = await fetchTimezoneOffset(
+                      loc.lat, loc.lon,
+                      yStr || 2000,
+                      (mStr || 1) - 1,
+                      dStr || 1,
+                      hStr ?? 12,
+                      minStr ?? 0
+                    );
                     addProfile({
                       name: addName.trim() || "Unnamed",
                       birthMonth: (mStr || 1) - 1,
@@ -1451,7 +1411,7 @@ function HeartlightSystemMap() {
                       birthYear: yStr || 2000,
                       birthHour: hStr ?? 12,
                       birthMinute: minStr ?? 0,
-                      birthTimezoneOffset: addTimezoneOffset,
+                      birthTimezoneOffset: tzOffset,
                       birthLat: loc.lat,
                       birthLon: loc.lon,
                       birthPlaceLabel: loc.displayName,
