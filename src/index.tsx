@@ -14,7 +14,6 @@ import {
 import { createPortal } from "react-dom";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { PRESENT_ONLY } from "./config/rays";
-import { ZIP_LOOKUP_ENDPOINT, ZIP_LOOKUP_USER_AGENT } from "./config/geocode";
 import { useForwardGeocode } from "./hooks/useForwardGeocode";
 import { LunaRuntime } from "./lib/lunaRuntime";
 import { SolRuntime } from "./lib/solRuntime";
