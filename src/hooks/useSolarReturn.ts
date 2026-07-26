@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { estimateFromLongitude } from "../lib/timezone";
 
 const SOLAR_RETURN_KEY_V1 = "aut-solar-return";
 const SOLAR_RETURN_KEY_V2 = "aut-solar-returns-v2";
@@ -12,6 +13,12 @@ export type SolarReturnProfile = {
   birthHour?: number;   // 0-23
   birthMinute?: number; // 0-59
   birthTimezoneOffset?: number; // minutes offset from UTC (e.g., -300 for EST)
+  /** Standard-time offset in minutes from UTC. Used when accurateDST is false. */
+  birthTimezoneOffsetStandard?: number;
+  /** Whether to use the historically accurate DST-aware offset. Default true. */
+  birthTimeAccurateDST?: boolean;
+  /** Human-readable timezone label from detection */
+  birthTimezoneLabel?: string;
   birthLat: number;
   birthLon: number;
   birthPlaceLabel: string;
@@ -39,14 +46,19 @@ function migrateV1(): SolarReturnStore | null {
       birthYear?: number;
       birthHour?: number;
       birthMinute?: number;
+      birthTimezoneOffset?: number;
       birthLat: number;
       birthLon: number;
       birthPlaceLabel: string;
     };
+    const standardOffset =
+      old.birthTimezoneOffset ?? estimateFromLongitude(old.birthLon);
     const profile: SolarReturnProfile = {
       id: generateId(),
       name: "My Solar Return",
       ...old,
+      birthTimezoneOffsetStandard: standardOffset,
+      birthTimeAccurateDST: true,
     };
     const store: SolarReturnStore = {
       version: 2,
@@ -61,6 +73,34 @@ function migrateV1(): SolarReturnStore | null {
   }
 }
 
+function normalizeProfile(p: SolarReturnProfile): SolarReturnProfile {
+  // Ensure new timezone fields have sane defaults for profiles created before this update.
+  if (
+    p.birthTimezoneOffsetStandard == null ||
+    p.birthTimeAccurateDST == null ||
+    p.birthTimezoneLabel == null
+  ) {
+    const standardOffset =
+      p.birthTimezoneOffset ?? estimateFromLongitude(p.birthLon);
+    return {
+      ...p,
+      birthTimezoneOffsetStandard:
+        p.birthTimezoneOffsetStandard ?? standardOffset,
+      birthTimeAccurateDST: p.birthTimeAccurateDST ?? true,
+      birthTimezoneLabel:
+        p.birthTimezoneLabel ?? `Longitude estimate (${formatUtcOffset(standardOffset)})`,
+    };
+  }
+  return p;
+}
+
+function formatUtcOffset(minutes: number): string {
+  const sign = minutes <= 0 ? "UTC" : "UTC+";
+  const h = Math.abs(Math.floor(minutes / 60));
+  const m = Math.abs(minutes % 60);
+  return m === 0 ? `${sign}${h}` : `${sign}${h}:${m.toString().padStart(2, "0")}`;
+}
+
 function readStore(): SolarReturnStore {
   // Try new format first
   try {
@@ -68,7 +108,10 @@ function readStore(): SolarReturnStore {
     if (raw) {
       const parsed = JSON.parse(raw) as SolarReturnStore;
       if (parsed.version === 2 && Array.isArray(parsed.profiles)) {
-        return parsed;
+        return {
+          ...parsed,
+          profiles: parsed.profiles.map(normalizeProfile),
+        };
       }
     }
   } catch {

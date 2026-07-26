@@ -13,7 +13,7 @@ import {
   findSolarReturnMoment,
 } from "../lib/extendedChart";
 import { estimateFromLongitude } from "../lib/timezone";
-import { fetchTimezoneOffset } from "../lib/timezone";
+import { fetchTimezoneDetection, type TimezoneDetection } from "../lib/timezone";
 type Vec2 = { x: number; y: number };
 
 type ViewMode = "heliocentric" | "geocentric";
@@ -687,6 +687,8 @@ function HeartlightSystemMap() {
   const [addTimeStr, setAddTimeStr] = useState("12:00");
   const [addLocationQuery, setAddLocationQuery] = useState("");
   const [addSelectedLocation, setAddSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const [addTimezoneDetection, setAddTimezoneDetection] = useState<TimezoneDetection | null>(null);
+  const [addAccurateDST, setAddAccurateDST] = useState(true);
   const { results: addGeocodeResults } = useForwardGeocode(addLocationQuery);
 
   // Edit form fields (mirror add, scoped to editingId)
@@ -695,6 +697,8 @@ function HeartlightSystemMap() {
   const [editTimeStr, setEditTimeStr] = useState("12:00");
   const [editLocationQuery, setEditLocationQuery] = useState("");
   const [editSelectedLocation, setEditSelectedLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
+  const [editTimezoneDetection, setEditTimezoneDetection] = useState<TimezoneDetection | null>(null);
+  const [editAccurateDST, setEditAccurateDST] = useState(true);
   const { results: editGeocodeResults } = useForwardGeocode(editLocationQuery);
 
   const startAdd = useCallback(() => {
@@ -703,6 +707,8 @@ function HeartlightSystemMap() {
     setAddTimeStr("12:00");
     setAddLocationQuery("");
     setAddSelectedLocation(null);
+    setAddTimezoneDetection(null);
+    setAddAccurateDST(true);
     setShowAddForm(true);
   }, []);
 
@@ -717,14 +723,35 @@ function HeartlightSystemMap() {
     setEditTimeStr(`${hStr}:${minStr}`);
     setEditLocationQuery("");
     setEditSelectedLocation({ lat: profile.birthLat, lon: profile.birthLon, displayName: profile.birthPlaceLabel });
+    const usedOffset = resolveProfileOffset(profile);
+    setEditTimezoneDetection({
+      zone: profile.birthTimezoneLabel ?? null,
+      label: profile.birthTimezoneLabel ?? `Longitude estimate (${formatUtcOffset(usedOffset)})`,
+      accurateOffsetMinutes: profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon),
+      standardOffsetMinutes: profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon),
+      hasDst: (profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon)) !==
+              (profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon)),
+    });
+    setEditAccurateDST(profile.birthTimeAccurateDST ?? true);
     setEditingId(profile.id);
+  }, []);
+
+  const resolveProfileOffset = useCallback((profile: SolarReturnProfile): number => {
+    const accurate = profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon);
+    const standard = profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon);
+    return (profile.birthTimeAccurateDST ?? true) ? accurate : standard;
+  }, []);
+
+  const formatUtcOffset = useCallback((minutes: number): string => {
+    const sign = minutes < 0 ? "UTC-" : "UTC+";
+    const h = Math.abs(Math.floor(minutes / 60));
+    const m = Math.abs(minutes % 60);
+    return m === 0 ? `${sign}${h}` : `${sign}${h}:${m.toString().padStart(2, "0")}`;
   }, []);
 
   const applySolarReturn = useCallback(() => {
     if (!activeProfile) return;
-    const tzOffset =
-      activeProfile.birthTimezoneOffset ??
-      estimateFromLongitude(activeProfile.birthLon);
+    const tzOffset = resolveProfileOffset(activeProfile);
     const natalDate = makeBirthDateUTC(
       activeProfile.birthYear ?? 2000,
       activeProfile.birthMonth,
@@ -735,7 +762,7 @@ function HeartlightSystemMap() {
     );
     timeRef.current = natalDate.getTime();
     setWhen(new Date(natalDate));
-  }, [activeProfile, setWhen]);
+  }, [activeProfile, resolveProfileOffset, setWhen]);
 
   const getFormLocation = useCallback((formLoc: typeof addSelectedLocation) => {
     if (formLoc) return formLoc;
@@ -1300,7 +1327,7 @@ function HeartlightSystemMap() {
                         </ul>
                       ) : null}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
@@ -1308,7 +1335,7 @@ function HeartlightSystemMap() {
                           const [yStr, mStr, dStr] = editDateStr.split("-").map(Number);
                           const [hStr, minStr] = editTimeStr.split(":").map(Number);
                           const loc = getFormLocation(editSelectedLocation);
-                          const tzOffset = await fetchTimezoneOffset(
+                          const det = await fetchTimezoneDetection(
                             loc.lat, loc.lon,
                             yStr || 2000,
                             (mStr || 1) - 1,
@@ -1316,6 +1343,7 @@ function HeartlightSystemMap() {
                             hStr ?? 12,
                             minStr ?? 0
                           );
+                          setEditTimezoneDetection(det);
                           updateProfile(profile.id, {
                             name: editName.trim() || profile.name,
                             birthMonth: (mStr || 1) - 1,
@@ -1323,7 +1351,10 @@ function HeartlightSystemMap() {
                             birthYear: yStr || 2000,
                             birthHour: hStr ?? 12,
                             birthMinute: minStr ?? 0,
-                            birthTimezoneOffset: tzOffset,
+                            birthTimezoneOffset: det.accurateOffsetMinutes,
+                            birthTimezoneOffsetStandard: det.standardOffsetMinutes,
+                            birthTimeAccurateDST: editAccurateDST,
+                            birthTimezoneLabel: det.label,
                             birthLat: loc.lat,
                             birthLon: loc.lon,
                             birthPlaceLabel: loc.displayName,
@@ -1340,7 +1371,17 @@ function HeartlightSystemMap() {
                       >
                         Cancel
                       </button>
+                      {editTimezoneDetection && (
+                        <span className="text-[0.65rem] text-slate-400">
+                          Detected {editTimezoneDetection.label}
+                        </span>
+                      )}
                     </div>
+                    <TimezoneToggle
+                      detection={editTimezoneDetection}
+                      accurateDST={editAccurateDST}
+                      setAccurateDST={setEditAccurateDST}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -1387,16 +1428,16 @@ function HeartlightSystemMap() {
                   </ul>
                 ) : null}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className="rounded-md border border-sky-500/50 px-2 py-1 text-xs text-sky-100 transition hover:bg-sky-500/20"
                   onClick={async () => {
                     if (!addDateStr) return;
+                    const loc = getFormLocation(addSelectedLocation);
                     const [yStr, mStr, dStr] = addDateStr.split("-").map(Number);
                     const [hStr, minStr] = addTimeStr.split(":").map(Number);
-                    const loc = getFormLocation(addSelectedLocation);
-                    const tzOffset = await fetchTimezoneOffset(
+                    const det = await fetchTimezoneDetection(
                       loc.lat, loc.lon,
                       yStr || 2000,
                       (mStr || 1) - 1,
@@ -1404,6 +1445,7 @@ function HeartlightSystemMap() {
                       hStr ?? 12,
                       minStr ?? 0
                     );
+                    setAddTimezoneDetection(det);
                     addProfile({
                       name: addName.trim() || "Unnamed",
                       birthMonth: (mStr || 1) - 1,
@@ -1411,7 +1453,10 @@ function HeartlightSystemMap() {
                       birthYear: yStr || 2000,
                       birthHour: hStr ?? 12,
                       birthMinute: minStr ?? 0,
-                      birthTimezoneOffset: tzOffset,
+                      birthTimezoneOffset: det.accurateOffsetMinutes,
+                      birthTimezoneOffsetStandard: det.standardOffsetMinutes,
+                      birthTimeAccurateDST: addAccurateDST,
+                      birthTimezoneLabel: det.label,
                       birthLat: loc.lat,
                       birthLon: loc.lon,
                       birthPlaceLabel: loc.displayName,
@@ -1428,7 +1473,17 @@ function HeartlightSystemMap() {
                 >
                   Cancel
                 </button>
+                {addTimezoneDetection && (
+                  <span className="text-[0.65rem] text-slate-400">
+                    Detected {addTimezoneDetection.label}
+                  </span>
+                )}
               </div>
+              <TimezoneToggle
+                detection={addTimezoneDetection}
+                accurateDST={addAccurateDST}
+                setAccurateDST={setAddAccurateDST}
+              />
             </div>
           </div>
         ) : null}
@@ -1795,9 +1850,7 @@ function ChartPanel({
 
     if (extChartMode === "natal") {
       const p = activeProfile;
-      const tzOffset =
-        p.birthTimezoneOffset ??
-        estimateFromLongitude(p.birthLon);
+      const tzOffset = resolveActiveOffset(p);
       const data = buildNatalChart(
         p.birthMonth, p.birthDay, p.birthYear ?? 2000,
         p.birthHour ?? 12, p.birthMinute ?? 0,
@@ -1810,9 +1863,7 @@ function ChartPanel({
 
     if (extChartMode === "solar") {
       const p = activeProfile;
-      const tzOffset =
-        p.birthTimezoneOffset ??
-        estimateFromLongitude(p.birthLon);
+      const tzOffset = resolveActiveOffset(p);
       const srDate = findSolarReturnMoment(
         p.birthMonth, p.birthDay, p.birthYear ?? 2000,
         p.birthHour ?? 12, p.birthMinute ?? 0,
@@ -1828,6 +1879,19 @@ function ChartPanel({
     }
   }, [extChartMode, activeProfile, srTargetYear, liveLocation]);
 
+  function resolveActiveOffset(profile: SolarReturnProfile): number {
+    const accurate = profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon);
+    const standard = profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon);
+    return (profile.birthTimeAccurateDST ?? true) ? accurate : standard;
+  }
+
+  function formatOffset(minutes: number): string {
+    const sign = minutes < 0 ? "UTC-" : "UTC+";
+    const h = Math.abs(Math.floor(minutes / 60));
+    const m = Math.abs(minutes % 60);
+    return m === 0 ? `${sign}${h}` : `${sign}${h}:${m.toString().padStart(2, "0")}`;
+  }
+
   if (!activeProfile) {
     return (
       <div className="rounded-xl border border-sky-500/20 bg-slate-800/60 p-3 text-sm text-slate-300">
@@ -1838,22 +1902,34 @@ function ChartPanel({
 
   const p = activeProfile;
   const hasTime = p.birthHour != null && p.birthMinute != null;
+  const activeOffset = resolveActiveOffset(p);
+  const activeLabel = p.birthTimezoneLabel ?? `Longitude estimate (${formatOffset(activeOffset)})`;
+  const accurateOffset = p.birthTimezoneOffset ?? estimateFromLongitude(p.birthLon);
+  const standardOffset = p.birthTimezoneOffsetStandard ?? estimateFromLongitude(p.birthLon);
+  const dstNote =
+  accurateOffset !== standardOffset
+  ? (p.birthTimeAccurateDST ?? true)
+    ? "DST on"
+    : "DST off (standard time)"
+  : "standard time";
 
   return (
-    <div className="mt-2 space-y-3">
-      {/* Active profile banner */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-sky-900/30 px-2.5 py-1.5">
-        <span className="text-xs font-semibold text-sky-200">{p.name}</span>
-        <span className="text-[0.65rem] text-sky-500">•</span>
-        <span className="text-[0.65rem] text-slate-300">
-          {extChartMode === "live"
-            ? `Live Sky • ${liveLocation?.displayName ?? p.birthPlaceLabel ?? "Current Location"}`
-            : extChartMode === "natal"
-            ? `Natal Chart • ${p.birthMonth + 1}/${p.birthDay}/${p.birthYear ?? "??"} ${hasTime ? `@ ${p.birthHour}:${p.birthMinute?.toString().padStart(2, "0") ?? "00"}` : ""}`
-            : `Solar Return • ${srTargetYear}`}
-        </span>
-        <span className="ml-auto text-[0.65rem] text-slate-500 truncate max-w-[140px]">{extChartMode === "live" ? (liveLocation?.displayName ?? p.birthPlaceLabel) : p.birthPlaceLabel}</span>
-      </div>
+  <div className="mt-2 space-y-3">
+  {/* Active profile banner */}
+  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-sky-900/30 px-2.5 py-1.5">
+    <span className="text-xs font-semibold text-sky-200">{p.name}</span>
+    <span className="text-[0.65rem] text-sky-500">•</span>
+    <span className="text-[0.65rem] text-slate-300">
+      {extChartMode === "live"
+        ? `Live Sky • ${liveLocation?.displayName ?? p.birthPlaceLabel ?? "Current Location"}`
+        : extChartMode === "natal"
+        ? `Natal Chart • ${p.birthMonth + 1}/${p.birthDay}/${p.birthYear ?? "??"} ${hasTime ? `@ ${p.birthHour}:${p.birthMinute?.toString().padStart(2, "0") ?? "00"}` : ""}`
+        : `Solar Return • ${srTargetYear}`}
+    </span>
+    <span className="ml-auto text-[0.65rem] text-slate-500 truncate max-w-[180px]">
+      {activeLabel} • {formatOffset(activeOffset)} • {dstNote}
+    </span>
+  </div>
 
       {/* Mode selector — grouped: Chart (Natal / Solar) vs. Moment (Live) */}
       <div className="flex flex-wrap items-center gap-2">
@@ -1997,6 +2073,61 @@ function ChartPanel({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function TimezoneToggle({
+  detection,
+  accurateDST,
+  setAccurateDST,
+}: {
+  detection: TimezoneDetection | null;
+  accurateDST: boolean;
+  setAccurateDST: (v: boolean) => void;
+}) {
+  if (!detection) {
+    return (
+      <div className="text-[0.65rem] text-slate-500">
+        Timezone will be detected when you save.
+      </div>
+    );
+  }
+
+  if (!detection.hasDst) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-[0.65rem] text-slate-400">
+        <span>{detection.label}</span>
+        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-300">Standard time only</span>
+      </div>
+    );
+  }
+
+  const activeOffset = accurateDST ? detection.accurateOffsetMinutes : detection.standardOffsetMinutes;
+  const fmt = (minutes: number) => {
+    const sign = minutes < 0 ? "UTC-" : "UTC+";
+    const h = Math.abs(Math.floor(minutes / 60));
+    const m = Math.abs(minutes % 60);
+    return m === 0 ? `${sign}${h}` : `${sign}${h}:${m.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setAccurateDST(!accurateDST)}
+        className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition ${
+          accurateDST
+            ? "bg-sky-500/20 text-sky-200 ring-1 ring-sky-500/40"
+            : "bg-slate-800 text-slate-400 ring-1 ring-slate-600"
+        }`}
+        aria-pressed={accurateDST}
+      >
+        <span className="text-[0.7rem] font-semibold">{accurateDST ? "Accurate DST: ON" : "Accurate DST: OFF"}</span>
+      </button>
+      <span className="text-[0.65rem] text-slate-400">
+        Active: {fmt(activeOffset)} {accurateDST ? "(includes DST)" : "(standard time)"}
+      </span>
     </div>
   );
 }
