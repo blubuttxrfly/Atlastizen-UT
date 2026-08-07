@@ -3515,6 +3515,51 @@ export default function AUTClock() {
     return () => { cancelled = true; };
   }, [deviceId]);
 
+  /* ── Cross-property return: detect coming back from Heartlight ─────── */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autReturn") !== "1") return;
+
+    let cancelled = false;
+    setPasskeyStatus("Recognizing shared session...");
+
+    (async () => {
+      try {
+        const res = await fetch("/api/session", { credentials: "same-origin" });
+        if (!res.ok) {
+          setPasskeyStatus("Shared session not found. Please sign in again.");
+          return;
+        }
+        const data = (await res.json()) as { signedIn?: boolean; ces?: string };
+        if (cancelled) return;
+        if (data.signedIn && data.ces) {
+          setPasskeySignedIn(true);
+          setPasskeyStatus("Signed in via Heartlight.");
+          setCoreProfile((prev) => ({
+            ...prev,
+            code: data.ces ?? prev.code,
+          }));
+          refreshCoreProfileRef.current?.();
+        } else {
+          setPasskeyStatus("Shared session expired. Please sign in again.");
+        }
+      } catch {
+        setPasskeyStatus("Could not verify shared session.");
+      }
+
+      // Clean URL params so refresh doesn't re-trigger
+      if (!cancelled && typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("autReturn");
+        url.searchParams.delete("returnTo");
+        window.history.replaceState({}, "", url.toString());
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -5334,6 +5379,8 @@ export default function AUTClock() {
                       {/* ── Cross-property: sign in via Heartlight magic link ── */}
                       <a
                         href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-3 py-2 text-xs text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40 flex items-center gap-2"
                       >
                         <span>Sign in with Heartlight</span>
