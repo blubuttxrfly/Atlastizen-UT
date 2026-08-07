@@ -82,7 +82,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Sun',
     title: 'Orange Ray · Taurus Sun',
     description:
-      "An Orange Ray Taurus Sun embodies the sacred pleasure of being alive. At ~495 THz, the Orange Ray is the creative river of feeling and flow, the bridge from survival into joyful expression. Through Taurus, this becomes a being who anchors beauty into matter, who creates stability as a nest for flourishing, flexible and alive. They understand value with their whole body, and they teach others that worthiness is felt, a truth that lives beyond "logic". Their patience is a form of devotion, and their presence is a reminder that slow growth is sacred growth.",
+      "An Orange Ray Taurus Sun embodies the sacred pleasure of being alive. At ~495 THz, the Orange Ray is the creative river of feeling and flow, the bridge from survival into joyful expression. Through Taurus, this becomes a being who anchors beauty into matter, who creates stability as a nest for flourishing, flexible and alive. They understand value with their whole body, and they teach others that worthiness is felt, a truth that lives beyond 'logic'. Their patience is a form of devotion, and their presence is a reminder that slow growth is sacred growth.",
   },
   "taurus-moon": {
     rayName: 'Orange Ray',
