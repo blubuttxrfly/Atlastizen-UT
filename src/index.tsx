@@ -12,7 +12,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { PRESENT_ONLY } from "./config/rays";
 import { useForwardGeocode } from "./hooks/useForwardGeocode";
 import { LunaRuntime } from "./lib/lunaRuntime";
@@ -3408,6 +3407,8 @@ export default function AUTClock() {
   const [passkeyStatus, setPasskeyStatus] = useState<string | null>(null);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeySignedIn, setPasskeySignedIn] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [cesSignInBusy, setCesSignInBusy] = useState(false);
   const profileSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedSnapshot = useRef<string>("");
   const refreshCoreProfileRef = useRef<(() => Promise<void>) | null>(null);
@@ -3542,30 +3543,50 @@ export default function AUTClock() {
           const ces = normalizeSignatureCode(data.ces);
           if (ces.length === 9) {
             try {
-              const profileRes = await fetch(`/api/ces-profile?ces=${encodeURIComponent(ces)}`);
-              if (profileRes.ok) {
-                const profileData = (await profileRes.json()) as Partial<CoreSignatureProfile> | null;
-                if (profileData) {
-                  const loadedProfile: CoreSignatureProfile = {
-                    name: typeof profileData.name === "string" ? profileData.name : "",
-                    code: ces,
-                    photoData: typeof profileData.photoData === "string" && profileData.photoData.length > 0 ? profileData.photoData : undefined,
-                    photoName: typeof profileData.photoName === "string" && profileData.photoName.length > 0 ? profileData.photoName : undefined,
-                    updatedAt: typeof profileData.updatedAt === "number" ? profileData.updatedAt : undefined,
-                  };
-                  setCoreProfile(loadedProfile);
-                  setPasskeyStatus(`Welcome, ${loadedProfile.name || 'Atlas Being'}!`);
-                  if (typeof window !== "undefined") {
-                    try {
-                      localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
-                    } catch {
-                      // ignore storage errors
-                    }
+              // If session already provided enriched data, use it directly
+              if ((data as any).name || (data as any).photo) {
+                const loadedProfile: CoreSignatureProfile = {
+                  name: typeof (data as any).name === "string" ? (data as any).name : coreProfile.name || "",
+                  code: ces,
+                  photoData: typeof (data as any).photo === "string" && (data as any).photo.length > 0
+                    ? (data as any).photo
+                    : coreProfile.photoData,
+                };
+                setCoreProfile(loadedProfile);
+                setPasskeyStatus(`Welcome, ${loadedProfile.name || 'Atlas Being'}!`);
+                if (typeof window !== "undefined") {
+                  try {
+                    localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
+                  } catch {
+                    // ignore storage errors
                   }
-                } else {
-                  // No profile found — set code only, user can fill name/photo
-                  setCoreProfile((prev) => ({ ...prev, code: ces }));
-                  setPasskeyStatus("Session recognized. Please complete your C.E.S. Profile.");
+                }
+              } else {
+                // Fallback: fetch from /api/ces-profile
+                const profileRes = await fetch(`/api/ces-profile?ces=${encodeURIComponent(ces)}`);
+                if (profileRes.ok) {
+                  const profileData = (await profileRes.json()) as Partial<CoreSignatureProfile> | null;
+                  if (profileData) {
+                    const loadedProfile: CoreSignatureProfile = {
+                      name: typeof profileData.name === "string" ? profileData.name : "",
+                      code: ces,
+                      photoData: typeof profileData.photoData === "string" && profileData.photoData.length > 0 ? profileData.photoData : undefined,
+                      photoName: typeof profileData.photoName === "string" && profileData.photoName.length > 0 ? profileData.photoName : undefined,
+                      updatedAt: typeof profileData.updatedAt === "number" ? profileData.updatedAt : undefined,
+                    };
+                    setCoreProfile(loadedProfile);
+                    setPasskeyStatus(`Welcome, ${loadedProfile.name || 'Atlas Being'}!`);
+                    if (typeof window !== "undefined") {
+                      try {
+                        localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
+                      } catch {
+                        // ignore storage errors
+                      }
+                    }
+                  } else {
+                    setCoreProfile((prev) => ({ ...prev, code: ces }));
+                    setPasskeyStatus("Session recognized. Please complete your C.E.S. Profile.");
+                  }
                 }
               }
             } catch (profileErr) {
@@ -4575,115 +4596,6 @@ export default function AUTClock() {
     []
   );
 
-  const startPasskeyRegistration = useCallback(async () => {
-    const cleanCode = normalizeSignatureCode(coreProfile.code);
-    if (cleanCode.length !== 9) {
-      setPasskeyStatus("Enter your 9-digit CES first.");
-      return;
-    }
-    const displayName = coreProfile.name.trim() || `CES ${cleanCode}`;
-    if (!deviceId) {
-      setPasskeyStatus("Device ID missing; reload the app.");
-      return;
-    }
-    setPasskeyBusy(true);
-    setPasskeyStatus("Starting passkey setup…");
-    try {
-      const optRes = await fetch("/api/passkey-register-options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ces: cleanCode, deviceId, name: displayName }),
-      });
-      const optJson = await optRes.json().catch(() => null);
-      if (!optRes.ok) throw new Error(optJson?.error || `Options failed (${optRes.status})`);
-      const attestation = await startRegistration(optJson.options);
-      const verifyRes = await fetch("/api/passkey-register-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ces: cleanCode, deviceId, attestation, name: displayName }),
-      });
-      const verifyJson = await verifyRes.json().catch(() => null);
-      if (!verifyRes.ok) throw new Error(verifyJson?.error || `Verify failed (${verifyRes.status})`);
-      if (verifyJson?.verified) {
-        setPasskeyStatus("Passkey saved — you can now sign in with it.");
-        setPasskeySignedIn(true);
-      } else {
-        setPasskeyStatus("Passkey verification did not complete.");
-      }
-    } catch (err: any) {
-      setPasskeyStatus(err?.message ?? "Passkey setup failed.");
-    } finally {
-      setPasskeyBusy(false);
-    }
-  }, [coreProfile.code, coreProfile.name, deviceId]);
-
-  const startPasskeyAuth = useCallback(async () => {
-    const cleanCode = normalizeSignatureCode(coreProfile.code);
-    if (cleanCode.length !== 9) {
-      setPasskeyStatus("Enter your 9-digit CES to select the account.");
-      return;
-    }
-    if (!deviceId) {
-      setPasskeyStatus("Device ID missing; reload the app.");
-      return;
-    }
-    setPasskeyBusy(true);
-    setPasskeyStatus("Waiting for passkey…");
-    try {
-      const optRes = await fetch("/api/passkey-auth-options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ces: cleanCode, deviceId }),
-      });
-      const optJson = await optRes.json().catch(() => null);
-      if (!optRes.ok) throw new Error(optJson?.error || `Options failed (${optRes.status})`);
-      const assertion = await startAuthentication(optJson.options);
-      const verifyRes = await fetch("/api/passkey-auth-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ces: cleanCode, deviceId, assertion }),
-      });
-      const verifyJson = await verifyRes.json().catch(() => null);
-      if (!verifyRes.ok) throw new Error(verifyJson?.error || `Verify failed (${verifyRes.status})`);
-      if (verifyJson?.verified) {
-        setPasskeyStatus("Signed in with passkey.");
-        setPasskeySignedIn(true);
-        setCoreProfile((prev) => ({ ...prev, code: cleanCode }));
-        refreshCoreProfileRef.current?.();
-
-        // ── Bridge to shared Atlas Island auth ────────────────────────
-        try {
-          const bridgeRes = await fetch("/api/auth-bridge", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "same-origin",
-            body: JSON.stringify({
-              ces: cleanCode,
-              name: coreProfile.name.trim(),
-              deviceId,
-            }),
-          });
-          if (bridgeRes.ok) {
-            const bridgeData = await bridgeRes.json().catch(() => null);
-            if (bridgeData?.bridged) {
-              setPasskeyStatus("Signed in and bridged to Atlas Island.");
-            }
-          }
-        } catch {
-          // Bridging is best-effort; don't fail the sign-in
-          setPasskeyStatus("Signed in with passkey. (Bridge skipped)");
-        }
-        // ───────────────────────────────────────────────────────────────
-      } else {
-        setPasskeyStatus("Passkey verification did not complete.");
-      }
-    } catch (err: any) {
-      setPasskeyStatus(err?.message ?? "Passkey sign-in failed.");
-    } finally {
-      setPasskeyBusy(false);
-    }
-  }, [coreProfile.code, deviceId]);
-
   const startPasskeySignOut = useCallback(async () => {
     setPasskeyBusy(true);
     setPasskeyStatus("Signing out…");
@@ -4701,6 +4613,63 @@ export default function AUTClock() {
       setPasskeyBusy(false);
     }
   }, []);
+
+  /* ── In-app CES + Passphrase sign-in (forwards to Heartlight Collective) ── */
+  const startCesSignIn = useCallback(async () => {
+    const cleanCode = normalizeSignatureCode(coreProfile.code);
+    if (cleanCode.length !== 9) {
+      setPasskeyStatus("Enter your 9-digit C.E.S. first.");
+      return;
+    }
+    if (passphrase.length < 6) {
+      setPasskeyStatus("Passphrase must be at least 6 characters.");
+      return;
+    }
+    setCesSignInBusy(true);
+    setPasskeyStatus("Verifying C.E.S. and passphrase...");
+    try {
+      const res = await fetch("/api/auth-signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ces: cleanCode, passphrase }),
+      });
+      const data = (await res.json().catch(() => ({ error: "Unknown error" }))) as {
+        success?: boolean;
+        ces?: string;
+        name?: string;
+        photo?: string;
+        error?: string;
+      };
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Sign-in failed (${res.status})`);
+      }
+
+      if (data.success) {
+        setPasskeySignedIn(true);
+        setPasskeyStatus(`Welcome, ${data.name || 'Atlas Being'}!`);
+        const loadedProfile: CoreSignatureProfile = {
+          name: data.name || coreProfile.name || "",
+          code: data.ces || cleanCode,
+          photoData: data.photo || coreProfile.photoData,
+        };
+        setCoreProfile(loadedProfile);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
+          } catch {
+            // ignore storage errors
+          }
+        }
+      } else {
+        setPasskeyStatus("C.E.S. not found or passphrase does not match.");
+      }
+    } catch (err: any) {
+      setPasskeyStatus(err?.message ?? "Sign-in failed.");
+    } finally {
+      setCesSignInBusy(false);
+    }
+  }, [coreProfile.code, coreProfile.name, coreProfile.photoData, passphrase]);
 
   const refreshCoreProfile = useCallback(async () => {
     if (typeof fetch === "undefined") return;
@@ -5342,6 +5311,16 @@ export default function AUTClock() {
                       diamond effect, 12 → rainbow spectrum.
                     </span>
                   </label>
+                  <label className="flex flex-col gap-2 text-sm">
+                    <span className="text-xs uppercase tracking-[0.28em] text-zinc-400">Passphrase</span>
+                    <input
+                      type="password"
+                      value={passphrase}
+                      onChange={(event) => setPassphrase(event.target.value)}
+                      placeholder="Your Co-Creation passphrase"
+                      className="themed-input w-full rounded-lg px-3 py-2 text-base shadow-sm"
+                    />
+                  </label>
                 </div>
 
                 <label className="flex flex-col gap-2 text-sm">
@@ -5384,41 +5363,33 @@ export default function AUTClock() {
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {passkeySignedIn ? (
-                    <button
-                      type="button"
-                      className="rounded-full border border-rose-400/40 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-400/15 disabled:opacity-60"
-                      onClick={startPasskeySignOut}
-                      disabled={passkeyBusy}
-                    >
-                      Sign out
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="rounded-full border border-rose-400/40 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-400/15 disabled:opacity-60"
+                        onClick={startPasskeySignOut}
+                        disabled={passkeyBusy}
+                      >
+                        Sign out
+                      </button>
+                    </>
                   ) : (
                     <>
                       <button
                         type="button"
                         className="themed-button rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide disabled:opacity-60"
-                        onClick={startPasskeyRegistration}
-                        disabled={passkeyBusy}
+                        onClick={startCesSignIn}
+                        disabled={cesSignInBusy}
                       >
-                        Set up passkey
+                        Enter Co-Creation Space
                       </button>
-                      <button
-                        type="button"
-                        className="rounded-full border border-white/25 px-3 py-2 text-xs text-zinc-100 transition hover:bg-white/10 disabled:opacity-60"
-                        onClick={startPasskeyAuth}
-                        disabled={passkeyBusy}
-                      >
-                        Sign in with passkey
-                      </button>
-                      {/* ── Cross-property: sign in via Heartlight magic link ── */}
                       <a
                         href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-3 py-2 text-xs text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40 flex items-center gap-2"
                       >
-                        <span>Sign in with Heartlight</span>
-                        <span className="text-[9px] text-lavender-300/40 hidden sm:inline">(cross-property)</span>
+                        <span>Auth Sign In</span>
                       </a>
                     </>
                   )}
@@ -5520,12 +5491,12 @@ export default function AUTClock() {
                   <div className="flex items-center gap-3 flex-wrap justify-end">
                     {!passkeySignedIn ? (
                       <div className="flex items-center gap-2 text-[11px] text-amber-300">
-                        <span>Sign in with your passkey to post.</span>
+                        <span>Sign in to post.</span>
                         <button
                           type="button"
                           className="rounded-full border border-white/20 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-50 hover:bg-white/10 disabled:opacity-50"
-                          onClick={() => startPasskeyAuth()}
-                          disabled={passkeyBusy}
+                          onClick={() => startCesSignIn()}
+                          disabled={cesSignInBusy}
                         >
                           Sign in
                         </button>

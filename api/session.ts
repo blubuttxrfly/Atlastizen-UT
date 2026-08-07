@@ -53,9 +53,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           session?: { id: string };
         } | null;
         if (sharedData?.success && sharedData.user?.cesProfileId) {
+          // Fetch enriched profile from central store
+          let name = "";
+          let photo = "";
+          let stewardship = "";
+          try {
+            const profileRes = await fetch(`${SHARED_AUTH_ORIGIN}/api/profile/${sharedData.user.cesProfileId}`, {
+              headers: { Cookie: `atl_session_v2=${sharedToken}` },
+            });
+            if (profileRes.ok) {
+              const profileData = (await profileRes.json()) as Record<string, string> | null;
+              name = profileData?.name || "";
+              photo = profileData?.photoData || profileData?.photoUrl || "";
+              stewardship = profileData?.stewardship || "";
+            }
+          } catch {
+            // Non-blocking enrichment
+          }
           res.status(200).json({
             signedIn: true,
             ces: sharedData.user.cesProfileId,
+            name,
+            photo,
+            stewardship,
             source: "shared",
           });
           return;
