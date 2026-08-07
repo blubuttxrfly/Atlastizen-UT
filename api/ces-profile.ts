@@ -2,6 +2,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { kv } from "@vercel/kv";
 import crypto from "node:crypto";
 
+const SHARED_AUTH_ORIGIN = process.env.SHARED_AUTH_ORIGIN || "https://auth.atlasisland.co";
+const INTERNAL_BRIDGE_SECRET = process.env.INTERNAL_BRIDGE_SECRET || "";
+
 type CesProfilePayload = {
   name?: string;
   code?: string;
@@ -66,6 +69,51 @@ function decryptCode(payload: string): string {
   return plain.toString("utf8");
 }
 
+async function fetchCentralProfile(cesNumber: string): Promise<{
+  success: boolean;
+  profile?: {
+    name: string;
+    photoUrl?: string;
+    photoData?: string;
+    uiTheme?: string;
+    updatedAt: string;
+  };
+} | null> {
+  try {
+    const res = await fetch(`${SHARED_AUTH_ORIGIN}/api/profile/${cesNumber}`, {
+      headers: INTERNAL_BRIDGE_SECRET
+        ? { Authorization: `Bearer ${INTERNAL_BRIDGE_SECRET}` }
+        : {},
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as any;
+  } catch {
+    return null;
+  }
+}
+
+async function pushCentralProfile(profile: {
+  cesNumber: string;
+  name: string;
+  photoUrl?: string;
+  photoData?: string;
+  uiTheme?: string;
+}): Promise<void> {
+  try {
+    await fetch(`${SHARED_AUTH_ORIGIN}/api/profile/${profile.cesNumber}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(INTERNAL_BRIDGE_SECRET ? { Authorization: `Bearer ${INTERNAL_BRIDGE_SECRET}` } : {}),
+        "x-admin-secret": process.env.ADMIN_CES_SECRET || "",
+      },
+      body: JSON.stringify(profile),
+    });
+  } catch {
+    // Best-effort central sync; legacy KV is source of truth during transition
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!SECRET) {
     res.status(500).json({ error: "ADMIN_CES_SECRET not configured" });
@@ -84,6 +132,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const CES_PROFILE_KEY = `ces:profile:${keyId}`;
 
     if (req.method === "GET") {
+      // ── Phase 2: prefer central profile, fallback to legacy KV ───
+      let central = null;
+      if (cesQuery.length === 9) {
+        central = await fetchCentralProfile(cesQuery);
+      }
+
+      if (central?.success && central.profile) {
+        const p = central.profile;
+        res.status(200).json({
+          name: p.name ?? "",
+          code: cesQuery,
+          photoData: p.photoData ?? "",
+          photoName: "",
+          theme: p.uiTheme ?? "",
+          uiTheme: p.uiTheme ?? "",
+          updatedAt: p.updatedAt ? new Date(p.updatedAt).getTime() : Date.now(),
+          source: "central",
+        });
+        return;
+      }
+
+      // Legacy fallback
       const stored = (await kv.hgetall<StoredProfile>(CES_PROFILE_KEY)) ?? null;
       if (!stored) {
         res.status(200).json(null);
@@ -145,6 +215,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // also store by normalized CES code so other devices can load it
       const codeKey = `ces:profile:${normalizedCode}`;
       await kv.hset(codeKey, payload);
+
+      // ── Sync to central profile store ──────────────────────────
+      await pushCentralProfile({
+        cesNumber: normalizedCode,
+        name,
+        photoData,
+        uiTheme: theme,
+      });
 
       res.status(200).json({
         name,
