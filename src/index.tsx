@@ -3533,14 +3533,48 @@ export default function AUTClock() {
         }
         const data = (await res.json()) as { signedIn?: boolean; ces?: string };
         if (cancelled) return;
+
         if (data.signedIn && data.ces) {
           setPasskeySignedIn(true);
           setPasskeyStatus("Signed in via Heartlight.");
-          setCoreProfile((prev) => ({
-            ...prev,
-            code: data.ces ?? prev.code,
-          }));
-          refreshCoreProfileRef.current?.();
+
+          // ── Fetch profile from central store using fresh CES ──
+          const ces = normalizeSignatureCode(data.ces);
+          if (ces.length === 9) {
+            try {
+              const profileRes = await fetch(`/api/ces-profile?ces=${encodeURIComponent(ces)}`);
+              if (profileRes.ok) {
+                const profileData = (await profileRes.json()) as Partial<CoreSignatureProfile> | null;
+                if (profileData) {
+                  const loadedProfile: CoreSignatureProfile = {
+                    name: typeof profileData.name === "string" ? profileData.name : "",
+                    code: ces,
+                    photoData: typeof profileData.photoData === "string" && profileData.photoData.length > 0 ? profileData.photoData : undefined,
+                    photoName: typeof profileData.photoName === "string" && profileData.photoName.length > 0 ? profileData.photoName : undefined,
+                    updatedAt: typeof profileData.updatedAt === "number" ? profileData.updatedAt : undefined,
+                  };
+                  setCoreProfile(loadedProfile);
+                  setPasskeyStatus(`Welcome, ${loadedProfile.name || 'Atlas Being'}!`);
+                  if (typeof window !== "undefined") {
+                    try {
+                      localStorage.setItem(CES_PROFILE_STORAGE_KEY, JSON.stringify(loadedProfile));
+                    } catch {
+                      // ignore storage errors
+                    }
+                  }
+                } else {
+                  // No profile found — set code only, user can fill name/photo
+                  setCoreProfile((prev) => ({ ...prev, code: ces }));
+                  setPasskeyStatus("Session recognized. Please complete your C.E.S. Profile.");
+                }
+              }
+            } catch (profileErr) {
+              console.warn("[autReturn] profile fetch failed:", profileErr);
+              setCoreProfile((prev) => ({ ...prev, code: ces }));
+            }
+          } else {
+            setCoreProfile((prev) => ({ ...prev, code: ces }));
+          }
         } else {
           setPasskeyStatus("Shared session expired. Please sign in again.");
         }
