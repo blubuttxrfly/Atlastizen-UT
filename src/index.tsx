@@ -3489,6 +3489,32 @@ export default function AUTClock() {
     }
   }, []);
 
+  /* ── Cross-device session restoration ─────────────────────────────── */
+  useEffect(() => {
+    if (typeof window === "undefined" || !deviceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/session", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { signedIn?: boolean; ces?: string };
+        if (cancelled) return;
+        if (data.signedIn && data.ces) {
+          setPasskeySignedIn(true);
+          setPasskeyStatus("Restored session.");
+          setCoreProfile((prev) => ({
+            ...prev,
+            code: data.ces ?? prev.code,
+          }));
+          refreshCoreProfileRef.current?.();
+        }
+      } catch {
+        // silently ignore network/session errors
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deviceId]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -4545,6 +4571,30 @@ export default function AUTClock() {
         setPasskeySignedIn(true);
         setCoreProfile((prev) => ({ ...prev, code: cleanCode }));
         refreshCoreProfileRef.current?.();
+
+        // ── Bridge to shared Atlas Island auth ────────────────────────
+        try {
+          const bridgeRes = await fetch("/api/auth-bridge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              ces: cleanCode,
+              name: coreProfile.name.trim(),
+              deviceId,
+            }),
+          });
+          if (bridgeRes.ok) {
+            const bridgeData = await bridgeRes.json().catch(() => null);
+            if (bridgeData?.bridged) {
+              setPasskeyStatus("Signed in and bridged to Atlas Island.");
+            }
+          }
+        } catch {
+          // Bridging is best-effort; don't fail the sign-in
+          setPasskeyStatus("Signed in with passkey. (Bridge skipped)");
+        }
+        // ───────────────────────────────────────────────────────────────
       } else {
         setPasskeyStatus("Passkey verification did not complete.");
       }
@@ -4554,6 +4604,24 @@ export default function AUTClock() {
       setPasskeyBusy(false);
     }
   }, [coreProfile.code, deviceId]);
+
+  const startPasskeySignOut = useCallback(async () => {
+    setPasskeyBusy(true);
+    setPasskeyStatus("Signing out…");
+    try {
+      const res = await fetch("/api/sign-out", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`Sign-out failed (${res.status})`);
+      setPasskeySignedIn(false);
+      setPasskeyStatus("Signed out.");
+    } catch (err: any) {
+      setPasskeyStatus(err?.message ?? "Sign-out failed.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }, []);
 
   const refreshCoreProfile = useCallback(async () => {
     if (typeof fetch === "undefined") return;
@@ -5236,22 +5304,35 @@ export default function AUTClock() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    className="themed-button rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide disabled:opacity-60"
-                    onClick={startPasskeyRegistration}
-                    disabled={passkeyBusy}
-                  >
-                    Set up passkey
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full border border-white/25 px-3 py-2 text-xs text-zinc-100 transition hover:bg-white/10 disabled:opacity-60"
-                    onClick={startPasskeyAuth}
-                    disabled={passkeyBusy}
-                  >
-                    Sign in with passkey
-                  </button>
+                  {passkeySignedIn ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-400/40 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-400/15 disabled:opacity-60"
+                      onClick={startPasskeySignOut}
+                      disabled={passkeyBusy}
+                    >
+                      Sign out
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="themed-button rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wide disabled:opacity-60"
+                        onClick={startPasskeyRegistration}
+                        disabled={passkeyBusy}
+                      >
+                        Set up passkey
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/25 px-3 py-2 text-xs text-zinc-100 transition hover:bg-white/10 disabled:opacity-60"
+                        onClick={startPasskeyAuth}
+                        disabled={passkeyBusy}
+                      >
+                        Sign in with passkey
+                      </button>
+                    </>
+                  )}
                   {passkeyStatus ? (
                     <div className="text-xs text-emerald-300">{passkeyStatus}</div>
                   ) : null}
