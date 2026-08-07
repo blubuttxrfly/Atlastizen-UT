@@ -5331,6 +5331,14 @@ export default function AUTClock() {
                       >
                         Sign in with passkey
                       </button>
+                      {/* ── Cross-property: sign in via Heartlight magic link ── */}
+                      <a
+                        href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                        className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-3 py-2 text-xs text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40 flex items-center gap-2"
+                      >
+                        <span>Sign in with Heartlight</span>
+                        <span className="text-[9px] text-lavender-300/40 hidden sm:inline">(cross-property)</span>
+                      </a>
                     </>
                   )}
                   {passkeyStatus ? (
