@@ -212,6 +212,16 @@ function hexToRgba(hex: string, a: number): string {
 
 const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
   {
+    body: "Earth",
+    title: "Embodiment Temple • Grounded Manifestation • Belonging",
+    detail: "Anchors presence, body-wisdom, stewardship, material creation, community.",
+  },
+  {
+    body: "Moon",
+    title: "Soul Mirror • Emotional Tide • Cyclic Wisdom",
+    detail: "Reflects inner landscape, receptivity, instinctual rhythm, memory, and the felt current beneath thought.",
+  },
+  {
     body: "Sun",
     title: "Heartlight Source • Vitality • Sovereign Will",
     detail: "Radiates life-force, confidence, direction, purpose, creative fire.",
@@ -225,11 +235,6 @@ const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
     body: "Venus",
     title: "Resonant Love • Beauty • Value + Pleasure",
     detail: "Tunes attraction, relationships, art, devotion, sensual harmony, worth.",
-  },
-  {
-    body: "Earth",
-    title: "Embodiment Temple • Grounded Manifestation • Belonging",
-    detail: "Anchors presence, body-wisdom, stewardship, material creation, community.",
   },
   {
     body: "Mars",
@@ -257,19 +262,17 @@ const PLANETARY_INFO: { body: BodyName; title: string; detail: string }[] = [
     detail: "Deepens intuition, imagination, compassion, spiritual sensitivity, poetic vision.",
   },
   {
-    body: "Moon",
-    title: "Soul Mirror • Emotional Tide • Cyclic Wisdom",
-    detail: "Reflects inner landscape, receptivity, instinctual rhythm, memory, and the felt current beneath thought.",
-  },
-  {
     body: "Pluto",
     title: "Underworld Alchemy • Death/Rebirth • Soul Power",
     detail: "Transmutates identity, exposes truth, empowers renewal, clears distorted control.",
   },
 ];
 const BODIES: BodyName[] = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
-// Presentation order for the alignment list: highlight Sun/Moon/Earth first.
-const BODY_ORDER: BodyName[] = ["Sun", "Earth", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
+// Presentation order for the alignment list: Earth first, then Moon, Sun, then classical planets in orbital order.
+const BODY_ORDER: BodyName[] = [
+  "Earth", "Moon", "Sun", "Mercury", "Venus",
+  "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
+];
 const DEFAULT_SCALE: Record<ViewMode, number> = {
   heliocentric: 0.03,
   geocentric: 0.03,
@@ -1163,9 +1166,6 @@ function HeartlightSystemMap() {
                     </div>
                   </div>
                 </div>
-                <div className="text-right text-[0.6rem] text-slate-300 whitespace-nowrap">
-                  λ {placement.longitude.toFixed(2)}° • β {Math.abs(placement.latitude || 0) < 0.0001 ? "0.00" : (placement.latitude || 0).toFixed(2)}° • Δ {placement.distanceAu.toFixed(3)} AU
-                </div>
               </div>
             );
           })}
@@ -1656,16 +1656,70 @@ function HeartlightSystemMap() {
             <span className="text-xs text-sky-200/80">{infoOpen ? "Hide" : "Show"}</span>
           </button>
           {infoOpen ? (
-            <div className="mt-2 space-y-2">
-              {PLANETARY_INFO.map((info) => (
-                <div key={info.body} className="flex flex-col gap-0.5">
-                  <span className="font-semibold text-sky-100">
-                    {BODY_GLYPHS[info.body]} {info.body}
-                  </span>
-                  <span className="text-slate-100">{info.title}</span>
-                  <span className="text-slate-300">{info.detail}</span>
-                </div>
-              ))}
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {zodiacPlacements.map((placement) => {
+                const info = PLANETARY_INFO.find((p) => p.body === placement.body);
+                const rayName = ZODIAC_RAY_NAMES[placement.signIndex] ?? "";
+                const isLongRay = rayName.length > 9;
+                const isCarbonRay = placement.signIndex === 9;
+                const outlineShadow = "-0.6px 0 #fff, 0 0.6px #fff, 0.6px 0 #fff, 0 -0.6px #fff";
+                const carbonShadow = `${outlineShadow}, 0 0 8px rgba(0,0,0,0.35)`;
+                return (
+                  <div
+                    key={placement.body}
+                    className="rounded-xl border border-sky-500/20 bg-slate-800/50 px-2 py-2 backdrop-blur-sm"
+                  >
+                    <div
+                      className="mb-0.5 h-0.5 w-full rounded-full"
+                      style={{ background: ZODIAC_HUES[placement.signIndex] ?? "rgba(125,211,252,0.6)" }}
+                    />
+                    <div className="flex w-full items-start justify-between gap-x-1 pt-0.5 text-sm leading-[1.05] text-slate-200">
+                      <div className="flex items-center gap-2 leading-[1.05] shrink-0">
+                        <img
+                          src={planetIconSrc(placement.body)}
+                          alt={placement.body}
+                          className="h-8 w-8 rounded-full object-cover shadow-[0_0_12px_rgba(56,189,248,0.25)]"
+                          aria-hidden
+                        />
+                        <div className="flex items-center gap-1.5 leading-tight">
+                          <span className="font-semibold text-sky-100">{placement.body}</span>
+                          <span className="text-sm text-sky-200">{BODY_GLYPHS[placement.body]}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-0 text-right leading-[1.05] shrink-0">
+                        <div
+                          className="flex items-center gap-1 text-sm font-bold whitespace-nowrap"
+                          style={{
+                            color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
+                            textShadow: isCarbonRay ? carbonShadow : "0 0 8px rgba(0,0,0,0.25)",
+                          }}
+                        >
+                          <span className="text-base">{placement.signSymbol}</span>
+                          <span className="uppercase tracking-wide">{placement.signName}</span>
+                        </div>
+                        <div
+                          className={`${isLongRay ? "text-[0.65rem]" : "text-[0.72rem]"} font-semibold whitespace-nowrap`}
+                          style={{
+                            color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
+                            textShadow: isCarbonRay ? carbonShadow : undefined,
+                          }}
+                        >
+                          {rayName}
+                        </div>
+                        <div className="text-sm font-semibold text-sky-100 whitespace-nowrap">
+                          {placement.degrees.toString().padStart(2, "0")}°{placement.minutes.toString().padStart(2, "0")}′
+                        </div>
+                      </div>
+                    </div>
+                    {info ? (
+                      <div className="mt-1.5 space-y-0.5 border-t border-sky-500/10 pt-1.5">
+                        <div className="text-xs font-semibold text-sky-100">{info.title}</div>
+                        <div className="text-xs text-slate-300 leading-snug">{info.detail}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>
@@ -1774,14 +1828,14 @@ function HeartlightSystemMap() {
               {rayViewMode === "gaian" ? (
                 <>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div>λ: Geocentric ecliptic longitude — degrees along the zodiac band from Earth's view.</div>
+                    <div>λ: Geocentric ecliptic longitude — degrees along the zodiac band from Earth&apos;s view.</div>
                     <div>β: Geocentric ecliptic latitude — degrees above/below the ecliptic plane from Earth.</div>
                     <div>Δ: Distance from Earth in AU. Earth is the Heartlight center of this frame — its own distance is 0.</div>
                     <div>Sign symbol &amp; name: Zodiac sector containing the body at this moment.</div>
                     <div>Earth: Faces the anti-solar point (Sun λ + 180°), the star field Earth gazes toward.</div>
                   </div>
                   <p className="mt-2 text-slate-300">
-                    In the Gaian view, Earth is the center of our Universe's Heartlight. The zodiac wraps around her, and all bodies are measured from her sacred soil. Earth faces the star field opposite our Sun — the window through which Gaia gazes into the cosmos.
+                    In the Gaian view, Earth is the center of our Universe&apos;s Heartlight. The zodiac wraps around her, and all bodies are measured from her sacred soil. Earth faces the star field opposite our Sun — the window through which Gaia gazes into the cosmos.
                   </p>
                 </>
               ) : (
@@ -1798,6 +1852,58 @@ function HeartlightSystemMap() {
                   </p>
                 </>
               )}
+
+              {/* Per-planet alignment cards */}
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-sky-300">
+                  Planetary Alignment
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {zodiacPlacements.map((placement) => {
+                    const rayName = ZODIAC_RAY_NAMES[placement.signIndex] ?? "";
+                    const isCarbonRay = placement.signIndex === 9;
+                    const outlineShadow = "-0.6px 0 #fff, 0 0.6px #fff, 0.6px 0 #fff, 0 -0.6px #fff";
+                    const carbonShadow = `${outlineShadow}, 0 0 8px rgba(0,0,0,0.35)`;
+                    return (
+                      <div
+                        key={placement.body}
+                        className="rounded-xl border border-sky-500/20 bg-slate-800/50 px-3 py-2 backdrop-blur-sm"
+                      >
+                        <div
+                          className="mb-1 h-0.5 w-full rounded-full"
+                          style={{ background: ZODIAC_HUES[placement.signIndex] ?? "rgba(125,211,252,0.6)" }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={planetIconSrc(placement.body)}
+                            alt={placement.body}
+                            className="h-6 w-6 rounded-full object-cover shadow-[0_0_8px_rgba(56,189,248,0.25)]"
+                            aria-hidden
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-sky-100 text-sm">{placement.body}</span>
+                            <span className="text-sm text-sky-200">{BODY_GLYPHS[placement.body]}</span>
+                          </div>
+                        </div>
+                        <div
+                          className="mt-1 flex items-center gap-1 text-sm font-bold"
+                          style={{
+                            color: ZODIAC_HUES[placement.signIndex] ?? "#e2e8f0",
+                            textShadow: isCarbonRay ? carbonShadow : "0 0 8px rgba(0,0,0,0.25)",
+                          }}
+                        >
+                          <span className="text-base">{placement.signSymbol}</span>
+                          <span className="uppercase tracking-wide">{placement.signName}</span>
+                          <span className="text-xs font-normal opacity-80">{rayName}</span>
+                        </div>
+                        <div className="mt-1 font-mono text-[0.65rem] text-slate-300 whitespace-nowrap">
+                          λ {placement.longitude.toFixed(2)}° • β {Math.abs(placement.latitude || 0) < 0.0001 ? "0.00" : (placement.latitude || 0).toFixed(2)}° • Δ {placement.distanceAu.toFixed(3)} AU
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </>
           ) : null}
         </div>

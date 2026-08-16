@@ -142,7 +142,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Ascendant',
     title: 'Yellow Ray · Gemini Ascendant',
     description:
-      "A Yellow Ray Gemini Ascendant sparkles into every space like morning light on water. Their core energetic signature is quicksilver, playful, and brilliantly alive, a current of curiosity that invites others to wonder alongside them. At ~515 THz, they are perceived as versatile, articulate, and youthfully engaged. Their presence asks questions that open doors, and they remind every being they meet that the mind is a sacred instrument, and that learning is a form of devotion to ALL that IS.",
+      "A Yellow Ray Gemini Ascendant sparkles into every space like morning light on water. Their core energetic signature is quicksilver, playful, and brilliantly alive, a current of curiosity that invites others to wonder alongside them. At ~515 THz, they are perceived as versatile, articulate, and youthfully engaged. Their presence asks questions that open doors. They remind every being they meet that the mind is a sacred instrument, and that learning is a form of devotion to ALL that IS.",
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -196,7 +196,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Sun',
     title: 'Turquoise Ray · Leo Sun',
     description:
-      "A Turquoise Ray Leo Sun exudes self-assuredness and authenticity with a loyal dedicated Heartlight, without thinking twice. The Turquoise represents where we joyfully align and live the truth of our Heartlight. At ~615 THz, this frequency is the bridge of empathy and higher communication, the current where emotional intelligence meets intuitive knowing. Through Leo, this becomes a being who shines from the generosity of a heart that knows its own worth. They naturally find themselves in positions of being a caring guide to ALL, a reminder that loving who you are authentically comes from within. Their presence is a stage where others are invited to remember their own radiance.",
+      "A Turquoise Ray Leo Sun exudes self-assuredness and authenticity with a loyal dedicated Heartlight, without thinking twice. The Turquoise represents where we joyfully align and live the truth of our Heartlight. At ~615 THz, this frequency is the bridge of empathy and higher communication and the current where emotional intelligence meets intuitive knowing. Through Leo, this becomes a being who shines from the generosity of a heart that knows its own worth. They naturally find themselves in positions of being a caring guide to ALL and a reminder that loving who you are authentically comes from within. Their presence is a stage where others are invited to remember their own radiance.",
   },
   "leo-moon": {
     rayName: 'Turquoise Ray',
@@ -234,7 +234,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Sun',
     title: 'Blue Ray · Virgo Sun',
     description:
-      "A Blue Ray Virgo Sun is the crystalline voice of truth made manifest through sacred craft. At ~650 THz, the Blue Ray is the current of communication, resonance, and boundary grace through which being speaks itself. Through Virgo, this becomes a being who refines the world by refining themselves, who sees the imperfect and loves it into wholeness. Their healing is precise, their service is humble, and their devotion to excellence is a form of prayer. They remind every being they meet that the smallest act, done with full attention, becomes a ceremony of love.",
+      "A Blue Ray Virgo Sun is the crystalline voice of truth made manifest through sacred craft. At ~650 THz, the Blue Ray is the current of communication, resonance, and traversing the boundary of ALL that IS. Through Virgo, this becomes a being who refines the world by refining themselves. A Blue Ray Virgo who finds the perfection in imperfection and loves it into wholeness. Their healing is precise, their service is humble, and their devotion to excellence is a blessing. They remind every being they meet that the smallest action with intention becomes a bridge to conscious awareness.",
   },
   "virgo-moon": {
     rayName: 'Blue Ray',
@@ -245,7 +245,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Moon',
     title: 'Blue Ray · Virgo Moon',
     description:
-      "A Blue Ray Virgo Moon feels most at peace when order and care intertwine. Their emotional body seeks the healing that comes from attention to detail, from the quiet satisfaction of a task completed with love. At ~650 THz, they nurture by tending, by organizing chaos into coherence, by seeing the overlooked details that carry hidden beauty and honoring them. Their inner world is a sanctuary of refinement, and they remind us that self-care is a form of spiritual practice, and that the body deserves the same precision of attention we give to our dreams.",
+      "A Blue Ray Virgo Moon feels most at peace when order and care intertwine. Their emotional body seeks the healing that comes from awareness to patterns. Blue Ray Virgo Moons feel from the quiet satisfaction of a task completed with intentional precise love. At ~650 THz, they nurture by tending, organizing chaos into coherence, and by seeing the overlooked details that carry hidden beauty and honoring them. Their inner world is a sanctuary of refinement, and they remind us that self-care is a form of spiritual practice, and that the body deserves the same precision of awareness we give to our dreams.",
   },
   "virgo-ascendant": {
     rayName: 'Blue Ray',
@@ -256,7 +256,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Ascendant',
     title: 'Blue Ray · Virgo Ascendant',
     description:
-      "A Blue Ray Virgo Ascendant arrives with the clarity of a mountain stream and the precision of a sacred instrument tuned to true. Their core energetic signature is felt as competence, as quiet helpfulness, as the being who sees what needs mending and mends it without fanfare. At ~650 THz, they are perceived as intelligent, discerning, and devoted to the greater whole. Their presence brings order without rigidity, and they remind every being they meet that truth, spoken with gentleness, is the highest form of love.",
+      "A Blue Ray Virgo Ascendant arrives with the clarity of a mountain stream and the precision of a sacred instrument tuned to harmonious resonance. Their core energetic signature is felt as competence, quiet helpfulness, and the being who sees what needs mending and mends it without fanfare. At ~650 THz, they are perceived as intelligent, discerning, and devoted to the greater whole. Their presence brings order without rigidity. Blue Ray Virgo Ascendants remind every being they meet that truth, spoken with intentional awareness, is the highest form of love.",
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -272,7 +272,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Sun',
     title: 'Indigo Ray · Libra Sun',
     description:
-      "An Indigo Ray Libra Sun is the dream-seer's frequency made visible in the art of relationship. At ~725 THz, the Indigo Ray is inner vision and intuitive wisdom, the unveiling of mysteries through deep perception. Through Libra, this becomes a being who sees the truth that lives between two hearts, who discerns harmony as the recognition of shared beauty. Their justice is relational, their diplomacy is sacred, and their love of beauty is a spiritual practice. They remind every being they meet that every connection is a mirror, and that the reflection we offer is the reflection we receive.",
+      "An Indigo Ray Libra Sun is the dream-seer's frequency made visible in the art of relationship. At ~725 THz, the Indigo Ray is inner vision and intuitive wisdom, the unveiling of mysteries through deep perception. Through Libra, this becomes a being who sees the truth that lives between two hearts, who discerns harmony as the recognition of shared beauty. Their justice is relational, diplomacy is sacred, and their love of beauty is a spiritual practice. Indigo Ray Libra Suns reminds every being they meet that every connection is a mirror and the reflection we offer is the reflection we receive.",
   },
   "libra-moon": {
     rayName: 'Indigo Ray',
@@ -283,7 +283,7 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
     body: 'Moon',
     title: 'Indigo Ray · Libra Moon',
     description:
-      "An Indigo Ray Libra Moon feels through the lens of balance, seeking emotional equilibrium the way a sailor reads the wind. Their inner world is a scale where every feeling is weighed with care, and their deepest need is the harmony of true connection. At ~725 THz, they nurture by mediating, by beautifying, by creating spaces where conflict dissolves into understanding. They remind us that peace is an active choice, and that the willingness to see another's perspective is a form of deep love.",
+      "An Indigo Ray Libra Moon feels through the lens of balance, seeking emotional equilibrium the way a sailor feels the winds shift along the turbulent tides. Their inner world is a scale where every feeling is weighed with care, and their deepest need is the harmony of aligned connection. At ~725 THz, they nurture by mediating, aesthetically-elevating, and creating spaces where conflict dissolves into awareness. They remind us that peace is an active choice, and the willingness to see another's perspective is a form of genuine love.",
   },
   "libra-ascendant": {
     rayName: 'Indigo Ray',

@@ -21,10 +21,11 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
+import { Sun, Moon, Globe2, MapPin, Crosshair } from "lucide-react";
 
 /**
- * Atlastizen Universal Time (AUT) — Live Clock ✨
- * Sunrise→Sunset maps to 00:00→12:00 AUT; Sunset→Next Sunrise maps to 12:00→24:00 AUT.
+ * AUT Time & Tools — Live Clock
+ * Sunrise→Next Sunrise maps to 00:00→12:00 AUT. 6:00 AUT marks Solar Sunset (midday).
  * Includes:
  *  • Polar/Solstice continuity via Equilux fallback using Apparent Solar Time (AST)
  *  • Higher-accuracy NOAA-style ephemeris (declination & equation of time)
@@ -64,6 +65,7 @@ type AUTBase = {
   segmentLabel: string;
   progress: number;
   segLenMin: number;
+  cycleLenMin: number;
   dayLenMin: number;
   nightLenMin: number;
 };
@@ -1291,16 +1293,15 @@ function minutesLocalToUTCMinutes(d: Date): number {
 }
 
 function minutesToHHMMSS(mins: number): string {
-  const total = ((mins % 1440) + 1440) % 1440;
-  const h = Math.floor(total / 60);
-  const m = Math.floor(total % 60);
-  const s = Math.floor((total * 60) % 60);
+  const h = Math.floor(mins / 60);
+  const m = Math.floor(mins % 60);
+  const s = Math.floor((mins * 60) % 60);
   const pad = (x: number) => x.toString().padStart(2, "0");
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 function formatClock(hhFloat: number): string {
-  const totalMin = (((hhFloat % 24) + 24) % 24) * 60;
+  const totalMin = (((hhFloat % 12) + 12) % 12) * 60;
   return minutesToHHMMSS(totalMin);
 }
 
@@ -1327,29 +1328,29 @@ function apparentSolarMinutesUTC(tUTCmin: number, lonDeg: number, EoT: number): 
 function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC: number): EquiluxAUT {
   const tUTC = minutesLocalToUTCMinutes(nowLocal);
   const astMin = apparentSolarMinutesUTC(tUTC, lonDeg, EoT); // 0..1440
-  // Day half centered on AST noon: 06:00..18:00; Night half: 18:00..30:00→wrap
-  const dayStart = 360; // 06:00 AST
-  const dayEnd = 1080; // 18:00 AST
+  // Day half centered on AST noon: 03:00..09:00; Night half: 09:00..15:00→wrap
+  const dayStart = 180; // 03:00 AST
+  const dayEnd = 540; // 09:00 AST
   let autHours = 0;
   let segmentLabel = "";
   let progress = 0;
   let segLenMin = 0;
 
   if (astMin >= dayStart && astMin < dayEnd) {
-    const ratio = (astMin - dayStart) / 720; // 12h day
-    autHours = 12 * ratio; // 0..12
+    const ratio = (astMin - dayStart) / 360; // 6h day
+    autHours = 6 * ratio; // 0..6
     segmentLabel = "Daylight // Lux";
     progress = ratio;
-    segLenMin = 720;
+    segLenMin = 360;
   } else {
-    // Night half: from 18:00→06:00 AST
+    // Night half: from 09:00→03:00 AST
     // Normalize via wrap
     const delta = astMin >= dayEnd ? astMin - dayEnd : astMin + (1440 - dayEnd);
-    const ratio = delta / 720;
-    autHours = 12 + 12 * ratio; // 12..24
+    const ratio = delta / 360;
+    autHours = 6 + 6 * ratio; // 6..12
     segmentLabel = "Nighttime // Umbra";
     progress = ratio;
-    segLenMin = 720;
+    segLenMin = 360;
   }
 
   // For cards: virtual sunrise/sunset based on AST half splits
@@ -1360,8 +1361,8 @@ function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC:
       nowLocal.getUTCDate()
     )
   );
-  const sunriseVirtualUTC = noonUTC - 360; // 06:00 before noon
-  const sunsetVirtualUTC = noonUTC + 360; // 18:00 after noon
+  const sunriseVirtualUTC = noonUTC - 180; // 03:00 before noon
+  const sunsetVirtualUTC = noonUTC + 180; // 09:00 after noon
   const tomorrowUTC = new Date(
     Date.UTC(
       nowLocal.getUTCFullYear(),
@@ -1380,8 +1381,9 @@ function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC:
     segmentLabel,
     progress,
     segLenMin,
-    dayLenMin: 720,
-    nightLenMin: 720,
+    cycleLenMin: 720,
+    dayLenMin: 360,
+    nightLenMin: 360,
     mode: "equilux",
   };
 }
@@ -1449,14 +1451,14 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
   if (tUTC >= sunriseToday && tUTC < sunsetToday) {
     const dayLen = sunsetToday - sunriseToday;
     const ratio = (tUTC - sunriseToday) / dayLen;
-    autHours = 12 * ratio;
+    autHours = 6 * ratio;
     segmentLabel = "Daylight // Lux";
     segLenMin = dayLen;
     progress = ratio;
   } else if (tUTC >= sunsetToday) {
     const nightLen = spanAfter(sunriseTom, sunsetToday);
     const ratio = (tUTC - sunsetToday) / nightLen;
-    autHours = 12 + 12 * ratio;
+    autHours = 6 + 6 * ratio;
     segmentLabel = "Nighttime // Umbra";
     segLenMin = nightLen;
     progress = ratio;
@@ -1465,7 +1467,7 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     const tCont = tUTC + 1440;
     const nightLen = spanBefore(sunriseToday, sunsetYest);
     const ratio = (tCont - sunsetYest) / nightLen;
-    autHours = 12 + 12 * ratio;
+    autHours = 6 + 6 * ratio;
     segmentLabel = "Nighttime // Umbra";
     segLenMin = nightLen;
     progress = ratio;
@@ -1486,6 +1488,7 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
     segmentLabel,
     progress,
     segLenMin,
+    cycleLenMin: dayLenMin + nightLenMin,
     dayLenMin,
     nightLenMin,
     mode: "normal",
@@ -1497,11 +1500,12 @@ function useGeolocation(defaultCoords: Coordinates) {
   const [coords, setCoords] = useState<Coordinates>(defaultCoords);
   const [status, setStatus] = useState<GeolocationStatus>("pending");
 
-  useEffect(() => {
+  const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setStatus("unavailable");
       return;
     }
+    setStatus("pending");
     navigator.geolocation.getCurrentPosition(
       (pos: GeolocationPosition) => {
         setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
@@ -1514,7 +1518,16 @@ function useGeolocation(defaultCoords: Coordinates) {
     );
   }, []);
 
-  return { coords, status, setCoords };
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
+
+  const resetToDefault = useCallback(() => {
+    setCoords(defaultCoords);
+    setStatus("pending");
+  }, [defaultCoords]);
+
+  return { coords, status, setCoords, requestLocation, resetToDefault };
 }
 
 function useReverseGeocode(
@@ -2026,20 +2039,20 @@ function useAliceAndPWA() {
   }, []);
 }
 
-// Ray windows: 12 windows across 24 AUT hours (2h each)
+// Ray windows: 12 windows across 12 AUT hours (1h each)
 const RAY_WINDOWS: RayWindow[] = [
-  { name: "Red", start: 0, end: 2, color: "#ef4444" },
-  { name: "Orange", start: 2, end: 4, color: "#f97316" },
-  { name: "Yellow", start: 4, end: 6, color: "#facc15", labelColor: "#f8fafc" },
-  { name: "Green", start: 6, end: 8, color: "#22c55e" },
-  { name: "Turquoise", start: 8, end: 10, color: "#2dd4bf" },
-  { name: "Blue", start: 10, end: 12, color: "#3b82f6" },
-  { name: "Indigo", start: 12, end: 14, color: "#6366f1" },
-  { name: "Violet", start: 14, end: 16, color: "#8b5cf6" },
-  { name: "Magenta", start: 16, end: 18, color: "#d946ef" },
-  { name: "Omni", start: 18, end: 20, color: "#fafafa", labelColor: "#f8fafc" },
-  { name: "Crystalline-Carbon", start: 20, end: 22, color: "#a5f3fc", labelColor: "#f8fafc" },
-  { name: "Infinite of ALL", start: 22, end: 24, color: "#7dd3fc", labelColor: "#f8fafc" },
+  { name: "Red", start: 0, end: 1, color: "#ef4444" },
+  { name: "Orange", start: 1, end: 2, color: "#f97316" },
+  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc" },
+  { name: "Green", start: 3, end: 4, color: "#22c55e" },
+  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf" },
+  { name: "Blue", start: 5, end: 6, color: "#3b82f6" },
+  { name: "Indigo", start: 6, end: 7, color: "#6366f1" },
+  { name: "Violet", start: 7, end: 8, color: "#8b5cf6" },
+  { name: "Magenta", start: 8, end: 9, color: "#d946ef" },
+  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc" },
+  { name: "Crystalline-Carbon", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc" },
+  { name: "Infinite of ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc" },
 ];
 
 // Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
@@ -2394,8 +2407,8 @@ const TOP_RAY_INDEX = (() => {
 function rayIndexForAUT(hours: number): number {
   const eps = 1e-9;
   const hRaw = Number.isFinite(hours) ? Number(hours) : 0;
-  // Wrap  …,-1→23 , 24→0 . At exactly 24h we treat as 0h of the new cycle.
-  const h = ((hRaw % 24) + 24) % 24;
+  // Wrap  …,-1→11 , 12→0 . At exactly 12h we treat as 0h of the new cycle.
+  const h = ((hRaw % 12) + 12) % 12;
   for (let i = 0; i < RAY_WINDOWS.length; i++) {
     const r = RAY_WINDOWS[i];
     const start = r.start - eps;
@@ -3351,7 +3364,7 @@ export default function AUTClock() {
 
   // Charlotte NoDa fallback
   const fallback = useMemo<Coordinates>(() => ({ lat: 35.25, lon: -80.8 }), []);
-  const { coords, status, setCoords } = useGeolocation(fallback);
+  const { coords, status, setCoords, requestLocation, resetToDefault } = useGeolocation(fallback);
   const { placeLabel, placeStatus, retry } = useReverseGeocode(coords, status, FALLBACK_PLACE_LABEL);
   // Legacy zip lookup state removed — Location Lookup now uses useForwardGeocode dropdown
   const [lookupQuery, setLookupQuery] = useState("");
@@ -3892,7 +3905,7 @@ export default function AUTClock() {
     () => computeAUT(now, coords.lat, coords.lon),
     [now, coords]
   );
-  const smoothClock = useSmoothAUT(data.autHours, data.segLenMin);
+  const smoothClock = useSmoothAUT(data.autHours, data.cycleLenMin);
 
   const sol = useMemo(() => {
     try {
@@ -4151,7 +4164,7 @@ export default function AUTClock() {
   const profileImageSrc = coreProfile.photoData;
 
   // Use a stable, wrapped AUT hour value
-  const autH = ((Number(data.autHours) % 24) + 24) % 24;
+  const autH = ((Number(data.autHours) % 12) + 12) % 12;
   const [weekPickerDate, setWeekPickerDate] = useState(() => toLocalISODate(new Date()));
   const [weekPickerLocalHour, setWeekPickerLocalHour] = useState<number>(() => {
     const nowLocal = new Date();
@@ -4162,15 +4175,15 @@ export default function AUTClock() {
       if (!data.sunriseLocal || !data.sunsetLocal) return null;
       const dayLen = data.dayLenMin ?? 0;
       const nightLen = data.nightLenMin ?? 0;
-      const isFullCycle = hour >= 24;
+      const isFullCycle = hour >= 12;
       const normalized =
-        hour >= 24 || hour < 0 ? ((hour % 24) + 24) % 24 + (isFullCycle ? 24 : 0) : hour;
-      if (normalized < 12) {
-        const ratio = Math.max(0, Math.min(1, normalized / 12));
+        hour >= 12 || hour < 0 ? ((hour % 12) + 12) % 12 + (isFullCycle ? 12 : 0) : hour;
+      if (normalized < 6) {
+        const ratio = Math.max(0, Math.min(1, normalized / 6));
         return new Date(data.sunriseLocal.getTime() + ratio * dayLen * 60_000);
       }
-      const nightHours = normalized === 24 ? 12 : normalized - 12;
-      const ratio = Math.max(0, Math.min(1, nightHours / 12));
+      const nightHours = normalized === 12 ? 6 : normalized - 6;
+      const ratio = Math.max(0, Math.min(1, nightHours / 6));
       return new Date(data.sunsetLocal.getTime() + ratio * nightLen * 60_000);
     },
     [data]
@@ -4197,8 +4210,8 @@ export default function AUTClock() {
   const rayProgress = Math.min(1, Math.max(0, rawProgress));
   const remainingAUTHours = Math.max(0, activeRay.end - autH);
   const minutesPerAutHour = data.segmentLabel?.includes("Daylight")
-    ? data.dayLenMin / 12
-    : data.nightLenMin / 12;
+    ? data.dayLenMin / 6
+    : data.nightLenMin / 6;
   const remainingRealMin = Math.max(0, remainingAUTHours * minutesPerAutHour);
   const rayProgressPct = Math.round(rayProgress * 100);
 
@@ -4453,7 +4466,7 @@ export default function AUTClock() {
     }),
     [formatShortTime, weekCycleEnd, weekCycleStart]
   );
-  const weekPickerLocalClock = formatClock(weekPickerLocalHour);
+  const weekPickerLocalClock = minutesToHHMMSS(weekPickerLocalHour * 60);
   const weekSelectedLocalLabel = weekSelectedLocal ? formatShortTime(weekSelectedLocal) : "—";
   const weekActiveSegment = weekDialSegments[weekRayIndex] ?? weekDialSegments[0];
   const weekPointerAngle = weekActiveSegment
@@ -4931,48 +4944,45 @@ export default function AUTClock() {
 
   return (
     <div
-      className={`min-h-screen w-full flex justify-center items-start md:items-center px-4 py-5 sm:px-5 md:p-6 theme-shell ${backdropClass}`}
+      className={`min-h-screen w-full flex justify-center items-start md:items-center px-3 py-3 sm:px-4 md:px-5 md:py-3 theme-shell ${backdropClass}`}
       style={{ fontFamily: themePreset.fontFamily }}
     >
       <div
-        className={`w-full max-w-5xl rounded-2xl shadow-xl p-5 sm:p-6 md:p-7 space-y-5 panel-surface ${panelClass}`}
+        className={`w-full max-w-5xl rounded-2xl shadow-xl p-4 sm:p-5 md:p-6 space-y-3 panel-surface ${panelClass}`}
       >
-        <header className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="flex flex-col gap-1 pr-28 md:pr-0">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
-              Atlastizen Universal
-              <br />
-              Time & Tools
+        <header className="relative flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-base sm:text-lg md:text-2xl font-semibold tracking-tight leading-tight whitespace-nowrap">
+              AUT Time &amp; Tools
             </h1>
-          </div>
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-end sm:gap-5">
-              <div className="flex flex-col gap-2 text-xs uppercase tracking-wide text-zinc-400">
-                <label htmlFor={panelSelectId}>Dashboard Panel</label>
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-0.5 text-xs uppercase tracking-wide text-zinc-400">
+                <label htmlFor={panelSelectId} className="text-[9px]">Dashboard Panel</label>
                 <select
                   id={panelSelectId}
-                  className="themed-input rounded-lg px-2 py-1 text-xs uppercase tracking-wide shadow-sm"
-                value={activePanel}
-                onChange={(event) => setActivePanel(event.target.value as PanelId)}
-              >
-                {PANEL_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="absolute top-0 right-0 md:static flex flex-col items-center gap-2">
+                  className="themed-input rounded-lg px-1.5 py-1 text-[10px] uppercase tracking-wide shadow-sm max-w-[120px] sm:max-w-[150px] sm:text-xs"
+                  value={activePanel}
+                  onChange={(event) => setActivePanel(event.target.value as PanelId)}
+                >
+                  {PANEL_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition"
+                className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition shrink-0"
                 onClick={() => setActivePanel("coreSignature")}
+                title="Being Profile"
               >
                 <span className="inline-flex items-center justify-center" style={signatureRingStyleThin}>
-                  <span className="relative h-11 w-11 rounded-full overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+                  <span className="relative h-8 w-8 sm:h-11 sm:w-11 rounded-full overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
                     {profileImageSrc ? (
                       <img src={profileImageSrc} alt="Profile" className="h-full w-full object-cover" />
                     ) : (
-                      <span className="flex h-full w-full items-center justify-center text-base text-zinc-100">
+                      <span className="flex h-full w-full items-center justify-center text-sm sm:text-base text-zinc-100">
                         {coreProfile.name ? coreProfile.name[0]?.toUpperCase() : "✧"}
                       </span>
                     )}
@@ -5002,10 +5012,39 @@ export default function AUTClock() {
               </button>
               <button
                 type="button"
-                className="themed-button rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                className="themed-button rounded-full px-2 py-0.5 text-[9px] sm:px-2.5 sm:py-1 sm:text-[10px] font-semibold uppercase tracking-wide shrink-0"
                 onClick={() => setActivePanel("settings")}
               >
                 Settings
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col">
+              <div className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-wide">{placeLabel}</div>
+              <div className="flex items-baseline gap-3">
+                <div className="text-2xl sm:text-3xl font-semibold tabular-nums leading-none">{smoothClock} AUT</div>
+                <div className="text-xs sm:text-sm text-zinc-400">Local {formatLongTime(now)}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="themed-button inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide"
+                onClick={requestLocation}
+                title="Ping my location"
+              >
+                <MapPin className="h-3 w-3" />
+                <span className="hidden sm:inline">Location Ping</span>
+              </button>
+              <button
+                type="button"
+                className="themed-button inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide"
+                onClick={resetToDefault}
+                title="Re-center on Charlotte"
+              >
+                <Crosshair className="h-3 w-3" />
+                <span className="hidden sm:inline">Recenter</span>
               </button>
             </div>
           </div>
@@ -5687,7 +5726,7 @@ export default function AUTClock() {
                   AUT (Atlastizen Universal Time)
                 </div>
                 <div className="text-[10px] sm:text-xs text-zinc-400">
-                  Sunrise → 00:00 AUT • Sunset → 12:00 AUT • Next Sunrise → 24:00/00:00 AUT
+                  Sunrise → 00:00 AUT • Sunset → 06:00 AUT (midday) • Next Sunrise → 12:00/00:00 AUT
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
                   <span className="font-medium text-white">{locationPrimary}</span>
@@ -5736,16 +5775,16 @@ export default function AUTClock() {
                   </div>
                 ) : null}
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
-                  {smoothClock}
+                  {smoothClock} AUT
                 </div>
                 <div className="text-sm text-zinc-300">
                   Local {formatLongTime(now)}
                   {data.dayLenMin > 0 && (
                     <span className="text-zinc-500">
                       {" "}·{" "}
-                      {data.autHours < 12
-                        ? `1 AUT sec = ${(data.dayLenMin / 720).toFixed(2)} real sec`
-                        : `1 AUT sec = ${(data.nightLenMin / 720).toFixed(2)} real sec`}
+                      {data.autHours < 6
+                        ? `1 AUT sec = ${(data.dayLenMin / 360).toFixed(2)} real sec`
+                        : `1 AUT sec = ${(data.nightLenMin / 360).toFixed(2)} real sec`}
                     </span>
                   )}
                 </div>
@@ -5879,7 +5918,7 @@ export default function AUTClock() {
                 <div className="text-xl font-semibold">{formatShortTime(data.sunsetLocal)}</div>
               </div>
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Next Sunrise (24:00 AUT)</div>
+                <div className="text-sm text-zinc-400">Next Sunrise (12:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.nextSunriseLocal)}</div>
               </div>
             </div>
@@ -6639,7 +6678,7 @@ export default function AUTClock() {
               </div>
             </div>
             <div className="text-sm text-slate-100 text-right">
-              <div>{weekProgressPct}% through this 12h shift</div>
+              <div>{weekProgressPct}% through this cycle</div>
               <div>≈ {Math.ceil(weekRemainingMinutes)} min left</div>
             </div>
           </div>
@@ -6733,7 +6772,7 @@ export default function AUTClock() {
                       <div className="ray-pill-dot" style={{ background: headerBg }} aria-hidden="true" />
                       <div className="flex flex-col leading-tight">
                         <span className="ray-pill-title">{day.dayLabel}</span>
-                        <span className="ray-pill-time">00:00 → 12:00 • 12:00 → 24:00 local</span>
+                        <span className="ray-pill-time">00:00 → 12:00 AUT (one sacred cycle)</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -6777,7 +6816,7 @@ export default function AUTClock() {
                                   {reading?.body ?? cycle.description}
                                 </p>
                                 <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                                  Local {cycle.cycle === 1 ? "00:00 → 12:00" : "12:00 → 24:00"}
+                                  Local 00:00 → 12:00 AUT
                                 </div>
                               </div>
                             </div>
@@ -7018,7 +7057,7 @@ export default function AUTClock() {
                       <div>
                         <div className="text-sm font-semibold text-slate-100">{day.dayLabel}</div>
                         <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                          00:00 → 12:00 • 12:00 → 24:00 local
+                          00:00 → 12:00 AUT
                         </div>
                       </div>
                     </div>
@@ -7063,7 +7102,7 @@ export default function AUTClock() {
                                   {reading?.body ?? cycle.description}
                                 </p>
                                 <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                                  Local {cycle.cycle === 1 ? "00:00 → 12:00" : "12:00 → 24:00"}
+                                  Local 00:00 → 12:00 AUT
                                 </div>
                               </div>
                             </div>
@@ -7298,11 +7337,11 @@ if (typeof window !== "undefined" && RUN_TESTS) {
     probe.progress
   );
 
-  // Ray mapping sanity checks (updated for Turquoise insertion and Orichalcum removal)
+  // Ray mapping sanity checks for 12 AUT hour solar cycle
   const idx1 = rayIndexForAUT(0.5); // Red
-  const idx2 = rayIndexForAUT(19.0); // Omni now 18–20
-  const idx3 = rayIndexForAUT(23.9); // Infinite of ALL
+  const idx2 = rayIndexForAUT(9.5); // Omni now 9–10
+  const idx3 = rayIndexForAUT(11.9); // Infinite of ALL
   console.assert(RAY_WINDOWS[idx1].name === "Red", "00:30 AUT should be Red");
-  console.assert(RAY_WINDOWS[idx2].name.includes("Omni"), "19:00 AUT should be Omni");
-  console.assert(RAY_WINDOWS[idx3].name.includes("Infinite"), "23:54 AUT should be Infinite of ALL");
+  console.assert(RAY_WINDOWS[idx2].name.includes("Omni"), "09:30 AUT should be Omni");
+  console.assert(RAY_WINDOWS[idx3].name.includes("Infinite"), "11:54 AUT should be Infinite of ALL");
 }

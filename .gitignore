@@ -25,3 +25,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Hermes agent plans
+.hermes/
+
+# Misc
+closes
