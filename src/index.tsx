@@ -21,7 +21,7 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
-import { MapPin, Crosshair } from "lucide-react";
+import { Crosshair } from "lucide-react";
 
 /**
  * AUT Time & Tools — Live Clock
@@ -1496,9 +1496,32 @@ function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
   };
 }
 
-function useGeolocation(defaultCoords: Coordinates) {
+const LOCATION_CACHE_KEY = "aut-location-cache";
+const DEFAULT_FALLBACK: Coordinates = { lat: 35.2271, lon: -80.8431 }; // Charlotte, NC
+
+function useGeolocation(defaultCoords: Coordinates = DEFAULT_FALLBACK) {
   const [coords, setCoords] = useState<Coordinates>(defaultCoords);
   const [status, setStatus] = useState<GeolocationStatus>("pending");
+
+  // Try to restore cached location on mount
+  useEffect(() => {
+    try {
+      const cachedRaw = localStorage.getItem(LOCATION_CACHE_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as { lat: number; lon: number; timestamp?: number };
+        if (typeof cached.lat === "number" && typeof cached.lon === "number") {
+          setCoords({ lat: cached.lat, lon: cached.lon });
+          setStatus("granted");
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    // No valid cache — request fresh location
+    requestLocation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -1508,8 +1531,18 @@ function useGeolocation(defaultCoords: Coordinates) {
     setStatus("pending");
     navigator.geolocation.getCurrentPosition(
       (pos: GeolocationPosition) => {
-        setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        const newCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCoords(newCoords);
         setStatus("granted");
+        try {
+          localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify({
+            lat: newCoords.lat,
+            lon: newCoords.lon,
+            timestamp: Date.now(),
+          }));
+        } catch {
+          // ignore storage errors
+        }
       },
       () => {
         setStatus("denied");
@@ -1518,16 +1551,55 @@ function useGeolocation(defaultCoords: Coordinates) {
     );
   }, []);
 
-  useEffect(() => {
-    requestLocation();
-  }, [requestLocation]);
-
   const resetToDefault = useCallback(() => {
     setCoords(defaultCoords);
     setStatus("pending");
   }, [defaultCoords]);
 
-  return { coords, status, setCoords, requestLocation, resetToDefault };
+  // Unified recenter: try GPS first, fall back to default if denied/unavailable
+  const handleRecenter = useCallback(() => {
+    if (!navigator.geolocation) {
+      resetToDefault();
+      return;
+    }
+    setStatus("pending");
+    navigator.geolocation.getCurrentPosition(
+      (pos: GeolocationPosition) => {
+        const newCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCoords(newCoords);
+        setStatus("granted");
+        try {
+          localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify({
+            lat: newCoords.lat,
+            lon: newCoords.lon,
+            timestamp: Date.now(),
+          }));
+        } catch {
+          // ignore storage errors
+        }
+      },
+      () => {
+        // GPS denied — fall back to cached or default
+        try {
+          const cachedRaw = localStorage.getItem(LOCATION_CACHE_KEY);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw) as { lat: number; lon: number };
+            if (typeof cached.lat === "number" && typeof cached.lon === "number") {
+              setCoords({ lat: cached.lat, lon: cached.lon });
+              setStatus("granted");
+              return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        resetToDefault();
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+    );
+  }, [resetToDefault]);
+
+  return { coords, status, setCoords, requestLocation, resetToDefault, handleRecenter };
 }
 
 function useReverseGeocode(
@@ -3364,7 +3436,7 @@ export default function AUTClock() {
 
   // Charlotte NoDa fallback
   const fallback = useMemo<Coordinates>(() => ({ lat: 35.25, lon: -80.8 }), []);
-  const { coords, status, setCoords, requestLocation, resetToDefault } = useGeolocation(fallback);
+  const { coords, status, setCoords, handleRecenter } = useGeolocation(fallback);
   const { placeLabel, placeStatus, retry } = useReverseGeocode(coords, status, FALLBACK_PLACE_LABEL);
   // Legacy zip lookup state removed — Location Lookup now uses useForwardGeocode dropdown
   const [lookupQuery, setLookupQuery] = useState("");
@@ -4951,26 +5023,12 @@ export default function AUTClock() {
         className={`w-full max-w-5xl rounded-2xl shadow-xl p-4 sm:p-5 md:p-6 space-y-3 panel-surface ${panelClass}`}
       >
         <header className="relative flex flex-col gap-2">
+          {/* Top row: Title + Profile + Settings */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-base sm:text-lg md:text-2xl font-semibold tracking-tight leading-tight whitespace-nowrap">
               AUT Time &amp; Tools
             </h1>
             <div className="flex items-center gap-2">
-              <div className="flex flex-col gap-0.5 text-xs uppercase tracking-wide text-zinc-400">
-                <label htmlFor={panelSelectId} className="text-[9px]">Dashboard Panel</label>
-                <select
-                  id={panelSelectId}
-                  className="themed-input rounded-lg px-1.5 py-1 text-[10px] uppercase tracking-wide shadow-sm max-w-[120px] sm:max-w-[150px] sm:text-xs"
-                  value={activePanel}
-                  onChange={(event) => setActivePanel(event.target.value as PanelId)}
-                >
-                  {PANEL_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <button
                 type="button"
                 className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition shrink-0"
@@ -5012,13 +5070,36 @@ export default function AUTClock() {
               </button>
               <button
                 type="button"
-                className="themed-button rounded-full px-2 py-0.5 text-[9px] sm:px-2.5 sm:py-1 sm:text-[10px] font-semibold uppercase tracking-wide shrink-0"
+                className="inline-flex items-center justify-center h-8 w-8 sm:h-10 sm:w-10 rounded-full hover:opacity-80 transition shrink-0"
                 onClick={() => setActivePanel("settings")}
+                title="Settings"
               >
-                Settings
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5 text-zinc-300">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124.118-.045.243-.087.37-.127.361-.112.762.037.98.302l1.36 1.679c.218.265.24.625.054.912a7.97 7.97 0 0 1-.59.71c-.221.247-.286.585-.194.89.028.094.054.19.077.286.09.36.004.74-.225 1.012l-1.36 1.679c-.218.265-.62.414-.98.302a7.45 7.45 0 0 1-.37-.127c-.355-.133-.75-.072-1.075.124a6.93 6.93 0 0 1-.22.127c-.332.184-.582.496-.645.87l-.213 1.28c-.09.543-.56.941-1.11.941h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.93 6.93 0 0 1-.22-.127c-.324-.196-.72-.257-1.075-.124-.118.045-.243.087-.37.127-.361.112-.762-.037-.98-.302l-1.36-1.679c-.218-.265-.24-.625-.054-.912a7.97 7.97 0 0 1 .59-.71c.221-.247.286-.585.194-.89a6.69 6.69 0 0 1-.077-.286c-.09-.36-.004-.74.225-1.012l1.36-1.679c.218-.265.62-.414.98-.302.127.04.252.082.37.127.355.133.75.072 1.075-.124a6.93 6.93 0 0 1 .22-.127c.332-.184.582-.496.645-.87l.213-1.28Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                </svg>
               </button>
             </div>
           </div>
+
+          {/* Dashboard Panel dropdown — full width below title */}
+          <div className="w-full">
+            <label htmlFor={panelSelectId} className="text-[9px] uppercase tracking-wide text-zinc-400">Dashboard Panel</label>
+            <select
+              id={panelSelectId}
+              className="themed-input w-full rounded-lg px-2 py-1.5 text-xs uppercase tracking-wide shadow-sm"
+              value={activePanel}
+              onChange={(event) => setActivePanel(event.target.value as PanelId)}
+            >
+              {PANEL_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clock + location info + single Recenter */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-col">
               <div className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-wide">{placeLabel}</div>
@@ -5027,26 +5108,14 @@ export default function AUTClock() {
                 <div className="text-xs sm:text-sm text-zinc-400">Local {formatLongTime(now)}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="themed-button inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide"
-                onClick={requestLocation}
-                title="Ping my location"
-              >
-                <MapPin className="h-3 w-3" />
-                <span className="hidden sm:inline">Location Ping</span>
-              </button>
-              <button
-                type="button"
-                className="themed-button inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide"
-                onClick={resetToDefault}
-                title="Re-center on Charlotte"
-              >
-                <Crosshair className="h-3 w-3" />
-                <span className="hidden sm:inline">Recenter</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              className="themed-button inline-flex items-center justify-center h-9 w-9 rounded-full"
+              onClick={handleRecenter}
+              title="Recenter — find my location"
+            >
+              <Crosshair className="h-4 w-4" />
+            </button>
           </div>
         </header>
 
