@@ -5097,8 +5097,8 @@ export default function AUTClock() {
           </div>
 
           {/* Clock + location info + single Recenter */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-col">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col min-w-0">
               <div className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-wide">{placeLabel}</div>
               <div className="flex items-baseline gap-3">
                 <div className="text-2xl sm:text-3xl font-semibold tabular-nums leading-none">{smoothClock} AUT</div>
@@ -5107,7 +5107,7 @@ export default function AUTClock() {
             </div>
             <button
               type="button"
-              className="themed-button inline-flex items-center justify-center h-9 w-9 rounded-full"
+              className="themed-button inline-flex items-center justify-center h-9 w-9 rounded-full shrink-0"
               onClick={handleRecenter}
               title="Recenter — find my location"
             >
