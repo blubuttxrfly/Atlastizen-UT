@@ -21,7 +21,7 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
-import { Sun, Moon, Globe2, MapPin, Crosshair } from "lucide-react";
+import { MapPin, Crosshair } from "lucide-react";
 
 /**
  * AUT Time & Tools — Live Clock
