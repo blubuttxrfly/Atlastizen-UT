@@ -21,7 +21,7 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
-import { Crosshair } from "lucide-react";
+import { Crosshair, Settings } from "lucide-react";
 
 /**
  * AUT Time & Tools — Live Clock
@@ -5074,10 +5074,7 @@ export default function AUTClock() {
                 onClick={() => setActivePanel("settings")}
                 title="Settings"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5 text-zinc-300">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124.118-.045.243-.087.37-.127.361-.112.762.037.98.302l1.36 1.679c.218.265.24.625.054.912a7.97 7.97 0 0 1-.59.71c-.221.247-.286.585-.194.89.028.094.054.19.077.286.09.36.004.74-.225 1.012l-1.36 1.679c-.218.265-.62.414-.98.302a7.45 7.45 0 0 1-.37-.127c-.355-.133-.75-.072-1.075.124a6.93 6.93 0 0 1-.22.127c-.332.184-.582.496-.645.87l-.213 1.28c-.09.543-.56.941-1.11.941h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.93 6.93 0 0 1-.22-.127c-.324-.196-.72-.257-1.075-.124-.118.045-.243.087-.37.127-.361.112-.762-.037-.98-.302l-1.36-1.679c-.218-.265-.24-.625-.054-.912a7.97 7.97 0 0 1 .59-.71c.221-.247.286-.585.194-.89a6.69 6.69 0 0 1-.077-.286c-.09-.36-.004-.74.225-1.012l1.36-1.679c.218-.265.62-.414.98-.302.127.04.252.082.37.127.355.133.75.072 1.075-.124a6.93 6.93 0 0 1 .22-.127c.332-.184.582-.496.645-.87l.213-1.28Z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                </svg>
+                <Settings className="h-5 w-5 text-zinc-300" />
               </button>
             </div>
           </div>
