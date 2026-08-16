@@ -4585,7 +4585,7 @@ export default function AUTClock() {
   const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
-    const offset = -Math.PI / 2;
+    const offset = -Math.PI / 2 - segmentAngle;
     return RAY_WINDOWS.map((ray, index) => {
       const dialPosition = ((index - TOP_RAY_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
@@ -5338,7 +5338,7 @@ export default function AUTClock() {
                 </div>
               </div>
             </div>
-            <div className={`flex flex-wrap items-center gap-2 text-[11px] ${timeZoneTone}`}>
+            <div className={activePanel === "postal" ? `flex flex-wrap items-center gap-2 text-[11px] ${timeZoneTone}` : "hidden"}>
               <span>{timeZoneLine}</span>
               <button
                 className="retro-clean-btn rounded border border-white/15 bg-white/5 px-1.5 py-0 text-[9px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
@@ -5787,19 +5787,19 @@ export default function AUTClock() {
         )}
 
         {activePanel === "clock" && (
-          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-6 shadow-inner">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-3 sm:p-4 shadow-inner">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm uppercase tracking-wide text-zinc-300 whitespace-nowrap sm:whitespace-normal">
                   AUT (Atlastizen Universal Time)
                 </div>
-                <div className="text-[10px] sm:text-xs text-zinc-400">
-                  Sunrise → 00:00 AUT • Sunset → 06:00 AUT (midday) • Next Sunrise → 12:00/00:00 AUT
+                <div className="text-[8px] sm:text-[10px] text-zinc-400 whitespace-nowrap overflow-hidden text-ellipsis">
+                  Sunrise→00:00 AUT • Sunset→06:00 AUT (midday) • Next→12:00/00:00 AUT
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
-                  <span className="font-medium text-white">{locationPrimary}</span>
+                <div className="mt-2 flex items-center justify-between gap-2 text-sm text-zinc-200">
+                  <span className="font-medium text-white text-xs sm:text-sm truncate">{locationPrimary}</span>
                   <button
-                    className="retro-clean-btn inline-flex items-center justify-center h-8 w-8 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 transition"
+                    className="retro-clean-btn inline-flex items-center justify-center h-7 w-7 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 transition shrink-0"
                     onClick={() => {
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
@@ -5815,20 +5815,8 @@ export default function AUTClock() {
                     }}
                     title="Recenter — find my location"
                   >
-                    <Crosshair className="h-4 w-4" />
+                    <Crosshair className="h-3.5 w-3.5" />
                   </button>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-                  <span className={timeZoneTone}>{timeZoneLine}</span>
-                  <button
-                    className="retro-clean-btn rounded border border-white/15 bg-white/5 px-1.5 py-0 text-[9px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
-                    onClick={() => setShowCoords((v) => !v)}
-                  >
-                    {showCoords ? "Hide" : "Show"} Lat/Lon
-                  </button>
-                  <span className="text-[11px] text-zinc-300">
-                    {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : null}
-                  </span>
                 </div>
                 {locationHint ? (
                   <div className={`mt-1 flex flex-wrap items-center gap-2 text-[11px] ${locationHintTone}`}>
@@ -5846,18 +5834,21 @@ export default function AUTClock() {
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
                   {smoothClock} AUT
                 </div>
-                {data.dayLenMin > 0 && (
-                  <div className="text-sm text-zinc-500">
-                    {data.autHours < 6
-                      ? `1 AUT sec = ${(data.dayLenMin / 360).toFixed(2)} real sec`
-                      : `1 AUT sec = ${(data.nightLenMin / 360).toFixed(2)} real sec`}
-                  </div>
-                )}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-300">Local {formatLongTime(now)}</span>
+                  {data.dayLenMin > 0 && (
+                    <span className="text-zinc-500">
+                      {data.autHours < 6
+                        ? `1 AUT sec = ${(data.dayLenMin / 360).toFixed(2)} real sec`
+                        : `1 AUT sec = ${(data.nightLenMin / 360).toFixed(2)} real sec`}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Ray Dial — primary feature below the clock */}
-            <div className="mt-2 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
+            <div className="mt-1 space-y-5 overflow-hidden rounded-2xl p-3 sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
@@ -5866,8 +5857,8 @@ export default function AUTClock() {
                   </div>
                   {rayWindowTimes ? (
                     <>
-                      <div className="text-xs text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
-                      <div className="text-xs text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
+                      <div className="text-[10px] text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
+                      <div className="text-[10px] text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
                     </>
                   ) : null}
                 </div>
@@ -5961,7 +5952,7 @@ export default function AUTClock() {
                         Ray reading unavailable for this cycle.
                       </p>
                     )}
-                    <div className="text-xs text-zinc-400">
+                    <div className="text-[10px] text-zinc-400">
                       AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
                     </div>
                   </div>
@@ -6490,8 +6481,8 @@ export default function AUTClock() {
               </div>
               {rayWindowTimes ? (
                 <>
-                  <div className="text-xs text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
-                  <div className="text-xs text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
+                  <div className="text-[10px] text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
+                  <div className="text-[10px] text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
                 </>
               ) : null}
             </div>
@@ -6585,7 +6576,7 @@ export default function AUTClock() {
                     Ray reading unavailable for this cycle.
                   </p>
                 )}
-                <div className="text-xs text-zinc-400">
+                <div className="text-[10px] text-zinc-400">
                   AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
                 </div>
               </div>
