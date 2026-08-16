@@ -5787,8 +5787,8 @@ export default function AUTClock() {
         )}
 
         {activePanel === "clock" && (
-          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-3 sm:p-4 shadow-inner">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-6 shadow-inner">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm uppercase tracking-wide text-zinc-300 whitespace-nowrap sm:whitespace-normal">
                   AUT (Atlastizen Universal Time)
@@ -5848,7 +5848,7 @@ export default function AUTClock() {
             </div>
 
             {/* Ray Dial — primary feature below the clock */}
-            <div className="mt-1 space-y-5 overflow-hidden rounded-2xl p-3 sm:p-4">
+            <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
@@ -5869,7 +5869,7 @@ export default function AUTClock() {
                 </div>
               </div>
 
-              <div className="flex justify-center">
+              <div className="flex justify-center mt-1">
                 <div className={`relative aspect-square w-full overflow-hidden ${ringSizeClass}`}>
                   <svg
                     viewBox={ringViewBox}
