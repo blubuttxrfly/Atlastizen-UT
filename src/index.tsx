@@ -5096,24 +5096,26 @@ export default function AUTClock() {
             </select>
           </div>
 
-          {/* Clock + location info + single Recenter */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-col min-w-0">
-              <div className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-wide">{placeLabel}</div>
-              <div className="flex items-baseline gap-3">
-                <div className="text-2xl sm:text-3xl font-semibold tabular-nums leading-none">{smoothClock} AUT</div>
-                <div className="text-xs sm:text-sm text-zinc-400">Local {formatLongTime(now)}</div>
+          {/* Clock + location info + single Recenter — hidden on Clock page since the full clock lives below */}
+          {activePanel !== "clock" ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col min-w-0">
+                <div className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-wide">{placeLabel}</div>
+                <div className="flex items-baseline gap-3">
+                  <div className="text-2xl sm:text-3xl font-semibold tabular-nums leading-none">{smoothClock} AUT</div>
+                  <div className="text-xs sm:text-sm text-zinc-400">Local {formatLongTime(now)}</div>
+                </div>
               </div>
+              <button
+                type="button"
+                className="themed-button inline-flex items-center justify-center h-9 w-9 rounded-full shrink-0"
+                onClick={handleRecenter}
+                title="Recenter — find my location"
+              >
+                <Crosshair className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              className="themed-button inline-flex items-center justify-center h-9 w-9 rounded-full shrink-0"
-              onClick={handleRecenter}
-              title="Recenter — find my location"
-            >
-              <Crosshair className="h-4 w-4" />
-            </button>
-          </div>
+          ) : null}
         </header>
 
         {activePanel === "settings" && (
@@ -5797,7 +5799,7 @@ export default function AUTClock() {
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-200">
                   <span className="font-medium text-white">{locationPrimary}</span>
                   <button
-                    className="retro-clean-btn rounded border border-white/15 bg-white/5 px-1.5 py-0 text-[9px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
+                    className="retro-clean-btn inline-flex items-center justify-center h-8 w-8 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 transition"
                     onClick={() => {
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
@@ -5811,8 +5813,9 @@ export default function AUTClock() {
                         );
                       }
                     }}
+                    title="Recenter — find my location"
                   >
-                    Recenter
+                    <Crosshair className="h-4 w-4" />
                   </button>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
@@ -5843,38 +5846,35 @@ export default function AUTClock() {
                 <div className="text-5xl md:text-6xl font-bold tabular-nums">
                   {smoothClock} AUT
                 </div>
-                <div className="text-sm text-zinc-300">
-                  Local {formatLongTime(now)}
-                  {data.dayLenMin > 0 && (
-                    <span className="text-zinc-500">
-                      {" "}·{" "}
-                      {data.autHours < 6
-                        ? `1 AUT sec = ${(data.dayLenMin / 360).toFixed(2)} real sec`
-                        : `1 AUT sec = ${(data.nightLenMin / 360).toFixed(2)} real sec`}
-                    </span>
-                  )}
-                </div>
+                {data.dayLenMin > 0 && (
+                  <div className="text-sm text-zinc-500">
+                    {data.autHours < 6
+                      ? `1 AUT sec = ${(data.dayLenMin / 360).toFixed(2)} real sec`
+                      : `1 AUT sec = ${(data.nightLenMin / 360).toFixed(2)} real sec`}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Ray Dial — primary feature below the clock */}
             <div className="mt-2 space-y-5 overflow-hidden rounded-2xl p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="space-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
                   <div className="text-lg font-semibold" style={{ color: activeRay.color }}>
                     Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
                   </div>
                   {rayWindowTimes ? (
-                    <div className="text-xs text-zinc-400">
-                      AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut} • Local {rayWindowTimes.start.local} →{" "}
-                      {rayWindowTimes.end.local}
-                    </div>
+                    <>
+                      <div className="text-xs text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
+                      <div className="text-xs text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
+                    </>
                   ) : null}
                 </div>
-                <div className="text-sm text-zinc-300 text-right">
+                <div className="text-sm text-zinc-300 text-right shrink-0">
                   <div>{rayProgressPct}% through this cycle</div>
-                  <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left • ≈ {Math.ceil(remainingRealMin)} real min</div>
+                  <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left</div>
+                  <div>≈ {Math.ceil(remainingRealMin)} real min</div>
                 </div>
               </div>
 
@@ -6481,7 +6481,7 @@ export default function AUTClock() {
         {/* Ray Dial */}
         <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
           <div className={rayHeaderClass}>
-            <div>
+            <div className="space-y-1 min-w-0">
               <div className="text-sm uppercase text-zinc-400 tracking-wide">
                 Ray Dial
               </div>
@@ -6489,17 +6489,16 @@ export default function AUTClock() {
                 Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
               </div>
               {rayWindowTimes ? (
-                <div className="text-xs text-zinc-400">
-                  AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut} • Local{" "}
-                  {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
-                </div>
+                <>
+                  <div className="text-xs text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
+                  <div className="text-xs text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
+                </>
               ) : null}
             </div>
-            <div className={`text-sm text-zinc-300 ${PRESENT_ONLY ? "" : "text-right"}`}>
+            <div className={`text-sm text-zinc-300 shrink-0 ${PRESENT_ONLY ? "" : "text-right"}`}>
               <div>{progressPct}% through this cycle</div>
-              <div>
-                ≈ {Math.ceil(remainingAUTHours * 60)} AUT min left • ≈ {Math.ceil(remainingRealMin)} real min
-              </div>
+              <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left</div>
+              <div>≈ {Math.ceil(remainingRealMin)} real min</div>
             </div>
           </div>
 
