@@ -5955,7 +5955,7 @@ export default function AUTClock() {
                     ) : null}
                   </div>
                 ) : null}
-                <div className="text-5xl md:text-6xl font-bold tabular-nums">
+                <div className="text-4xl md:text-5xl font-bold tabular-nums whitespace-nowrap">
                   {smoothClock} AUT
                 </div>
                 <div className="flex items-center justify-between text-sm">
