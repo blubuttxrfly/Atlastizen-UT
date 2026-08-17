@@ -186,6 +186,8 @@ const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
 const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 const UI_THEME_STORAGE_KEY = "aut-ui-theme";
+const ATLAS_THEMES_STORAGE_KEY = "aut-atlas-saved-themes";
+const ATLAS_ACTIVE_THEME_STORAGE_KEY = "aut-atlas-active-theme";
 const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "clock", label: "AUT Clock" },
   { id: "cosmic", label: "Cosmic Calendar" },
@@ -3457,14 +3459,94 @@ export default function AUTClock() {
   const [compassAbsolute, setCompassAbsolute] = useState(false);
   const [uiTheme, setUiTheme] = useState<UITheme>(() => readStoredTheme());
   const [sparkleEnabled, setSparkleEnabled] = useState(true);
-  const [atlasTone, setAtlasTone] = useState<"lux" | "umbra">("umbra");
-  const [atlasHueA, setAtlasHueA] = useState("#f6c453");
-  const [atlasHueB, setAtlasHueB] = useState("#b98cff");
-  const [atlasHueBorder, setAtlasHueBorder] = useState("#f6c453");
-  const [atlasHuePanel, setAtlasHuePanel] = useState("#0f172a");
-  const [atlasHueBg, setAtlasHueBg] = useState("#0b1220");
-  const [atlasHueText, setAtlasHueText] = useState("#fffbef");
-  const [atlasThemeName, setAtlasThemeName] = useState("");
+  const [atlasTone, setAtlasTone] = useState<"lux" | "umbra">(() => {
+    if (typeof window === "undefined") return "umbra";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.tone === "lux" || parsed?.tone === "umbra") return parsed.tone;
+      }
+    } catch { /* ignore */ }
+    return "umbra";
+  });
+  const [atlasHueA, setAtlasHueA] = useState(() => {
+    if (typeof window === "undefined") return "#f6c453";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.hueA === "string" && parsed.hueA.startsWith("#")) return parsed.hueA;
+      }
+    } catch { /* ignore */ }
+    return "#f6c453";
+  });
+  const [atlasHueB, setAtlasHueB] = useState(() => {
+    if (typeof window === "undefined") return "#b98cff";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.hueB === "string" && parsed.hueB.startsWith("#")) return parsed.hueB;
+      }
+    } catch { /* ignore */ }
+    return "#b98cff";
+  });
+  const [atlasHueBorder, setAtlasHueBorder] = useState(() => {
+    if (typeof window === "undefined") return "#f6c453";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.hueBorder === "string" && parsed.hueBorder.startsWith("#")) return parsed.hueBorder;
+      }
+    } catch { /* ignore */ }
+    return "#f6c453";
+  });
+  const [atlasHuePanel, setAtlasHuePanel] = useState(() => {
+    if (typeof window === "undefined") return "#0f172a";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.huePanel === "string" && parsed.huePanel.startsWith("#")) return parsed.huePanel;
+      }
+    } catch { /* ignore */ }
+    return "#0f172a";
+  });
+  const [atlasHueBg, setAtlasHueBg] = useState(() => {
+    if (typeof window === "undefined") return "#0b1220";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.hueBg === "string" && parsed.hueBg.startsWith("#")) return parsed.hueBg;
+      }
+    } catch { /* ignore */ }
+    return "#0b1220";
+  });
+  const [atlasHueText, setAtlasHueText] = useState(() => {
+    if (typeof window === "undefined") return "#fffbef";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.hueText === "string" && parsed.hueText.startsWith("#")) return parsed.hueText;
+      }
+    } catch { /* ignore */ }
+    return "#fffbef";
+  });
+  const [atlasThemeName, setAtlasThemeName] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const raw = localStorage.getItem(ATLAS_ACTIVE_THEME_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.name === "string") return parsed.name;
+      }
+    } catch { /* ignore */ }
+    return "";
+  });
   const [savedAtlasThemes, setSavedAtlasThemes] = useState<
     Array<{
       id: string;
@@ -3477,7 +3559,17 @@ export default function AUTClock() {
       hueBg?: string;
       hueText?: string;
     }>
-  >([]);
+  >(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(ATLAS_THEMES_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const [coreProfile, setCoreProfile] = useState<CoreSignatureProfile>({
     name: "",
     code: "",
@@ -3708,6 +3800,38 @@ export default function AUTClock() {
       // ignore storage errors
     }
   }, [coreProfile]);
+
+  // Persist current Atlas Island theme hues + name to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        ATLAS_ACTIVE_THEME_STORAGE_KEY,
+        JSON.stringify({
+          tone: atlasTone,
+          hueA: atlasHueA,
+          hueB: atlasHueB,
+          hueBorder: atlasHueBorder,
+          huePanel: atlasHuePanel,
+          hueBg: atlasHueBg,
+          hueText: atlasHueText,
+          name: atlasThemeName,
+        })
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [atlasTone, atlasHueA, atlasHueB, atlasHueBorder, atlasHuePanel, atlasHueBg, atlasHueText, atlasThemeName]);
+
+  // Persist saved Atlas Island themes list to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(ATLAS_THEMES_STORAGE_KEY, JSON.stringify(savedAtlasThemes));
+    } catch {
+      // ignore storage errors
+    }
+  }, [savedAtlasThemes]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 100);
@@ -5856,10 +5980,11 @@ export default function AUTClock() {
                     Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
                   </div>
                   {rayWindowTimes ? (
-                    <>
-                      <div className="text-[10px] text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
-                      <div className="text-[10px] text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
-                    </>
+                    <div className="text-[10px] text-zinc-400 whitespace-nowrap">
+                      AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}
+                      <span className="mx-1 text-zinc-500">|</span>
+                      Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
+                    </div>
                   ) : null}
                 </div>
                 <div className="text-sm text-zinc-300 text-right shrink-0">
@@ -6480,10 +6605,11 @@ export default function AUTClock() {
                 Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
               </div>
               {rayWindowTimes ? (
-                <>
-                  <div className="text-[10px] text-zinc-400">AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}</div>
-                  <div className="text-[10px] text-zinc-400">Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}</div>
-                </>
+                <div className="text-[10px] text-zinc-400 whitespace-nowrap">
+                  AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}
+                  <span className="mx-1 text-zinc-500">|</span>
+                  Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
+                </div>
               ) : null}
             </div>
             <div className={`text-sm text-zinc-300 shrink-0 ${PRESENT_ONLY ? "" : "text-right"}`}>
