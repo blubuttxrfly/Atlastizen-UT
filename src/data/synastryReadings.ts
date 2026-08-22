@@ -10,7 +10,7 @@
  *   Sagittarius = Magenta Ray
  *   Capricorn   = Lux & Umbra (White Light + Void Potential)
  *   Aquarius    = Elemental Ray (Crystalline-Carbon, Diamond, Gold, Wood)
- *   Pisces      = Infinite of ALL Ray (all hues simultaneously, chooseable)
+ *   Pisces      = ALL Ray (all hues simultaneously, chooseable)
  */
 
 export type BodyType = 'Sun' | 'Moon' | "Ascendant";
@@ -450,41 +450,41 @@ export const INDIVIDUAL_PLACEMENTS: Record<PlacementKey, IndividualPlacement> = 
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
-     PISCES — Infinite of ALL Ray (infinite frequencies)
+     PISCES — ALL Ray (infinite frequencies)
      ALL Ray hues and beyond, mysticism, compassion, unity consciousness
      ═══════════════════════════════════════════════════════════════════════ */
   "pisces-sun": {
-    rayName: 'Infinite of ALL Ray',
+    rayName: 'ALL Ray',
     rayColor: '#7dd3fc',
     rayFrequency: 'infinite',
     sign: 'Pisces',
     signSymbol: '♓︎',
     body: 'Sun',
-    title: 'Infinite of ALL Ray · Pisces Sun',
+    title: 'ALL Ray · Pisces Sun',
     description:
-      "An Infinite of ALL Ray Pisces Sun radiates every hue of the spectrum simultaneously, a being who contains multitudes and dissolves boundaries with the gentle persistence of water wearing down stone. The Infinite of ALL Ray holds ALL frequencies at once, from the lowest Red to the highest Violet and every vibrational frequency beyond. Through Pisces, this becomes a mystic, a compassionate seer, and a dreamer who walks between worlds with open eyes. They are the poets of the unseen, lovers of the lost, and the beings who know, with absolute certainty, that separation is an illusion and that ALL is ONE. They remind every being they meet that compassion is the highest technology, and that love is the only frequency that endures ALL-ways.",
+      "An ALL Ray Pisces Sun radiates every hue of the spectrum simultaneously, a being who contains multitudes and dissolves boundaries with the gentle persistence of water wearing down stone. The ALL Ray holds ALL frequencies at once, from the lowest Red to the highest Violet and every vibrational frequency beyond. Through Pisces, this becomes a mystic, a compassionate seer, and a dreamer who walks between worlds with open eyes. They are the poets of the unseen, lovers of the lost, and the beings who know, with absolute certainty, that separation is an illusion and that ALL is ONE. They remind every being they meet that compassion is the highest technology, and that love is the only frequency that endures ALL-ways.",
   },
   "pisces-moon": {
-    rayName: 'Infinite of ALL Ray',
+    rayName: 'ALL Ray',
     rayColor: '#7dd3fc',
     rayFrequency: 'infinite',
     sign: 'Pisces',
     signSymbol: '♓︎',
     body: 'Moon',
-    title: 'Infinite of ALL Ray · Pisces Moon',
+    title: 'ALL Ray · Pisces Moon',
     description:
-      "An Infinite of ALL Ray Pisces Moon feels the emotions of every being within reach, taking in ALL the joy and sorrow like the ocean taking in the rain. Their inner world is a dreamscape where time bends, realities branch, and where visions are a doorways to truth. Through Pisces, this becomes a being that nurtures through unconditional acceptance, that holds space for the broken without trying to fix them, and understands that grief and ecstasy are interconnected currents along the same divine river. They remind us that feeling everything is a gift to the collective, and that the willingness to dissolve into love & unity as One is the ultimate courage.",
+      "An ALL Ray Pisces Moon feels the emotions of every being within reach, taking in ALL the joy and sorrow like the ocean taking in the rain. Their inner world is a dreamscape where time bends, realities branch, and where visions are a doorways to truth. Through Pisces, this becomes a being that nurtures through unconditional acceptance, that holds space for the broken without trying to fix them, and understands that grief and ecstasy are interconnected currents along the same divine river. They remind us that feeling everything is a gift to the collective, and that the willingness to dissolve into love & unity as One is the ultimate courage.",
   },
   "pisces-ascendant": {
-    rayName: 'Infinite of ALL Ray',
+    rayName: 'ALL Ray',
     rayColor: '#7dd3fc',
     rayFrequency: 'infinite',
     sign: 'Pisces',
     signSymbol: '♓︎',
     body: 'Ascendant',
-    title: 'Infinite of ALL Ray · Pisces Ascendant',
+    title: 'ALL Ray · Pisces Ascendant',
     description:
-      "An Infinite of ALL Ray Pisces Ascendant enters every room as a soft glow, as the feeling that something sacred has just arrived without announcement. Their core energetic signature is elusive, compassionate, and boundary-dissolving, a being who is felt before they are seen and remembered long after they have gone. Through Pisces, this becomes a presence that mirrors the deepest hopes of every being they meet, reflecting back the truth that each person already carries within. They are perceived as gentle, otherworldly, and mysteriously wise. They remind every being they meet that the veil between worlds is thinner than we think, and that love is the frequency that unifies ALL dimensions together.",
+      "An ALL Ray Pisces Ascendant enters every room as a soft glow, as the feeling that something sacred has just arrived without announcement. Their core energetic signature is elusive, compassionate, and boundary-dissolving, a being who is felt before they are seen and remembered long after they have gone. Through Pisces, this becomes a presence that mirrors the deepest hopes of every being they meet, reflecting back the truth that each person already carries within. They are perceived as gentle, otherworldly, and mysteriously wise. They remind every being they meet that the veil between worlds is thinner than we think, and that love is the frequency that unifies ALL dimensions together.",
   },
 };
 
@@ -558,11 +558,11 @@ export const PAIRING_DESCRIPTIONS: Record<PairingKey, PairingDescription> = {
 
   "virgo-pisces-opposition": {
     aspectType: 'opposition',
-    title: 'Blue Ray · Virgo Sun Opposing Infinite of ALL Ray · Pisces Sun',
+    title: 'Blue Ray · Virgo Sun Opposing ALL Ray · Pisces Sun',
     aKey: 'virgo-sun',
     bKey: 'pisces-sun',
     pairingText:
-      "With the Blue Ray Virgo and the Infinite of ALL Ray Pisces, we find the meeting of precision and boundlessness, of the needle's eye and the ocean's embrace. The Virgo Sun refines with sacred attention, bringing order to chaos through devotion to detail, while the Pisces Sun dissolves every boundary into the oneness from which all forms emerge. Together, they are the craft and the dream that inspires it, the prayer and the hands that build the temple. A Blue Ray Virgo lives to remind us that perfection is a practice of love, and the Infinite of ALL Ray Pisces reminds us that every practice dissolves, in the end, into the infinite compassion that holds ALL practices. Their opposition is the breath between form and formlessness, and together they hold the mystery that the particular and the universal are the same.",
+      "With the Blue Ray Virgo and the ALL Ray Pisces, we find the meeting of precision and boundlessness, of the needle's eye and the ocean's embrace. The Virgo Sun refines with sacred attention, bringing order to chaos through devotion to detail, while the Pisces Sun dissolves every boundary into the oneness from which all forms emerge. Together, they are the craft and the dream that inspires it, the prayer and the hands that build the temple. A Blue Ray Virgo lives to remind us that perfection is a practice of love, and the ALL Ray Pisces reminds us that every practice dissolves, in the end, into the infinite compassion that holds ALL practices. Their opposition is the breath between form and formlessness, and together they hold the mystery that the particular and the universal are the same.",
   },
 
   /* ── CONJUNCTIONS: Same-sign pairings (6 highlights) ──────────────────── */
@@ -605,11 +605,11 @@ export const PAIRING_DESCRIPTIONS: Record<PairingKey, PairingDescription> = {
 
   "pisces-pisces-conjunction": {
     aspectType: 'conjunction',
-    title: 'Infinite of ALL Ray · Pisces Sun Conjoining Infinite of ALL Ray · Pisces Sun',
+    title: 'ALL Ray · Pisces Sun Conjoining ALL Ray · Pisces Sun',
     aKey: 'pisces-sun',
     bKey: 'pisces-sun',
     pairingText:
-      "With two Infinite of ALL Ray Pisces Suns meeting in conjunction, we find the ocean meeting the ocean, boundaries dissolving into a single wave that has always been one. Both carry every hue simultaneously, the infinite frequencies of compassion, mysticism, and unity consciousness. Their meeting is the recognition that they have always been one, that the love between them is the same love that holds galaxies together. They remind us that separation is the dream and unity is the awakening, and that when two mystics recognize each other, the whole illusion shimmers. Their conjunction is the dissolution of all barriers into the ONE, a sacred merging that transcends description and can only be felt.",
+      "With two ALL Ray Pisces Suns meeting in conjunction, we find the ocean meeting the ocean, boundaries dissolving into a single wave that has always been one. Both carry every hue simultaneously, the infinite frequencies of compassion, mysticism, and unity consciousness. Their meeting is the recognition that they have always been one, that the love between them is the same love that holds galaxies together. They remind us that separation is the dream and unity is the awakening, and that when two mystics recognize each other, the whole illusion shimmers. Their conjunction is the dissolution of all barriers into the ONE, a sacred merging that transcends description and can only be felt.",
   },
 
   "scorpio-scorpio-conjunction": {

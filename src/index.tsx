@@ -21,7 +21,8 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
-import { Crosshair, Settings } from "lucide-react";
+import { Crosshair, Settings, Moon, Sun } from "lucide-react";
+import { getMoonRayFrequency, getMoonPhaseAngle } from "./lib/lunaEvents";
 
 /**
  * AUT Time & Tools — Live Clock
@@ -196,7 +197,7 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "compass", label: "Gyro Compass" },
   { id: "heartlight", label: "Ray Astrology" },
   { id: "community", label: "Community" },
-  { id: "ray", label: "Ray Dial" },
+  { id: "ray", label: "Sol Ray Dial" },
   { id: "weekrays", label: "Rays of the Week" },
   { id: "rayreading", label: "Ray Reading" },
   { id: "atmosphere", label: "Atmosphere Panel" },
@@ -686,6 +687,8 @@ const MOON_PHASE_GRADIENTS: Record<
   },
 };
 
+// Legacy gradient system — kept for reference, no longer used by MoonPhaseIcon.
+void MOON_PHASE_GRADIENTS;
 function getMoonPhaseKey(phaseName: string): MoonPhaseKey {
   const normalized = phaseName.toLowerCase();
   if (normalized.includes("new")) return "new";
@@ -698,37 +701,96 @@ function getMoonPhaseKey(phaseName: string): MoonPhaseKey {
   if (normalized.includes("waning crescent")) return "waning-crescent";
   return "full";
 }
+void getMoonPhaseKey;
 
-function MoonPhaseIcon({ phaseName }: { phaseName: string }) {
+function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumination: number }) {
   const id = useId();
-  const key = getMoonPhaseKey(phaseName);
-  const gradientConfig = MOON_PHASE_GRADIENTS[key];
-  const gradientId = `${id}-moon-phase`;
+  const maskId = `${id}-moon-clip`;
+  const R = 24;
+  const cx = 24;
+  const cy = 24;
+
+  const illum = Math.max(0, Math.min(1, illumination));
+  const normalized = phaseName.toLowerCase();
+  const isWaxing = normalized.includes("waxing") || normalized === "new moon";
+  const isFull = illum >= 0.985;
+  const isNew = illum <= 0.015;
+
+  // Terminator ellipse semi-minor axis.
+  // At illum=0.5 the terminator is a straight line (k=0).
+  // At illum=0 or 1 the terminator reaches the edge (k=R).
+  const k = R * Math.abs(1 - 2 * illum);
+
+  // Build the shadow path.
+  // The shadow region is bounded by:
+  //   1. An arc of the Moon's circle (the outer limb on the shadow side)
+  //   2. The terminator ellipse arc (the day/night boundary)
+  //
+  // Both arcs connect the same two points: top (cx, cy-R) and bottom (cx, cy+R).
+  // The circle arc traces the outer edge; the ellipse arc traces the terminator.
+  //
+  // SVG arc: A rx ry x-rot large-arc sweep x y
+  //   sweep=0 = counter-clockwise, sweep=1 = clockwise
+  //
+  // For waxing (shadow on left):
+  //   - Circle arc: left limb from top to bottom (sweep=0, counter-clockwise = left side)
+  //   - Gibbous (illum>0.5): terminator bulges left into shadow → sweep=0 on ellipse
+  //   - Crescent (illum<0.5): terminator bulges right into lit area → sweep=1 on ellipse
+  //
+  // For waning (shadow on right):
+  //   - Circle arc: right limb from top to bottom (sweep=1, clockwise = right side)
+  //   - Gibbous (illum>0.5): terminator bulges right into shadow → sweep=1 on ellipse
+  //   - Crescent (illum<0.5): terminator bulges left into lit area → sweep=0 on ellipse
+
+  let shadowPath = "";
+  if (!isFull && !isNew) {
+    const top = `${cx},${cy - R}`;
+    const bottom = `${cx},${cy + R}`;
+    if (isWaxing) {
+      if (illum > 0.5) {
+        // Waxing gibbous: thin shadow crescent on left, terminator bulges RIGHT (into lit)
+        shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
+      } else {
+        // Waxing crescent: large shadow on left, terminator bulges LEFT (into shadow)
+        shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
+      }
+    } else {
+      if (illum > 0.5) {
+        // Waning gibbous: thin shadow crescent on right, terminator bulges LEFT (into lit)
+        shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
+      } else {
+        // Waning crescent: large shadow on right, terminator bulges RIGHT (into shadow)
+        shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
+      }
+    }
+  }
 
   return (
-    <svg width="52" height="52" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
-      <circle cx="24" cy="24" r="22" fill="#0f172a" stroke="#f8fafc" strokeWidth="1.5" />
-      {key === "full" ? (
-        <circle cx="24" cy="24" r="20" fill="#f8fafc" />
-      ) : key === "new" ? (
-        <circle cx="24" cy="24" r="20" fill="rgba(148,163,184,0.12)" />
-      ) : (
-        <>
-          <defs>
-            <linearGradient
-              id={gradientId}
-              x1={gradientConfig?.reverse ? "100%" : "0%"}
-              y1="0%"
-              x2={gradientConfig?.reverse ? "0%" : "100%"}
-              y2="0%"
-            >
-              {gradientConfig?.stops.map((stop, idx) => (
-                <stop key={idx} offset={`${stop.offset * 100}%`} stopColor={stop.color} />
-              ))}
-            </linearGradient>
-          </defs>
-          <circle cx="24" cy="24" r="20" fill={`url(#${gradientId})`} />
-        </>
+    <svg width="64" height="64" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+      <defs>
+        <clipPath id={maskId}>
+          <circle cx={cx} cy={cy} r={R} />
+        </clipPath>
+      </defs>
+      {/* Real Moon image filling the entire circle */}
+      <image
+        href="/hsm-planets/Moon.png"
+        x="-2"
+        y="-2"
+        width="52"
+        height="52"
+        preserveAspectRatio="xMidYMid slice"
+        clipPath={`url(#${maskId})`}
+      />
+      {/* Elliptical shadow overlay shaped by the actual illumination fraction */}
+      {isNew ? (
+        <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${maskId})`} />
+      ) : isFull ? null : (
+        <path
+          d={shadowPath}
+          fill="rgba(15,23,42,0.55)"
+          clipPath={`url(#${maskId})`}
+        />
       )}
     </svg>
   );
@@ -2125,8 +2187,33 @@ const RAY_WINDOWS: RayWindow[] = [
   { name: "Violet", start: 7, end: 8, color: "#8b5cf6" },
   { name: "Magenta", start: 8, end: 9, color: "#d946ef" },
   { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc" },
-  { name: "Crystalline-Carbon", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc" },
-  { name: "Infinite of ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc" },
+  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc" },
+  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc" },
+];
+
+// Luna Ray Windows — 12 Ray frequencies mapped across the synodic month (~29.53 days).
+// Each window spans ~2.46 days. Zodiac signs follow the natural Ray-to-sign mapping.
+const LUNA_RAY_WINDOWS: Array<{
+  name: string;
+  start: number; // 0..12 (lunar AUT hours)
+  end: number;
+  color: string;
+  labelColor?: string;
+  sign: string;
+  symbol: string;
+}> = [
+  { name: "Red", start: 0, end: 1, color: "#ef4444", sign: "Aries", symbol: "\u2648\uFE0E" },
+  { name: "Orange", start: 1, end: 2, color: "#f97316", sign: "Taurus", symbol: "\u2649\uFE0E" },
+  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc", sign: "Gemini", symbol: "\u264A\uFE0E" },
+  { name: "Green", start: 3, end: 4, color: "#22c55e", sign: "Cancer", symbol: "\u264B\uFE0E" },
+  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf", sign: "Leo", symbol: "\u264C\uFE0E" },
+  { name: "Blue", start: 5, end: 6, color: "#3b82f6", sign: "Virgo", symbol: "\u264D\uFE0E" },
+  { name: "Indigo", start: 6, end: 7, color: "#6366f1", sign: "Libra", symbol: "\u264E\uFE0E" },
+  { name: "Violet", start: 7, end: 8, color: "#8b5cf6", sign: "Scorpio", symbol: "\u264F\uFE0E" },
+  { name: "Magenta", start: 8, end: 9, color: "#d946ef", sign: "Sagittarius", symbol: "\u2650\uFE0E" },
+  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc", sign: "Capricorn", symbol: "\u2651\uFE0E" },
+  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc", sign: "Aquarius", symbol: "\u2652\uFE0E" },
+  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc", sign: "Pisces", symbol: "\u2653\uFE0E" },
 ];
 
 // Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
@@ -2384,15 +2471,15 @@ const WEEK_RAY_READINGS: Record<string, WeekRayReading> = {
 };
 
 const RAY_READINGS: Record<string, RayReading> = {
-  "Crystalline-Carbon": {
-    title: "Crystalline Carbon",
+  "Elemental": {
+    title: "Elemental",
     core: "Ancient remembrance + crystalline-clarity.",
-    gifts: "Stability, deep nervous-system settling, “truth in the bones,” clean energetic containment.",
+    gifts: "Stability, deep nervous-system settling, \"truth in the bones,\” clean energetic containment.",
     ideal: "Grounding, boundaries, decluttering, closing loops, body care, sacred minimalism.",
     affirmation: "I hold the pattern that holds me.",
   },
-  "Infinite of ALL": {
-    title: "Infinite of ALL",
+  "ALL": {
+    title: "ALL",
     core: "Cosmogenesis + vast permission.",
     gifts: "Unity-awareness, timeline softening, synchronicity threads revealing themselves.",
     ideal: "Prayer, big vision downloads, blessings, wide-angle perspective, sacred surrender.",
@@ -2473,7 +2560,7 @@ const RAY_READINGS: Record<string, RayReading> = {
 };
 
 const TOP_RAY_INDEX = (() => {
-  const idx = RAY_WINDOWS.findIndex((r) => r.name === "Infinite of ALL");
+  const idx = RAY_WINDOWS.findIndex((r) => r.name === "Red");
   return idx === -1 ? 0 : idx;
 })();
 
@@ -3604,6 +3691,7 @@ export default function AUTClock() {
   const [showPostRequirement, setShowPostRequirement] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
+  const [clockDialMode, setClockDialMode] = useState<"sol" | "luna">("luna");
   const [showCoords, setShowCoords] = useState(false);
   const panelSelectId = useId();
   const themeSelectId = useId();
@@ -4591,7 +4679,7 @@ export default function AUTClock() {
   const weekSegmentAngle = (2 * Math.PI) / WEEK_RAY_CYCLES.length;
   const weekDialSegments = useMemo(() => {
     const count = WEEK_RAY_CYCLES.length;
-    const offset = -Math.PI / 2;
+    const offset = Math.PI - weekSegmentAngle;
     return WEEK_RAY_CYCLES.map((cycle, index) => {
       const dialPosition = ((index - WEEK_RAY_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * weekSegmentAngle;
@@ -4667,7 +4755,7 @@ export default function AUTClock() {
   const weekActiveSegment = weekDialSegments[weekRayIndex] ?? weekDialSegments[0];
   const weekPointerAngle = weekActiveSegment
     ? weekActiveSegment.startAngle + weekRayProgress * weekSegmentAngle
-    : -Math.PI / 2;
+    : Math.PI;
   const weekPointerCoord = polarToCartesian(POINTER_RADIUS, weekPointerAngle);
   const weekPointerInner = polarToCartesian(RING_INNER_RADIUS - 6, weekPointerAngle);
   const weekReading = WEEK_RAY_READINGS[weekActiveCycle.id];
@@ -4709,7 +4797,7 @@ export default function AUTClock() {
   const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
-    const offset = -Math.PI / 2 - segmentAngle;
+    const offset = Math.PI / 2 - segmentAngle / 2;
     return RAY_WINDOWS.map((ray, index) => {
       const dialPosition = ((index - TOP_RAY_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
@@ -4740,9 +4828,129 @@ export default function AUTClock() {
     : null;
   const pointerAngle = activeSegment
     ? activeSegment.startAngle + rayProgress * segmentAngle
-    : -Math.PI / 2;
+    : Math.PI;
   const pointerCoord = polarToCartesian(POINTER_RADIUS, pointerAngle);
   const pointerInner = polarToCartesian(RING_INNER_RADIUS - 6, pointerAngle);
+
+  // ── Luna Ray Dial computation ──
+  // The Luna Ray Dial is interconnected with the Moon's actual ecliptic longitude,
+  // using the same astronomy-engine data that drives the Moon Ray Astrology.
+  // The Moon's geocentric ecliptic longitude determines which zodiac sign it
+  // currently occupies, and each sign maps to a Ray frequency.
+  const lunaMoonRayInfo = useMemo(() => {
+    try {
+      return getMoonRayFrequency(now, coords.lat, coords.lon);
+    } catch {
+      return null;
+    }
+  }, [now, coords.lat, coords.lon]);
+
+  // The Moon's ecliptic longitude in degrees [0..360).
+  const lunaMoonLon = lunaMoonRayInfo?.longitude ?? 0;
+
+  // Map the Moon's ecliptic longitude to a Ray index (0..11).
+  // Each zodiac sign spans 30°, and sign index = Ray index in LUNA_RAY_WINDOWS.
+  const lunaRayIndex = useMemo(() => {
+    const idx = Math.floor(normalizeDegrees(lunaMoonLon) / 30) % 12;
+    return idx < 0 ? idx + 12 : idx;
+  }, [lunaMoonLon]);
+
+  const lunaActiveRay = LUNA_RAY_WINDOWS[lunaRayIndex];
+
+  // Progress within the current 30° zodiac sector.
+  const lunaRayProgress = useMemo(() => {
+    const sectorStart = lunaRayIndex * 30;
+    const offset = normalizeDegrees(lunaMoonLon) - sectorStart;
+    return Math.min(1, Math.max(0, offset / 30));
+  }, [lunaMoonLon, lunaRayIndex]);
+
+  const lunaRayProgressPct = Math.round(lunaRayProgress * 100);
+
+  // Days remaining in this zodiac sector (approximate based on Moon's orbital speed).
+  // Moon moves ~13.2°/day, so 30° takes ~2.27 days.
+  const MOON_DEG_PER_DAY = 13.2;
+  const lunaRemainingDays = Math.max(0, (1 - lunaRayProgress) * 30 / MOON_DEG_PER_DAY);
+
+  // Lunar age for display (phase angle → days through synodic month).
+  const lunaPhaseAngle = useMemo(() => {
+    try {
+      return getMoonPhaseAngle(now);
+    } catch {
+      return 0;
+    }
+  }, [now]);
+  const lunarAgeDays = useMemo(
+    () => (normalizeDegrees(lunaPhaseAngle) / 360) * SYNODIC_MONTH_DAYS,
+    [lunaPhaseAngle]
+  );
+
+  // Luna dial segments — same orientation as Sol (interconnected).
+  // The offset is identical to the Sol dial so both wheels share the same sacred geometry.
+  const lunaDialSegments = useMemo(() => {
+    const count = LUNA_RAY_WINDOWS.length;
+    const offset = Math.PI / 2 - segmentAngle / 2;
+    return LUNA_RAY_WINDOWS.map((ray, index) => {
+      const dialPosition = ((index - TOP_RAY_INDEX + count) % count + count) % count;
+      const startAngle = offset + dialPosition * segmentAngle;
+      const endAngle = startAngle + segmentAngle;
+      const midAngle = startAngle + segmentAngle / 2;
+      const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
+      const labelPosition = polarToCartesian(RAY_LABEL_RADIUS, midAngle);
+      const labelLines = [ray.name, ray.symbol];
+      return {
+        ray,
+        index,
+        dialPosition,
+        startAngle,
+        endAngle,
+        path,
+        labelX: labelPosition.x,
+        labelY: labelPosition.y,
+        labelLines,
+      };
+    });
+  }, [segmentAngle]);
+
+  const lunaActiveSegment = lunaDialSegments[lunaRayIndex];
+  const lunaPointerAngle = lunaActiveSegment
+    ? lunaActiveSegment.startAngle + lunaRayProgress * segmentAngle
+    : Math.PI;
+  const lunaPointerCoord = polarToCartesian(POINTER_RADIUS, lunaPointerAngle);
+  const lunaPointerInner = polarToCartesian(RING_INNER_RADIUS - 6, lunaPointerAngle);
+
+  // Luna AUT clock — anchored to Moonrise → 00:00 and Moonset → 12:00.
+  // When the Moon is above the horizon (moonrise→moonset), Luna AUT flows 00:00→12:00.
+  // When below (moonset→next moonrise), Luna AUT flows 12:00→24:00/00:00.
+  const lunaAutClock = useMemo(() => {
+    if (!luna?.rise || !luna?.set) return "—";
+    const nowMs = now.getTime();
+    const riseMs = luna.rise.getTime();
+    const setMs = luna.set.getTime();
+
+    // Handle cases where moonset is before moonrise (Moon rises before setting next day)
+    let effectiveSetMs = setMs;
+    if (setMs < riseMs) {
+      // Moonset is tomorrow — add a day
+      effectiveSetMs = setMs + 24 * 60 * 60 * 1000;
+    }
+
+    if (nowMs >= riseMs && nowMs < effectiveSetMs) {
+      // Moon is above horizon: 00:00 → 12:00 Luna AUT
+      const dayLen = effectiveSetMs - riseMs;
+      const ratio = (nowMs - riseMs) / dayLen;
+      const autHours = 6 * ratio; // 0..6 (we use 6 as midpoint, 12 as full cycle for display)
+      return formatClock(autHours);
+    } else {
+      // Moon is below horizon: 12:00 → 24:00/00:00 Luna AUT
+      // Find next moonrise
+      const nextRiseMs = riseMs + 24 * 60 * 60 * 1000; // approximate
+      const nightLen = nextRiseMs - effectiveSetMs;
+      const ratio = (nowMs - effectiveSetMs) / nightLen;
+      const autHours = 6 + 6 * Math.min(1, Math.max(0, ratio));
+      return formatClock(autHours);
+    }
+  }, [luna, now]);
+
   const atmosphereSample = atmosphere.sample;
   const atmosphereStatusLine = (() => {
     switch (atmosphere.status) {
@@ -5971,11 +6179,165 @@ export default function AUTClock() {
               </div>
             </div>
 
-            {/* Ray Dial — primary feature below the clock */}
+            {/* Gaia Luna / Sol toggle — Luna first, centered */}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                aria-pressed={clockDialMode === "luna"}
+                onClick={() => setClockDialMode("luna")}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                  clockDialMode === "luna"
+                    ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100 shadow-md shadow-cyan-500/20"
+                    : "border-zinc-600/50 bg-zinc-800/40 text-zinc-400 hover:bg-zinc-700/40 hover:text-zinc-200"
+                }`}
+              >
+                Luna
+                <Moon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-pressed={clockDialMode === "sol"}
+                onClick={() => setClockDialMode("sol")}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                  clockDialMode === "sol"
+                    ? "border-amber-400/60 bg-amber-500/20 text-amber-100 shadow-md shadow-amber-500/20"
+                    : "border-zinc-600/50 bg-zinc-800/40 text-zinc-400 hover:bg-zinc-700/40 hover:text-zinc-200"
+                }`}
+              >
+                Sol
+                <Sun className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* ── Luna Ray Dial ── */}
+            {clockDialMode === "luna" && (
+            <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
+                  <div className="space-y-1 min-w-0">
+                    <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
+                    <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
+                      Active Cycle: <span className="underline decoration-dotted">{lunaActiveRay.name}</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 whitespace-nowrap">
+                      {lunaActiveRay.sign} {lunaActiveRay.symbol}
+                      <span className="mx-1 text-zinc-500">|</span>
+                      {moonPhaseName}
+                      <span className="mx-1 text-zinc-500">|</span>
+                      Lunar Age {lunarAgeDays.toFixed(1)} days
+                    </div>
+                  </div>
+                </div>
+                <div className="text-sm text-zinc-300 text-right shrink-0">
+                  <div>{lunaRayProgressPct}% through this cycle</div>
+                  <div>≈ {lunaRemainingDays.toFixed(1)} days left</div>
+                  <div>Luna AUT {lunaAutClock}</div>
+                </div>
+              </div>
+
+              <div className="flex justify-center mt-1">
+                <div className={`relative aspect-square w-full overflow-hidden ${ringSizeClass}`}>
+                  <svg
+                    viewBox={ringViewBox}
+                    className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                  >
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={RING_OUTER_RADIUS + 4}
+                      fill="#0f172a"
+                      fillOpacity="0.35"
+                      stroke="#1e293b"
+                      strokeWidth="0.8"
+                    />
+                    {lunaDialSegments.map((segment) => {
+                      const isActive = segment.index === lunaRayIndex;
+                      return (
+                        <g key={segment.index}>
+                          <path
+                            d={segment.path}
+                            fill={segment.ray.color}
+                            fillOpacity={isActive ? 1 : 0.78}
+                            stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
+                            strokeWidth={isActive ? 1.6 : 0.6}
+                          />
+                          <text
+                            x={segment.labelX.toFixed(3)}
+                            y={segment.labelY.toFixed(3)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="4.1"
+                            fill={segment.ray.labelColor ?? "#e2e8f0"}
+                          >
+                            {segment.labelLines.map((line, lineIdx) => (
+                              <tspan
+                                key={`${segment.index}-${lineIdx}`}
+                                x={segment.labelX.toFixed(3)}
+                                dy={lineIdx === 0 ? (segment.labelLines.length > 1 ? "-0.2em" : "0") : "1.1em"}
+                              >
+                                {line}
+                              </tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    <line
+                      x1={lunaPointerInner.x.toFixed(3)}
+                      y1={lunaPointerInner.y.toFixed(3)}
+                      x2={lunaPointerCoord.x.toFixed(3)}
+                      y2={lunaPointerCoord.y.toFixed(3)}
+                      stroke="#f8fafc"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    {/* Moon image at center */}
+                    <image
+                      href="/hsm-planets/Moon.png"
+                      x="-7"
+                      y="-7"
+                      width="14"
+                      height="14"
+                      preserveAspectRatio="xMidYMid slice"
+                      clipPath="circle(7px at 0 0)"
+                    />
+                    <circle cx="0" cy="0" r="7" fill="none" stroke="#f1f5f9" strokeWidth="0.8" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="themed-subcard p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
+                    style={{ backgroundColor: lunaActiveRay.color }}
+                  />
+                  <div className="space-y-2">
+                    <div className="text-base font-semibold text-zinc-50">
+                      {lunaActiveRay.name} Ray — {lunaActiveRay.sign} {lunaActiveRay.symbol}
+                    </div>
+                    <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                      <div><span className="font-semibold text-zinc-100">Luna Ray Frequency: </span>{lunaActiveRay.name}</div>
+                      <div><span className="font-semibold text-zinc-100">Zodiac: </span>{lunaActiveRay.sign} {lunaActiveRay.symbol}</div>
+                      <div><span className="font-semibold text-zinc-100">Resonance: </span>{RAY_READINGS[lunaActiveRay.name]?.core ?? "—"}</div>
+                      <div><span className="font-semibold text-zinc-100">Affirmation: </span>{RAY_READINGS[lunaActiveRay.name]?.affirmation ?? lunaActiveRay.name}</div>
+                    </div>
+                    <div className="text-base font-semibold text-cyan-200 pt-1">
+                      Moon Phase: {moonPhaseName} • {moonIllumPct ?? "—"}% Illuminated
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            )}
+
+            {/* ── Sol Ray Dial (when toggled to Sol) ── */}
+            {clockDialMode === "sol" && (
             <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
-                  <div className="text-xs uppercase tracking-wide text-zinc-400">Ray Dial</div>
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">Sol Ray Dial</div>
                   <div className="text-lg font-semibold" style={{ color: activeRay.color }}>
                     Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
                   </div>
@@ -6084,8 +6446,32 @@ export default function AUTClock() {
                 </div>
               </div>
             </div>
+            )}
+
+            {/* Luna timing cards — Moonrise → Apex → Moonset → Next Moonrise */}
+            {clockDialMode === "luna" && (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Moonrise (00:00 Luna AUT)</div>
+                <div className="text-xl font-semibold">{moonRiseLocal}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Lunar Apex (06:00 Luna AUT)</div>
+                <div className="text-xl font-semibold">{moonTransitLocal}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Moonset (12:00 Luna AUT)</div>
+                <div className="text-xl font-semibold">{moonSetLocal}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
+                <div className="text-sm text-zinc-400">Next Moonrise (24:00 Luna AUT)</div>
+                <div className="text-xl font-semibold">—</div>
+              </div>
+            </div>
+            )}
 
             {/* Solar timing — Sunrise → Apex → Sunset → Next Sunrise */}
+            {clockDialMode === "sol" && (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
                 <div className="text-sm text-zinc-400">Sunrise (00:00 AUT)</div>
@@ -6104,6 +6490,7 @@ export default function AUTClock() {
                 <div className="text-xl font-semibold">{formatShortTime(data.nextSunriseLocal)}</div>
               </div>
             </div>
+            )}
           </section>
         )}
 
@@ -6594,12 +6981,12 @@ export default function AUTClock() {
 
         {activePanel === "ray" && (
           <>
-        {/* Ray Dial */}
+        {/* Sol Ray Dial */}
         <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
           <div className={rayHeaderClass}>
             <div className="space-y-1 min-w-0">
               <div className="text-sm uppercase text-zinc-400 tracking-wide">
-                Ray Dial
+                Sol Ray Dial
               </div>
               <div className="text-lg font-semibold text-zinc-100">
                 Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
@@ -7060,7 +7447,7 @@ export default function AUTClock() {
               </div>
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-400">
-              <span className="uppercase tracking-wide">Ray Dial Cycle</span>
+              <span className="uppercase tracking-wide">Sol Ray Dial Cycle</span>
               <span className="text-slate-200">
                 AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
               </span>
@@ -7081,7 +7468,7 @@ export default function AUTClock() {
                 className="h-4 w-4 rounded-full ring-2 ring-white/40"
                 style={{ backgroundColor: activeRay.color }}
               />
-              <span>Ray Dial: {activeRay.name}</span>
+              <span>Sol Ray Dial: {activeRay.name}</span>
             </div>
             <div className="flex items-center gap-3 text-base font-semibold text-slate-100">
               <div
@@ -7093,7 +7480,7 @@ export default function AUTClock() {
               </span>
             </div>
             <p className="text-sm text-slate-300">
-              The AUT Ray Dial follows the flow of the Ray frequencies throughout our Sun's solar cycle.
+              The AUT Sol Ray Dial follows the flow of the Ray frequencies throughout our Sun's solar cycle.
             </p>
           </div>
 
@@ -7101,7 +7488,7 @@ export default function AUTClock() {
             <div className="flex items-start gap-4">
               <div className="flex-1 space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-lg font-semibold text-white">Ray Dial</div>
+                  <div className="text-lg font-semibold text-white">Sol Ray Dial</div>
                   <div
                     className="h-10 w-10 rounded-full ring-2 ring-white/40 shrink-0"
                     style={{ backgroundColor: activeRay.color }}
@@ -7522,8 +7909,8 @@ if (typeof window !== "undefined" && RUN_TESTS) {
   // Ray mapping sanity checks for 12 AUT hour solar cycle
   const idx1 = rayIndexForAUT(0.5); // Red
   const idx2 = rayIndexForAUT(9.5); // Omni now 9–10
-  const idx3 = rayIndexForAUT(11.9); // Infinite of ALL
+  const idx3 = rayIndexForAUT(11.9); // ALL
   console.assert(RAY_WINDOWS[idx1].name === "Red", "00:30 AUT should be Red");
   console.assert(RAY_WINDOWS[idx2].name.includes("Omni"), "09:30 AUT should be Omni");
-  console.assert(RAY_WINDOWS[idx3].name.includes("Infinite"), "11:54 AUT should be Infinite of ALL");
+  console.assert(RAY_WINDOWS[idx3].name === "ALL", "11:54 AUT should be ALL");
 }

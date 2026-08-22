@@ -32,7 +32,7 @@ export const ZODIAC_HUES = [
   "#d946ef", // 8  Sagittarius — Magenta
   "#0f0a0a", // 9  Capricorn — Omni / Carbon
   "#a5f3fc", // 10 Aquarius  — Elemental
-  "#7dd3fc", // 11 Pisces    — Infinite of ALL
+  "#7dd3fc", // 11 Pisces    — ALL
 ] as const;
 
 export const ZODIAC_RAY_NAMES = [
@@ -47,7 +47,7 @@ export const ZODIAC_RAY_NAMES = [
   "Magenta Ray",
   "Omni / Carbon Ray",
   "Elemental Ray",
-  "Infinite of ALL Ray",
+  "ALL Ray",
 ] as const;
 
 export const ZODIAC_RAY_ESSENCE = [

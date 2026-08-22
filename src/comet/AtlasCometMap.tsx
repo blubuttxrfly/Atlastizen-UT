@@ -140,7 +140,7 @@ const ZODIAC_SIGNS = [
   { name: "Aquarius", symbol: "♒︎" },
   { name: "Pisces", symbol: "♓︎" },
 ];
-// Hue sequence mirrors Ray Dial windows 1–12 (Red → Infinite of ALL)
+// Hue sequence mirrors Ray Dial windows 1–12 (Red → ALL)
 const ZODIAC_HUES = [
   "#ef4444", // Aries
   "#f97316", // Taurus
@@ -152,8 +152,8 @@ const ZODIAC_HUES = [
   "#8b5cf6", // Scorpio
   "#d946ef", // Sagittarius
   "#0f0a0a", // Capricorn (Carbon)
-  "#a5f3fc", // Aquarius (Crystalline-Carbon)
-  "#7dd3fc", // Pisces (Infinite of ALL)
+  "#a5f3fc", // Aquarius (Elemental)
+  "#7dd3fc", // Pisces (ALL)
 ];
 
 const CAPRICORN_INDEX = 9; // Carbon — needs white border on dark bg
@@ -181,8 +181,8 @@ const ZODIAC_RAY_NAMES = [
   "Violet Ray",
   "Magenta Ray",
   "Omni/Carbon Ray",
-  "Crystalline-Carbon Ray",
-  "Infinite of ALL Ray",
+  "Elemental Ray",
+  "ALL Ray",
 ];
 
 const ZODIAC_RAY_ESSENCE = [

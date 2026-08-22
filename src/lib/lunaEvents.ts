@@ -80,8 +80,8 @@ const ZODIAC_RAY_MAP: Array<{
   { sign: "Scorpio", symbol: "\u264F\uFE0E", rayName: "Violet", rayColor: "#8b5cf6", virtue: "Integration", affirmation: "I transmute through love." },
   { sign: "Sagittarius", symbol: "\u2650\uFE0E", rayName: "Magenta", rayColor: "#d946ef", virtue: "Reunion", affirmation: "My Heartlight is the bridge." },
   { sign: "Capricorn", symbol: "\u2651\uFE0E", rayName: "Omni", rayColor: "#fafafa", rayLabelColor: "#f8fafc", virtue: "Integration", affirmation: "I am whole. I am ready." },
-  { sign: "Aquarius", symbol: "\u2652\uFE0E", rayName: "Crystalline-Carbon", rayColor: "#a5f3fc", rayLabelColor: "#f8fafc", virtue: "Ancient Remembrance", affirmation: "I hold the pattern that holds me." },
-  { sign: "Pisces", symbol: "\u2653\uFE0E", rayName: "Infinite of ALL", rayColor: "#7dd3fc", rayLabelColor: "#f8fafc", virtue: "Cosmogenesis", affirmation: "ALL-ways lead back to our Heartlight." },
+  { sign: "Aquarius", symbol: "\u2652\uFE0E", rayName: "Elemental", rayColor: "#a5f3fc", rayLabelColor: "#f8fafc", virtue: "Ancient Remembrance", affirmation: "I hold the pattern that holds me." },
+  { sign: "Pisces", symbol: "\u2653\uFE0E", rayName: "ALL", rayColor: "#7dd3fc", rayLabelColor: "#f8fafc", virtue: "Cosmogenesis", affirmation: "ALL-ways lead back to our Heartlight." },
 ];
 
 /* ── Moon phase → Ray resonance mapping ── */
@@ -309,8 +309,8 @@ export function getSolarSeasonRay(date: Date = new Date(), lat: number = 0, lon:
     { seasonName: "Autumn", rayName: "Violet", rayColor: "#8b5cf6", rayIndex: 7, resonance: "Transmutation, the alchemy of release and return." },
     { seasonName: "Late Autumn", rayName: "Magenta", rayColor: "#d946ef", rayIndex: 8, resonance: "Reunion, gathering what was scattered across the year." },
     { seasonName: "Winter", rayName: "Omni", rayColor: "#fafafa", rayIndex: 9, resonance: "Crystallization, the still wholeness of the cold months." },
-    { seasonName: "Late Winter", rayName: "Crystalline-Carbon", rayColor: "#a5f3fc", rayIndex: 10, resonance: "Ancient remembrance, holding the pattern for what comes next." },
-    { seasonName: "Pre-Spring", rayName: "Infinite of ALL", rayColor: "#7dd3fc", rayIndex: 11, resonance: "Cosmogenesis, the infinite potential before the thaw." },
+    { seasonName: "Late Winter", rayName: "Elemental", rayColor: "#a5f3fc", rayIndex: 10, resonance: "Ancient remembrance, holding the pattern for what comes next." },
+    { seasonName: "Pre-Spring", rayName: "ALL", rayColor: "#7dd3fc", rayIndex: 11, resonance: "Cosmogenesis, the infinite potential before the thaw." },
     { seasonName: "Early Spring", rayName: "Red", rayColor: "#ef4444", rayIndex: 0, resonance: "Initiation, the first spark of returning light." },
     { seasonName: "Mid-Spring", rayName: "Orange", rayColor: "#f97316", rayIndex: 1, resonance: "Essence, the sensory awakening of the body of Earth." },
     { seasonName: "Late Spring Bloom", rayName: "Yellow", rayColor: "#facc15", rayIndex: 2, resonance: "Sovereign will, the clarity of purpose as growth peaks." },
