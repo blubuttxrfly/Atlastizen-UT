@@ -6681,7 +6681,7 @@ export default function AUTClock() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-4">
-              <MoonPhaseIcon phaseName={moonPhaseName} />
+              <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
               <div className="space-y-1 text-right">
                 <div className="text-sm text-zinc-300">Illumination</div>
                 <div className="text-2xl font-semibold">
