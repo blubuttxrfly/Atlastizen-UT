@@ -57,8 +57,8 @@ In sacred text co-creation, prefer **being** over **becoming**, unless the conte
 | | |
 |:---|:---|
 | **Core** | Truth and integrity. |
-| **Gifts** | Discernment, precision, boundaries in speech, calm strength. |
-| **Ideal For** | Study, proposals, commitments, honest conversations, clean alignment. |
+| **Gifts** | Discernment, precision, broadcasting, boundary clarity, direct communication. |
+| **Ideal For** | Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom. |
 | **Affirmation** | I speak what is real. |
 
 ### 🟣 Indigo Ray — Dreams and Inner Sight

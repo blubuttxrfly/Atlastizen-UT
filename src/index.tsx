@@ -2510,8 +2510,8 @@ const RAY_READINGS: Record<string, RayReading> = {
   Blue: {
     title: "Blue",
     core: "Truth and integrity.",
-    gifts: "Discernment, precision, boundaries in speech, calm strength.",
-    ideal: "Study, proposals, commitments, honest conversations, clean alignment.",
+    gifts: "Discernment, precision, broadcasting, boundary clarity, direct communication.",
+    ideal: "Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom.",
     affirmation: "I speak what is real.",
   },
   Indigo: {
