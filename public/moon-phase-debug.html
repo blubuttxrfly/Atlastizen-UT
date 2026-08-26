@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Moon Phase Shadow Debugger</title>
+  <style>
+    body { background: #3c1e4a; color: #e2d5f2; font-family: system-ui, sans-serif; padding: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
+    .card { text-align: center; padding: 15px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; }
+    .card h3 { margin: 0 0 10px; font-size: 14px; }
+    .card p { margin: 5px 0; font-size: 11px; opacity: 0.7; }
+    svg { display: block; margin: 0 auto; }
+    .highlight { border-color: #a78bfa; background: rgba(167,139,250,0.1); }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center; margin-bottom: 30px;">Moon Phase Shadow Debugger</h2>
+  <div class="grid" id="grid"></div>
+
+  <script>
+    const R = 24, cx = 24, cy = 24;
+    const phases = [
+      { name: "New Moon", illum: 0.00, isWaxing: true },
+      { name: "Waxing Crescent", illum: 0.20, isWaxing: true },
+      { name: "First Quarter", illum: 0.50, isWaxing: true },
+      { name: "Waxing Gibbous", illum: 0.80, isWaxing: true },
+      { name: "Full Moon", illum: 1.00, isWaxing: true },
+      { name: "Waning Gibbous", illum: 0.80, isWaxing: false },
+      { name: "Last Quarter", illum: 0.50, isWaxing: false },
+      { name: "Waning Crescent", illum: 0.20, isWaxing: false },
+    ];
+
+    // Try ALL 4 combinations of sweep flags for each phase
+    // circleSweep | ellipseSweep
+    const combos = [
+      { cs: 0, es: 0, label: "circle=0, ellipse=0" },
+      { cs: 0, es: 1, label: "circle=0, ellipse=1" },
+      { cs: 1, es: 0, label: "circle=1, ellipse=0" },
+      { cs: 1, es: 1, label: "circle=1, ellipse=1" },
+    ];
+
+    function makeShadowPath(illum, isWaxing, cs, es) {
+      if (illum >= 0.985) return { path: "", type: "full" };
+      if (illum <= 0.015) return { path: "", type: "new" };
+      const k = R * Math.abs(1 - 2 * illum);
+      const top = `${cx},${cy - R}`;
+      const bottom = `${cx},${cy + R}`;
+      // circleSweep: 0=left side, 1=right side
+      const circleSweep = isWaxing ? 0 : 1;
+      const path = `M ${top} A ${R},${R} 0 0,${circleSweep} ${bottom} A ${k},${R} 0 0,${es} ${top} Z`;
+      return { path, type: "phase" };
+    }
+
+    const grid = document.getElementById("grid");
+
+    phases.forEach(phase => {
+      combos.forEach((combo, idx) => {
+        const result = makeShadowPath(phase.illum, phase.isWaxing, combo.cs, combo.es);
+        const card = document.createElement("div");
+        card.className = "card" + (phase.name === "Waxing Gibbous" ? " highlight" : "");
+
+        let svgContent;
+        if (result.type === "full") {
+          svgContent = `
+            <circle cx="24" cy="24" r="22" fill="#e2d5f2"/>
+          `;
+        } else if (result.type === "new") {
+          svgContent = `
+            <circle cx="24" cy="24" r="22" fill="#1a0f2e"/>
+          `;
+        } else {
+          svgContent = `
+            <defs>
+              <clipPath id="clip-${phase.name.replace(/\s/g,'')}-${idx}">
+                <circle cx="24" cy="24" r="22"/>
+              </clipPath>
+            </defs>
+            <circle cx="24" cy="24" r="22" fill="#e2d5f2" clip-path="url(#clip-${phase.name.replace(/\s/g,'')}-${idx})"/>
+            <path d="${result.path}" fill="rgba(15,23,42,0.55)" clip-path="url(#clip-${phase.name.replace(/\s/g,'')}-${idx})"/>
+          `;
+        }
+
+        card.innerHTML = `
+          <h3>${phase.name}</h3>
+          <p>${combo.label}</p>
+          <svg width="100" height="100" viewBox="0 0 48 48">${svgContent}</svg>
+          <p>illum=${phase.illum}</p>
+        `;
+        grid.appendChild(card);
+      });
+    });
+  </script>
+</body>
+</html>

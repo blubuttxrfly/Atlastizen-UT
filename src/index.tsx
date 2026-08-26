@@ -2460,7 +2460,7 @@ const WEEK_RAY_READINGS: Record<string, WeekRayReading> = {
 const RAY_READINGS: Record<string, RayReading> = {
   "Elemental": {
     title: "Elemental",
-    core: "Ancient remembrance + crystalline-clarity.",
+    core: "Ancient remembrance and crystalline clarity.",
     gifts: "Stability, deep nervous-system settling, \"truth in the bones,\” clean energetic containment.",
     ideal: "Grounding, boundaries, decluttering, closing loops, body care, sacred minimalism.",
     affirmation: "I hold the pattern that holds me.",
@@ -2468,78 +2468,78 @@ const RAY_READINGS: Record<string, RayReading> = {
   "ALL": {
     title: "ALL",
     core: "Cosmogenesis + vast permission.",
-    gifts: "Unity-awareness, timeline softening, synchronicity threads revealing themselves.",
+    gifts: "ALL-Awareness, timeline softening, synchronicity threads revealing themselves.",
     ideal: "Prayer, big vision downloads, blessings, wide-angle perspective, sacred surrender.",
     affirmation: "ALL-ways lead back to our Heartlight.",
   },
   Red: {
     title: "Red",
-    core: "Embodiment + sovereignty.",
-    gifts: "Courage, protection, stamina, decisive movement, life-force ignition.",
-    ideal: "Action steps, workouts, survival-to-thrive power, claiming space.",
-    affirmation: "I choose. I move. I live.",
+    core: "Initiation and sacred grounding.",
+    gifts: "Courage to begin, deep root-connection, protective boundaries, decisive action, life-force ignition from the earth up.",
+    ideal: "New beginnings, grounding rituals, claiming space, physical movement, ancestral remembrance, root-charge meditations, dream journaling and integration, body temple activation and healing, setting intentions.",
+    affirmation: "I initiate. I ground. I am.",
   },
   Orange: {
     title: "Orange",
     core: "Art of Life & Essence expression.",
     gifts: "Play, sensual alchemy, emotional flow, art through the body.",
-    ideal: "Creating, dancing, connecting, pleasure with presence, inner-child medicine.",
+    ideal: "Creating, dancing, connecting, pleasure with presence, inner-child medicine, body temple nourishment, feeling and integrating.",
     affirmation: "My Art of Life co-creates our world.",
   },
   Yellow: {
     title: "Yellow",
-    core: "Clarity + empowered will.",
+    core: "Clarity and empowered will.",
     gifts: "Focus, leadership, confidence, clean direction, radiant self-respect.",
     ideal: "Plans, money moves, structure, decisions, speaking with authority.",
     affirmation: "My will blesses my path.",
   },
   Green: {
     title: "Green",
-    core: "Manifestation + heart ecology.",
+    core: "Manifestation and heart ecology.",
     gifts: "Abundance, growth, devotion, nourishment, relational harmony.",
     ideal: "Building long-term, tending home/body, community weaving, prosperity rituals.",
-    affirmation: "What I nurture, flourishes.",
+    affirmation: "Home is where our Heartlight lives.",
   },
   Turquoise: {
     title: "Turquoise",
-    core: "Flow + heart-to-voice bridge.",
-    gifts: "Emotional clarity, gentle truth, soothing communication, cleansing movement.",
+    core: "Flow and heart-to-voice bridge.",
+    gifts: "Emotional clarity, gentle truth, soothing communication, cleansing movement, authentic joy.",
     ideal: "Writing, sharing, water rituals, breathwork, compassionate conversations.",
     affirmation: "My voice flows from my heart.",
   },
   Blue: {
     title: "Blue",
-    core: "Truth + integrity.",
+    core: "Truth and integrity.",
     gifts: "Discernment, precision, boundaries in speech, calm strength.",
     ideal: "Study, proposals, commitments, honest conversations, clean alignment.",
     affirmation: "I speak what is real.",
   },
   Indigo: {
     title: "Indigo",
-    core: "Dreams + inner sight.",
+    core: "Dreams and inner sight.",
     gifts: "Intuition, symbolism, lucid knowing, subconscious communication, sacred pattern recognition.",
     ideal: "Dreamwork, divination, ritual study, shadow integration, receiving messages.",
-    affirmation: "My dreams guide my becoming.",
+    affirmation: "My dreams guide my being.",
   },
   Violet: {
     title: "Violet",
-    core: "Transmutation + higher harmony.",
+    core: "Transmutation and blessing.",
     gifts: "Spiritual refinement, energetic cleansing, ceremony, artistry as blessing.",
-    ideal: "Altar work, prayer, forgiveness, energetic upgrades, devotion to beauty.",
+    ideal: "Spiritual wisdom interconnection, Greater Higher Being channeling & remembrance, transformational intentions, transmuting energies for our Heartlight's Greatest & Highest Good.",
     affirmation: "I transmute through love.",
   },
   Magenta: {
     title: "Magenta",
-    core: "Red Ray primordial life-force + Violet Ray high-frequency ascension, co-creating a uniting interconnection bridge of ALL that IS.",
+    core: "Surrender to the infinite loving and unifying embrace of ALL that IS.",
     gifts:
       "Transmutation of desire into devotion • Magnetic authenticity • Heart-wings (love with altitude) • Embodied spirituality through voice, art, and aligned boundaries.",
     ideal:
-      "Heart-led creation • Sacred sensuality • Relationship healing through truth • Broadcasting your message • Choosing boundaries that protect joy • Rituals that turn intensity into beauty.",
+      "Embodied spirituality through our being, love that discerns boundaries and harmonizes, reunifying masculine and feminine energy, collapsing polarity into wholeness, heart-led creation, sacred sensuality, relationship healing through truth, choosing boundaries that protect joy, rituals that turn intensity into beauty, embracing the cosmic kiss of Red and Violet in re-unity of ALL that IS.",
     affirmation: "My Heartlight is the bridge.",
   },
   Omni: {
     title: "Omni",
-    core: "Integration + completion.",
+    core: "Integration and completion.",
     gifts: "Wholeness, synthesis, embodied peace, quiet mastery, sacred closure.",
     ideal: "Endings, gratitude, integration, restorative stillness, blessing the next cycle.",
     affirmation: "I am whole. I am ready.",
@@ -6119,7 +6119,7 @@ export default function AUTClock() {
                   AUT (Atlastizen Universal Time)
                 </div>
                 <div className="text-[8px] sm:text-[10px] text-zinc-400 whitespace-nowrap overflow-hidden text-ellipsis">
-                  Sunrise→00:00 AUT • Sunset→06:00 AUT (midday) • Next→12:00/00:00 AUT
+                  Sunrise→00:00 AUT • Solar Apex→03:00 AUT • Sunset→06:00 AUT • Next Sunrise→12:00 AUT (new day)
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-sm text-zinc-200">
                   <span className="font-medium text-white text-xs sm:text-sm truncate">{locationPrimary}</span>
@@ -6211,7 +6211,7 @@ export default function AUTClock() {
                 <div className="space-y-0.5">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
                   <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
-                    {moonPhaseName} · {lunaActiveRay.sign} {lunaActiveRay.symbol}
+                    {lunaActiveRay.sign} {lunaActiveRay.symbol} {lunaActiveRay.name} Ray
                   </div>
                   <div className="text-sm text-zinc-300 font-mono">
                     Luna AUT {lunaAutClock}
@@ -6298,7 +6298,7 @@ export default function AUTClock() {
                   />
                   <div className="space-y-2">
                     <div className="text-base font-semibold text-zinc-50">
-                      {lunaActiveRay.name} Ray — {lunaActiveRay.sign} {lunaActiveRay.symbol}
+                      {lunaActiveRay.sign} {lunaActiveRay.symbol} {lunaActiveRay.name} Ray
                     </div>
                     <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
                       <div><span className="font-semibold text-zinc-100">Luna Ray Frequency: </span>{lunaActiveRay.name}</div>
@@ -6543,15 +6543,15 @@ export default function AUTClock() {
                 <div className="text-xl font-semibold">{formatShortTime(data.sunriseLocal)}</div>
               </div>
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Solar Apex (06:00 AUT)</div>
+                <div className="text-sm text-zinc-400">Solar Apex (03:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.solarNoonLocal)}</div>
               </div>
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Solar Sunset (12:00 AUT)</div>
+                <div className="text-sm text-zinc-400">Solar Sunset (06:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.sunsetLocal)}</div>
               </div>
               <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Next Sunrise (12:00 AUT)</div>
+                <div className="text-sm text-zinc-400">New Day / Next Sunrise (12:00 AUT)</div>
                 <div className="text-xl font-semibold">{formatShortTime(data.nextSunriseLocal)}</div>
               </div>
             </div>
