@@ -21,8 +21,9 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
+import { useSmoothLunaAUT } from "./hooks/useSmoothLunaAUT";
 import { Crosshair, Settings, Moon, Sun } from "lucide-react";
-import { getMoonRayFrequency, getMoonPhaseAngle } from "./lib/lunaEvents";
+import { getMoonRayFrequency, getMoonPhaseAngle, getUpcomingEclipses, getUpcomingMoonPhases } from "./lib/lunaEvents";
 
 /**
  * AUT Time & Tools — Live Clock
@@ -705,7 +706,7 @@ void getMoonPhaseKey;
 
 function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumination: number }) {
   const id = useId();
-  const maskId = `${id}-moon-clip`;
+  const clipId = `${id}-moon-clip`;
   const R = 24;
   const cx = 24;
   const cy = 24;
@@ -731,16 +732,6 @@ function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumin
   //
   // SVG arc: A rx ry x-rot large-arc sweep x y
   //   sweep=0 = counter-clockwise, sweep=1 = clockwise
-  //
-  // For waxing (shadow on left):
-  //   - Circle arc: left limb from top to bottom (sweep=0, counter-clockwise = left side)
-  //   - Gibbous (illum>0.5): terminator bulges left into shadow → sweep=0 on ellipse
-  //   - Crescent (illum<0.5): terminator bulges right into lit area → sweep=1 on ellipse
-  //
-  // For waning (shadow on right):
-  //   - Circle arc: right limb from top to bottom (sweep=1, clockwise = right side)
-  //   - Gibbous (illum>0.5): terminator bulges right into shadow → sweep=1 on ellipse
-  //   - Crescent (illum<0.5): terminator bulges left into lit area → sweep=0 on ellipse
 
   let shadowPath = "";
   if (!isFull && !isNew) {
@@ -748,49 +739,45 @@ function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumin
     const bottom = `${cx},${cy + R}`;
     if (isWaxing) {
       if (illum > 0.5) {
-        // Waxing gibbous: thin shadow crescent on left, terminator bulges RIGHT (into lit)
+        // Waxing gibbous: shadow crescent on left
         shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
       } else {
-        // Waxing crescent: large shadow on left, terminator bulges LEFT (into shadow)
+        // Waxing crescent: shadow on left
         shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
       }
     } else {
       if (illum > 0.5) {
-        // Waning gibbous: thin shadow crescent on right, terminator bulges LEFT (into lit)
+        // Waning gibbous: shadow crescent on right
         shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
       } else {
-        // Waning crescent: large shadow on right, terminator bulges RIGHT (into shadow)
+        // Waning crescent: shadow on right
         shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
       }
     }
   }
 
   return (
-    <svg width="64" height="64" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+    <svg width="64" height="64" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0" style={{ overflow: "hidden" }}>
       <defs>
-        <clipPath id={maskId}>
+        <clipPath id={clipId}>
           <circle cx={cx} cy={cy} r={R} />
         </clipPath>
       </defs>
-      {/* Real Moon image filling the entire circle */}
+      {/* Moon image: larger to fill circle, clipped to circle */}
       <image
         href="/hsm-planets/Moon.png"
-        x="-2"
-        y="-2"
-        width="52"
-        height="52"
+        x="-8"
+        y="-8"
+        width="64"
+        height="64"
         preserveAspectRatio="xMidYMid slice"
-        clipPath={`url(#${maskId})`}
+        clipPath={`url(#${clipId})`}
       />
-      {/* Elliptical shadow overlay shaped by the actual illumination fraction */}
+      {/* Ecliptic shadow overlay: dark semi-transparent fill clipped to circle */}
       {isNew ? (
-        <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${maskId})`} />
+        <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
       ) : isFull ? null : (
-        <path
-          d={shadowPath}
-          fill="rgba(15,23,42,0.55)"
-          clipPath={`url(#${maskId})`}
-        />
+        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} transform="translate(1.5, 1.5)" />
       )}
     </svg>
   );
@@ -4918,38 +4905,29 @@ export default function AUTClock() {
   const lunaPointerCoord = polarToCartesian(POINTER_RADIUS, lunaPointerAngle);
   const lunaPointerInner = polarToCartesian(RING_INNER_RADIUS - 6, lunaPointerAngle);
 
-  // Luna AUT clock — anchored to Moonrise → 00:00 and Moonset → 12:00.
-  // When the Moon is above the horizon (moonrise→moonset), Luna AUT flows 00:00→12:00.
-  // When below (moonset→next moonrise), Luna AUT flows 12:00→24:00/00:00.
-  const lunaAutClock = useMemo(() => {
-    if (!luna?.rise || !luna?.set) return "—";
-    const nowMs = now.getTime();
-    const riseMs = luna.rise.getTime();
-    const setMs = luna.set.getTime();
+  // Luna AUT clock, anchored to the Moon's synodic cycle.
+  // Phase angle 0°   = New Moon    = 00:00:00 Luna AUT
+  // Phase angle 90°  = First Q     = 06:00:00 Luna AUT
+  // Phase angle 180° = Full Moon   = 12:00:00 Luna AUT
+  // Phase angle 270° = Last Q      = 18:00:00 Luna AUT
+  // Phase angle 360° = Next New M  = 24:00:00 Luna AUT
+  const lunaAutClock = useSmoothLunaAUT(lunaPhaseAngle);
 
-    // Handle cases where moonset is before moonrise (Moon rises before setting next day)
-    let effectiveSetMs = setMs;
-    if (setMs < riseMs) {
-      // Moonset is tomorrow — add a day
-      effectiveSetMs = setMs + 24 * 60 * 60 * 1000;
+  const upcomingEclipses = useMemo(() => {
+    try {
+      return getUpcomingEclipses(now, 2);
+    } catch {
+      return [];
     }
+  }, [now]);
 
-    if (nowMs >= riseMs && nowMs < effectiveSetMs) {
-      // Moon is above horizon: 00:00 → 12:00 Luna AUT
-      const dayLen = effectiveSetMs - riseMs;
-      const ratio = (nowMs - riseMs) / dayLen;
-      const autHours = 6 * ratio; // 0..6 (we use 6 as midpoint, 12 as full cycle for display)
-      return formatClock(autHours);
-    } else {
-      // Moon is below horizon: 12:00 → 24:00/00:00 Luna AUT
-      // Find next moonrise
-      const nextRiseMs = riseMs + 24 * 60 * 60 * 1000; // approximate
-      const nightLen = nextRiseMs - effectiveSetMs;
-      const ratio = (nowMs - effectiveSetMs) / nightLen;
-      const autHours = 6 + 6 * Math.min(1, Math.max(0, ratio));
-      return formatClock(autHours);
+  const upcomingMoonPhases = useMemo(() => {
+    try {
+      return getUpcomingMoonPhases(now, 4);
+    } catch {
+      return [];
     }
-  }, [luna, now]);
+  }, [now]);
 
   const atmosphereSample = atmosphere.sample;
   const atmosphereStatusLine = (() => {
@@ -5361,6 +5339,21 @@ export default function AUTClock() {
               AUT Time &amp; Tools
             </h1>
             <div className="flex items-center gap-2">
+              {/* Mini Ray Dial */}
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition shrink-0"
+                onClick={() => setActivePanel("clock")}
+                title="Ray Dial"
+              >
+                <div
+                  className="h-7 w-7 sm:h-9 sm:w-9 rounded-full"
+                  style={{
+                    background:
+                      "conic-gradient(from -15deg, #6366f1 0deg 30deg, #8b5cf6 30deg 60deg, #d946ef 60deg 90deg, #fafafa 90deg 120deg, #a5f3fc 120deg 150deg, #7dd3fc 150deg 180deg, #ef4444 180deg 210deg, #fb923c 210deg 240deg, #facc15 240deg 270deg, #22c55e 270deg 300deg, #2dd4bf 300deg 330deg, #3b82f6 330deg 360deg)",
+                  }}
+                />
+              </button>
               <button
                 type="button"
                 className="inline-flex items-center justify-center rounded-full hover:opacity-80 transition shrink-0"
@@ -6212,27 +6205,17 @@ export default function AUTClock() {
             {/* ── Luna Ray Dial ── */}
             {clockDialMode === "luna" && (
             <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
-                  <div className="space-y-1 min-w-0">
-                    <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
-                    <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
-                      Active Cycle: <span className="underline decoration-dotted">{lunaActiveRay.name}</span>
-                    </div>
-                    <div className="text-[10px] text-zinc-400 whitespace-nowrap">
-                      {lunaActiveRay.sign} {lunaActiveRay.symbol}
-                      <span className="mx-1 text-zinc-500">|</span>
-                      {moonPhaseName}
-                      <span className="mx-1 text-zinc-500">|</span>
-                      Lunar Age {lunarAgeDays.toFixed(1)} days
-                    </div>
+              {/* Luna header — centered, with sacred hierarchy */}
+              <div className="flex flex-col items-center text-center space-y-2">
+                <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
+                <div className="space-y-0.5">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
+                  <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
+                    {moonPhaseName} · {lunaActiveRay.sign} {lunaActiveRay.symbol}
                   </div>
-                </div>
-                <div className="text-sm text-zinc-300 text-right shrink-0">
-                  <div>{lunaRayProgressPct}% through this cycle</div>
-                  <div>≈ {lunaRemainingDays.toFixed(1)} days left</div>
-                  <div>Luna AUT {lunaAutClock}</div>
+                  <div className="text-sm text-zinc-300 font-mono">
+                    Luna AUT {lunaAutClock}
+                  </div>
                 </div>
               </div>
 
@@ -6448,25 +6431,107 @@ export default function AUTClock() {
             </div>
             )}
 
-            {/* Luna timing cards — Moonrise → Apex → Moonset → Next Moonrise */}
             {clockDialMode === "luna" && (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Moonrise (00:00 Luna AUT)</div>
-                <div className="text-xl font-semibold">{moonRiseLocal}</div>
+            <div className="mt-4 space-y-3">
+              {/* Luna metadata — illumination, cycle day, sign progress */}
+              <div className="text-center text-[11px] text-zinc-400 space-y-1 py-2">
+                <div>
+                  {moonIllumPct ?? "—"}% Illuminated · Day {lunarAgeDays.toFixed(1)} of ~{SYNODIC_MONTH_DAYS.toFixed(1)} day cycle
+                </div>
+                <div className="text-zinc-400">
+                  {lunaRayProgressPct}% through {lunaActiveRay.sign} · ≈ {lunaRemainingDays.toFixed(1)} days remaining
+                </div>
               </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Lunar Apex (06:00 Luna AUT)</div>
-                <div className="text-xl font-semibold">{moonTransitLocal}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Moonset (12:00 Luna AUT)</div>
-                <div className="text-xl font-semibold">{moonSetLocal}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4">
-                <div className="text-sm text-zinc-400">Next Moonrise (24:00 Luna AUT)</div>
-                <div className="text-xl font-semibold">—</div>
-              </div>
+
+              {/* Upcoming Full/New Moons with Ray placement */}
+              {upcomingMoonPhases.length > 0 && (
+                <div className="space-y-3">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400 text-center">Upcoming Moon Phases</div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[...upcomingMoonPhases]
+                      .sort((a, b) => a.daysUntil - b.daysUntil)
+                      .map((phase, idx) => {
+                      const phaseDate = phase.date.toLocaleDateString(undefined, {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      });
+                      const daysText = phase.daysUntil <= 0
+                        ? "Today"
+                        : phase.daysUntil === 1
+                          ? "Tomorrow"
+                          : `in ${phase.daysUntil} days`;
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className="inline-block h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: phase.rayColor }}
+                            />
+                            <span className="text-sm text-zinc-400">{phase.label}</span>
+                          </div>
+                          <div className="text-xl font-semibold">
+                            {phase.phaseSign} {phase.raySymbol} {phase.rayName} Ray
+                          </div>
+                          <div className="text-sm text-zinc-400 mt-1">
+                            {phaseDate}
+                          </div>
+                          <div className="text-xs text-zinc-400 mt-1">
+                            {daysText}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Upcoming eclipse events */}
+              {upcomingEclipses.length > 0 && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {upcomingEclipses.map((eclipse, idx) => {
+                    const eclipseDate = eclipse.peak.toLocaleDateString(undefined, {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                    const daysText = eclipse.daysUntil <= 0
+                      ? "Today"
+                      : eclipse.daysUntil === 1
+                        ? "Tomorrow"
+                        : `in ${eclipse.daysUntil} days`;
+                    return (
+                      <div
+                        key={idx}
+                        className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4"
+                      >
+                        <div className="text-sm text-zinc-400">
+                          {eclipse.kind === "lunar" ? "🌑 Lunar Eclipse" : "🌞 Solar Eclipse"}
+                        </div>
+                        <div className="text-lg font-semibold">
+                          {eclipse.description}
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-1">
+                          {eclipseDate} · {daysText}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* Luna AUT explanation */}
+            {clockDialMode === "luna" && (
+            <div className="mt-4 rounded-xl border border-zinc-700/30 bg-zinc-900/20 p-4 text-center">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400 mb-1.5">About Luna AUT</div>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                Luna AUT is a 24-hour clock mapped to the 29.53-day synodic Moon cycle. New Moon = 00:00 → First Quarter = 6:00 → Full Moon = 12:00 → Last Quarter = 18:00. Luna AUT flows with our Moon's phases, and celebrates Luna's eternal dance and cycles of being.
+              </p>
             </div>
             )}
 

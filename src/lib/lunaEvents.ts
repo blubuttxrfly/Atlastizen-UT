@@ -339,6 +339,8 @@ export type MoonPhaseEvent = {
   /** Ray Frequency for this phase */
   rayName: string;
   rayColor: string;
+  raySymbol: string;
+  phaseSign: string;
   resonance: string;
 };
 
@@ -352,14 +354,19 @@ export function getUpcomingMoonPhases(date: Date = new Date(), count: number = 4
     if (newMoonTime) {
       const newMoonDate = newMoonTime.date;
       const dUntil = Math.round((newMoonDate.getTime() - nowMs) / (1000 * 60 * 60 * 24));
+      // Compute Moon's ecliptic longitude at this New Moon to find its Ray
+      const moonLon = eclipticLongitudeOf(Body.Moon, newMoonDate, new Observer(0, 0, 0));
+      const rayInfo = getRayFrequency(moonLon);
       events.push({
         kind: "new-moon",
         label: "New Moon",
         date: newMoonDate,
         daysUntil: dUntil,
-        rayName: "Red",
-        rayColor: "#ef4444",
-        resonance: "Initiation, seeding intention in the dark of potential.",
+        rayName: rayInfo.name,
+        rayColor: rayInfo.color,
+        raySymbol: rayInfo.zodiacSymbol,
+        phaseSign: rayInfo.zodiacSign,
+        resonance: getMoonPhaseRay("New Moon")?.resonance ?? "Initiation, seeding intention in the dark of potential.",
       });
     }
   } catch { /* search may fail near edge cases */ }
@@ -370,14 +377,19 @@ export function getUpcomingMoonPhases(date: Date = new Date(), count: number = 4
     if (fullMoonTime) {
       const fullMoonDate = fullMoonTime.date;
       const dUntil = Math.round((fullMoonDate.getTime() - nowMs) / (1000 * 60 * 60 * 24));
+      // Compute Moon's ecliptic longitude at this Full Moon to find its Ray
+      const moonLon = eclipticLongitudeOf(Body.Moon, fullMoonDate, new Observer(0, 0, 0));
+      const rayInfo = getRayFrequency(moonLon);
       events.push({
         kind: "full-moon",
         label: "Full Moon",
         date: fullMoonDate,
         daysUntil: dUntil,
-        rayName: "Turquoise",
-        rayColor: "#2dd4bf",
-        resonance: "Heart-voiced illumination, full expression of what was seeded.",
+        rayName: rayInfo.name,
+        rayColor: rayInfo.color,
+        raySymbol: rayInfo.zodiacSymbol,
+        phaseSign: rayInfo.zodiacSign,
+        resonance: getMoonPhaseRay("Full Moon")?.resonance ?? "Heart-voiced illumination, full expression of what was seeded.",
       });
     }
   } catch { /* search may fail near edge cases */ }
@@ -390,8 +402,79 @@ export function getUpcomingMoonPhases(date: Date = new Date(), count: number = 4
 /* ── Get current Moon phase angle (0-360 degrees) ── */
 export function getMoonPhaseAngle(date: Date = new Date()): number {
   try {
-    return ((MoonPhase(MakeTime(date)) % 360) + 360) % 360;
+    const raw = MoonPhase(MakeTime(date));
+    return ((raw % 360) + 360) % 360;
   } catch {
     return 0;
+  }
+}
+
+/* ── Get the current moon phase event (what phase we are in now) ── */
+export type CurrentMoonPhaseInfo = {
+  name: string;
+  angleStart: number;
+  angleEnd: number;
+  label: string;
+};
+
+const PHASE_DEFINITIONS: CurrentMoonPhaseInfo[] = [
+  { name: "New Moon", angleStart: 0, angleEnd: 45, label: "New Moon" },
+  { name: "Waxing Crescent", angleStart: 45, angleEnd: 90, label: "Waxing Crescent" },
+  { name: "First Quarter", angleStart: 90, angleEnd: 135, label: "First Quarter" },
+  { name: "Waxing Gibbous", angleStart: 135, angleEnd: 180, label: "Waxing Gibbous" },
+  { name: "Full Moon", angleStart: 180, angleEnd: 225, label: "Full Moon" },
+  { name: "Waning Gibbous", angleStart: 225, angleEnd: 270, label: "Waning Gibbous" },
+  { name: "Last Quarter", angleStart: 270, angleEnd: 315, label: "Last Quarter" },
+  { name: "Waning Crescent", angleStart: 315, angleEnd: 360, label: "Waning Crescent" },
+];
+
+export function getCurrentMoonPhaseInfo(phaseAngle: number): CurrentMoonPhaseInfo {
+  const normalized = ((phaseAngle % 360) + 360) % 360;
+  return PHASE_DEFINITIONS.find(
+    (p) => normalized >= p.angleStart && normalized < p.angleEnd
+  ) ?? PHASE_DEFINITIONS[0];
+}
+
+/* ── Get next moon phase event from a list of known phases ── */
+export type NextPhaseEvent = {
+  name: string;
+  targetAngle: number;
+  lunaAut: string;
+  date: Date;
+  daysUntil: number;
+};
+
+const PHASE_TARGETS: Array<{ name: string; targetAngle: number; lunaAut: string }> = [
+  { name: "New Moon", targetAngle: 0, lunaAut: "00:00:00" },
+  { name: "First Quarter", targetAngle: 90, lunaAut: "06:00:00" },
+  { name: "Full Moon", targetAngle: 180, lunaAut: "12:00:00" },
+  { name: "Last Quarter", targetAngle: 270, lunaAut: "18:00:00" },
+];
+
+export function getNextMoonPhaseEvent(date: Date = new Date()): NextPhaseEvent | null {
+  const nowMs = date.getTime();
+  try {
+    // Search for all four primary phase events
+    const events: NextPhaseEvent[] = [];
+    for (const target of PHASE_TARGETS) {
+      const searchResult = SearchMoonPhase(target.targetAngle, date, 40);
+      if (searchResult) {
+        const dUntil = (searchResult.date.getTime() - nowMs) / (1000 * 60 * 60 * 24);
+        if (dUntil >= -0.001) {
+          events.push({
+            name: target.name,
+            targetAngle: target.targetAngle,
+            lunaAut: target.lunaAut,
+            date: searchResult.date,
+            daysUntil: dUntil,
+          });
+        }
+      }
+    }
+
+    events.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return events[0] ?? null;
+  } catch {
+    return null;
   }
 }
