@@ -124,7 +124,6 @@ type PanelId =
   | "heartlight"
   | "coreSignature"
   | "community"
-  | "ray"
   | "weekrays"
   | "rayreading"
   | "atmosphere"
@@ -198,7 +197,6 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "compass", label: "Gyro Compass" },
   { id: "heartlight", label: "Ray Astrology" },
   { id: "community", label: "Community" },
-  { id: "ray", label: "Sol Ray Dial" },
   { id: "weekrays", label: "Rays of the Week" },
   { id: "rayreading", label: "Ray Reading" },
   { id: "atmosphere", label: "Atmosphere Panel" },
@@ -4648,10 +4646,6 @@ export default function AUTClock() {
   const ringSizeClass = PRESENT_ONLY
     ? "max-w-[16rem] sm:max-w-[19rem] xl:max-w-[22rem]"
     : "max-w-[18rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
-  const ringLayoutClass = "flex flex-col items-center justify-center gap-5";
-  const rayHeaderClass = PRESENT_ONLY
-    ? "flex flex-col items-center gap-2 text-center"
-    : "flex flex-wrap items-end justify-between gap-3";
   const weekRingSizeClass =
     "max-w-[18rem] sm:max-w-[21rem] lg:max-w-[23rem]";
   const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
@@ -5632,7 +5626,7 @@ export default function AUTClock() {
           </section>
         )}
 
-        {["sol", "luna", "ray", "postal"].includes(activePanel) && (
+        {["sol", "luna", "postal"].includes(activePanel) && (
           <section className="themed-card p-5 space-y-3">
             <div className="flex flex-col gap-3">
               <div className="space-y-1">
@@ -7040,190 +7034,6 @@ export default function AUTClock() {
         {/* Heartlight System Map */}
         <section className="rounded-2xl border border-sky-500/30 bg-slate-900/60 p-6 space-y-4">
           <AtlasCometMap />
-        </section>
-          </>
-        )}
-
-        {activePanel === "ray" && (
-          <>
-        {/* Sol Ray Dial */}
-        <section className="overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900/40 p-4 sm:p-6 space-y-6">
-          <div className={rayHeaderClass}>
-            <div className="space-y-1 min-w-0">
-              <div className="text-sm uppercase text-zinc-400 tracking-wide">
-                Sol Ray Dial
-              </div>
-              <div className="text-lg font-semibold text-zinc-100">
-                Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
-              </div>
-              {rayWindowTimes ? (
-                <div className="text-[10px] text-zinc-400 whitespace-nowrap">
-                  AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}
-                  <span className="mx-1 text-zinc-500">|</span>
-                  Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
-                </div>
-              ) : null}
-            </div>
-            <div className={`text-sm text-zinc-300 shrink-0 ${PRESENT_ONLY ? "" : "text-right"}`}>
-              <div>{progressPct}% through this cycle</div>
-              <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left</div>
-              <div>≈ {Math.ceil(remainingRealMin)} real min</div>
-            </div>
-          </div>
-
-          <div className={ringLayoutClass}>
-            <div className={`relative mx-auto aspect-square w-full ${ringSizeClass}`}>
-              <svg
-                viewBox={ringViewBox}
-                className="block h-auto w-full text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
-              >
-                <circle
-                  cx="0"
-                  cy="0"
-                  r={RING_OUTER_RADIUS + 4}
-                  fill="#0f172a"
-                  fillOpacity="0.35"
-                  stroke="#1e293b"
-                  strokeWidth="0.8"
-                />
-                {dialSegments.map((segment) => {
-                  const isActive = segment.index === rayIndex;
-                  return (
-                    <g key={segment.index}>
-                      <path
-                        d={segment.path}
-                        fill={segment.ray.color}
-                        fillOpacity={isActive ? 1 : 0.78}
-                        stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
-                        strokeWidth={isActive ? 1.6 : 0.6}
-                      />
-                      <text
-                        x={segment.labelX.toFixed(3)}
-                        y={segment.labelY.toFixed(3)}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize="4.1"
-                        fill={segment.ray.labelColor ?? "#e2e8f0"}
-                      >
-                        {segment.labelLines.map((line, lineIdx) => (
-                          <tspan
-                            key={`${segment.index}-${lineIdx}`}
-                            x={segment.labelX.toFixed(3)}
-                            dy={lineIdx === 0 ? (segment.labelLines.length > 1 ? "-0.2em" : "0") : "1.1em"}
-                          >
-                            {line}
-                          </tspan>
-                        ))}
-                      </text>
-                    </g>
-                  );
-                })}
-                <line
-                  x1={pointerInner.x.toFixed(3)}
-                  y1={pointerInner.y.toFixed(3)}
-                  x2={pointerCoord.x.toFixed(3)}
-                  y2={pointerCoord.y.toFixed(3)}
-                  stroke="#f8fafc"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-                <circle cx="0" cy="0" r="6" fill="#0b1120" stroke="#f1f5f9" strokeWidth="1" />
-              </svg>
-            </div>
-          </div>
-
-          <div className="themed-subcard p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
-                style={{ backgroundColor: activeRay.color }}
-              />
-              <div className="space-y-2">
-                <div className="text-base font-semibold text-zinc-50">
-                  {rayReading?.title ?? activeRay.name}
-                </div>
-                {rayReading ? (
-                  <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
-                    <div><span className="font-semibold text-zinc-100">Core Energetic Signature: </span>{rayReading.core}</div>
-                    <div><span className="font-semibold text-zinc-100">Gifts: </span>{rayReading.gifts}</div>
-                    <div><span className="font-semibold text-zinc-100">Ideal For: </span>{rayReading.ideal}</div>
-                    <div><span className="font-semibold text-zinc-100">Affirmation: </span>{rayReading.affirmation}</div>
-                  </div>
-                ) : (
-                  <p className="text-sm leading-relaxed text-zinc-200">
-                    Ray reading unavailable for this cycle.
-                  </p>
-                )}
-                <div className="text-[10px] text-zinc-400">
-                  AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {rayWindowsDetailed.map((win) => {
-              const isOpen = openRayIdx === win.idx;
-              const isActive = win.idx === rayIndex;
-              const pillStyle: CSSProperties = { ["--pill-accent" as string]: win.color };
-              return (
-                <div key={win.idx} className="themed-subcard overflow-hidden p-0">
-                  <button
-                    type="button"
-                    className="ray-pill text-left"
-                    onClick={() => setOpenRayIdx(isOpen ? -1 : win.idx)}
-                    aria-expanded={isOpen}
-                    style={pillStyle}
-                  >
-                    <div className="ray-pill-header">
-                      <div className="ray-pill-dot" style={{ backgroundColor: win.color }} aria-hidden="true" />
-                      <div className="flex flex-col leading-tight">
-                        <span className="ray-pill-title">{win.name}</span>
-                        <span className="ray-pill-time">
-                          AUT {win.window.start.aut} → {win.window.end.aut} • Local {win.window.start.local} → {win.window.end.local}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isActive ? (
-                        <span className="ray-pill-show" aria-live="polite">
-                          Active now
-                        </span>
-                      ) : null}
-                      <span className="ray-pill-show">{isOpen ? "Hide" : "Show"}</span>
-                    </div>
-                  </button>
-                  {isOpen ? (
-                    <div className="border-t border-zinc-700/40 bg-black/10 px-4 py-4 space-y-2">
-                      {win.reading ? (
-                        <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
-                          <div>
-                            <span className="font-semibold text-zinc-100">Core Energetic Signature: </span>
-                            {win.reading.core}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-zinc-100">Gifts: </span>
-                            {win.reading.gifts}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-zinc-100">Ideal For: </span>
-                            {win.reading.ideal}
-                          </div>
-                          <div>
-                            <span className="font-semibold text-zinc-100">Affirmation: </span>
-                            {win.reading.affirmation}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-zinc-200">Ray reading unavailable for this cycle.</p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
         </section>
           </>
         )}
