@@ -2467,10 +2467,10 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
   "ALL": {
     title: "ALL",
-    core: "Cosmogenesis + vast permission.",
+    core: "Sacred surrender and trust in the infinite multidimensionality of ALL.",
     gifts: "ALL-Awareness, timeline softening, synchronicity threads revealing themselves.",
     ideal: "Prayer, big vision downloads, blessings, wide-angle perspective, sacred surrender.",
-    affirmation: "ALL-ways lead back to our Heartlight.",
+    affirmation: "ALL is unfolding as it is meant to for our Heartlight's Greatest & Highest Good.",
   },
   Red: {
     title: "Red",
@@ -2505,14 +2505,14 @@ const RAY_READINGS: Record<string, RayReading> = {
     core: "Flow and heart-to-voice bridge.",
     gifts: "Emotional clarity, gentle truth, soothing communication, cleansing movement, authentic joy.",
     ideal: "Writing, sharing, water rituals, breathwork, compassionate conversations.",
-    affirmation: "My voice flows from my heart.",
+    affirmation: "Authentic joy flows from my Heartlight through my voice.",
   },
   Blue: {
     title: "Blue",
     core: "Truth and integrity.",
     gifts: "Discernment, precision, broadcasting, boundary clarity, direct communication.",
     ideal: "Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom.",
-    affirmation: "I speak what is real.",
+    affirmation: "I resonate and communicate with coherency.",
   },
   Indigo: {
     title: "Indigo",
@@ -2530,12 +2530,12 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
   Magenta: {
     title: "Magenta",
-    core: "Surrender to the infinite loving and unifying embrace of ALL that IS.",
+    core: "Remembering the unifying embrace of ALL that IS.",
     gifts:
       "Transmutation of desire into devotion • Magnetic authenticity • Heart-wings (love with altitude) • Embodied spirituality through voice, art, and aligned boundaries.",
     ideal:
       "Embodied spirituality through our being, love that discerns boundaries and harmonizes, reunifying masculine and feminine energy, collapsing polarity into wholeness, heart-led creation, sacred sensuality, relationship healing through truth, choosing boundaries that protect joy, rituals that turn intensity into beauty, embracing the cosmic kiss of Red and Violet in re-unity of ALL that IS.",
-    affirmation: "My Heartlight is the bridge.",
+    affirmation: "ALL-ways lead back to our Heartlight.",
   },
   Omni: {
     title: "Omni",
@@ -6220,10 +6220,10 @@ export default function AUTClock() {
               </div>
 
               <div className="flex justify-center mt-1">
-                <div className={`relative aspect-square w-full overflow-hidden ${ringSizeClass}`}>
+                <div className={`relative aspect-square w-full ${ringSizeClass}`}>
                   <svg
                     viewBox={ringViewBox}
-                    className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                    className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
                   >
                     <circle
                       cx="0"
@@ -6340,10 +6340,10 @@ export default function AUTClock() {
               </div>
 
               <div className="flex justify-center mt-1">
-                <div className={`relative aspect-square w-full overflow-hidden ${ringSizeClass}`}>
+                <div className={`relative aspect-square w-full ${ringSizeClass}`}>
                   <svg
                     viewBox={ringViewBox}
-                    className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                    className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
                   >
                     <circle
                       cx="0"
@@ -7072,10 +7072,10 @@ export default function AUTClock() {
           </div>
 
           <div className={ringLayoutClass}>
-            <div className={`relative mx-auto aspect-square w-full overflow-hidden ${ringSizeClass}`}>
+            <div className={`relative mx-auto aspect-square w-full ${ringSizeClass}`}>
               <svg
                 viewBox={ringViewBox}
-                className="block h-auto w-full overflow-hidden text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
+                className="block h-auto w-full text-zinc-100 drop-shadow-[0_6px_16px_rgba(15,23,42,0.45)]"
               >
                 <circle
                   cx="0"
@@ -7318,10 +7318,10 @@ export default function AUTClock() {
           </div>
 
           <div className={weekRingLayoutClass}>
-            <div className={`relative mx-auto aspect-square w-full overflow-hidden ${weekRingSizeClass}`}>
+            <div className={`relative mx-auto aspect-square w-full ${weekRingSizeClass}`}>
               <svg
                 viewBox={ringViewBox}
-                className="block h-auto w-full overflow-hidden text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]"
+                className="block h-auto w-full text-slate-100 drop-shadow-[0_8px_18px_rgba(15,23,42,0.45)]"
                 role="img"
                 aria-label="Rays of the Week dial"
               >
