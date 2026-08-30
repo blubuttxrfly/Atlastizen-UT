@@ -775,7 +775,7 @@ function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumin
       {isNew ? (
         <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
       ) : isFull ? null : (
-        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} transform="translate(1.5, 1.5)" />
+        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} transform={`translate(${cx}, ${cy}) scale(0.94) translate(${-cx}, ${-cy}) translate(1.5, 1.5)`} />
       )}
     </svg>
   );
@@ -2496,7 +2496,7 @@ const RAY_READINGS: Record<string, RayReading> = {
     core: "Manifestation and heart ecology.",
     gifts: "Abundance, growth, devotion, nourishment, relational harmony.",
     ideal: "Building long-term, tending home/body, community weaving, prosperity rituals.",
-    affirmation: "Home is where our Heartlight lives.",
+    affirmation: "Home is where our Heartlight is.",
   },
   Turquoise: {
     title: "Turquoise",
@@ -2509,7 +2509,7 @@ const RAY_READINGS: Record<string, RayReading> = {
     title: "Blue",
     core: "Truth and integrity.",
     gifts: "Discernment, precision, broadcasting, boundary clarity, direct communication.",
-    ideal: "Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom.",
+    ideal: "Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom, organizing information.",
     affirmation: "I resonate and communicate with coherency.",
   },
   Indigo: {
