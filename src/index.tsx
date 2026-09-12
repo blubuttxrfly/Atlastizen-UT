@@ -503,6 +503,54 @@ function describeWedge(
   ].join(" ");
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const num = parseInt(clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
+}
+function lerpColor(a: string, b: string, t: number): string {
+  const ca = hexToRgb(a);
+  const cb = hexToRgb(b);
+  return rgbToHex(
+    ca.r + (cb.r - ca.r) * t,
+    ca.g + (cb.g - ca.g) * t,
+    ca.b + (cb.b - ca.b) * t
+  );
+}
+// Color for a given angle on the Luna dial: angle measured in SVG polar convention
+// (0 at 3 o'clock, increasing clockwise via the arc commands). Indigo (LUNA_TOP_INDEX) sits at -PI/2 (top).
+function colorForLunaAngle(angle: number): string {
+  const ordered = Array.from({ length: LUNA_RAY_WINDOWS.length }, (_, i) => LUNA_RAY_WINDOWS[(LUNA_TOP_INDEX + i) % LUNA_RAY_WINDOWS.length]);
+  const angleFromTop = (angle + Math.PI / 2) % (2 * Math.PI);
+  if (angleFromTop < 0) return ordered[0].color;
+  const t = (angleFromTop / (2 * Math.PI)) * LUNA_RAY_WINDOWS.length;
+  const idx = Math.floor(t) % LUNA_RAY_WINDOWS.length;
+  const nextIdx = (idx + 1) % LUNA_RAY_WINDOWS.length;
+  return lerpColor(ordered[idx].color, ordered[nextIdx].color, t - idx);
+}
+
+function describeThinWedge(outerRadius: number, innerRadius: number, startAngle: number, endAngle: number): string {
+  const outerStart = polarToCartesian(outerRadius, startAngle);
+  const outerEnd = polarToCartesian(outerRadius, endAngle);
+  const innerEnd = polarToCartesian(innerRadius, endAngle);
+  const innerStart = polarToCartesian(innerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  return [
+    `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+    `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+    "Z",
+  ].join(" ");
+}
+
 function normalizeDegrees(value: number): number {
   return ((value % 360) + 360) % 360;
 }
@@ -2200,6 +2248,9 @@ const LUNA_RAY_WINDOWS: Array<{
   { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc", sign: "Aquarius", symbol: "\u2652\uFE0E" },
   { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc", sign: "Pisces", symbol: "\u2653\uFE0E" },
 ];
+
+// Luna dial anchor: Indigo / Libra points north (top).
+const LUNA_TOP_INDEX = LUNA_RAY_WINDOWS.findIndex((r) => r.name === "Indigo");
 
 // Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
 const WEEK_RAY_DAY_ORDER = [6, 0, 1, 2, 3, 4, 5]; // Saturday first
@@ -4869,24 +4920,29 @@ export default function AUTClock() {
   // The offset is identical to the Sol dial so both wheels share the same sacred geometry.
   const lunaDialSegments = useMemo(() => {
     const count = LUNA_RAY_WINDOWS.length;
-    const offset = Math.PI / 2 - segmentAngle / 2;
+    // Anchor Indigo/Libra at top (12 o'clock, -PI/2 in SVG polar convention).
+    const offset = -Math.PI / 2 - segmentAngle / 2;
     return LUNA_RAY_WINDOWS.map((ray, index) => {
-      const dialPosition = ((index - TOP_RAY_INDEX + count) % count + count) % count;
+      const dialPosition = ((index - LUNA_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
       const endAngle = startAngle + segmentAngle;
       const midAngle = startAngle + segmentAngle / 2;
       const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
-      const labelPosition = polarToCartesian(RAY_LABEL_RADIUS, midAngle);
-      const labelLines = [ray.name, ray.symbol];
+      const labelPosition = polarToCartesian(RING_OUTER_RADIUS + 8, midAngle);
+      const symbolPosition = polarToCartesian(RING_OUTER_RADIUS - 5, midAngle);
+      const labelLines = [ray.name, `${ray.symbol} ${ray.sign}`];
       return {
         ray,
         index,
         dialPosition,
         startAngle,
         endAngle,
+        midAngle,
         path,
         labelX: labelPosition.x,
         labelY: labelPosition.y,
+        symbolX: symbolPosition.x,
+        symbolY: symbolPosition.y,
         labelLines,
       };
     });
@@ -4897,7 +4953,19 @@ export default function AUTClock() {
     ? lunaActiveSegment.startAngle + lunaRayProgress * segmentAngle
     : Math.PI;
   const lunaPointerCoord = polarToCartesian(POINTER_RADIUS, lunaPointerAngle);
-  const lunaPointerInner = polarToCartesian(RING_INNER_RADIUS - 6, lunaPointerAngle);
+  // Conic-gradient ring path data for Luna dial: 360 thin wedges rendered as separate paths.
+  const lunaConicWedges = useMemo(() => {
+    const slices = 360;
+    const step = (2 * Math.PI) / slices;
+    return Array.from({ length: slices }, (_, i) => {
+      const startAngle = -Math.PI / 2 + i * step;
+      const endAngle = startAngle + step;
+      return {
+        d: describeThinWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle),
+        color: colorForLunaAngle(startAngle + step / 2),
+      };
+    });
+  }, []);
 
   // Luna AUT clock, anchored to the Moon's synodic cycle.
   // Phase angle 0°   = New Moon    = 00:00:00 Luna AUT
@@ -5626,65 +5694,6 @@ export default function AUTClock() {
           </section>
         )}
 
-        {["sol", "luna", "postal"].includes(activePanel) && (
-          <section className="themed-card p-5 space-y-3">
-            <div className="flex flex-col gap-3">
-              <div className="space-y-1">
-                <div className="text-xs md:text-sm uppercase text-zinc-400">AUT</div>
-                <div className="text-3xl md:text-4xl font-semibold text-white leading-tight">{smoothClock}</div>
-                <div className="text-sm md:text-base text-zinc-200">Local {formatLongTime(now)}</div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-                  <span>Location:</span>
-                  <span className="text-[12px] text-zinc-300">{locationPrimary}</span>
-                  <button
-                    className="retro-clean-btn rounded border border-white/15 bg-white/5 px-1.5 py-0 text-[9px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
-                    onClick={() => {
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                          (pos: GeolocationPosition) =>
-                            setCoords({
-                              lat: pos.coords.latitude,
-                              lon: pos.coords.longitude,
-                            }),
-                          () => setCoords(fallback),
-                          { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
-                        );
-                      }
-                    }}
-                  >
-                    Recenter
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className={activePanel === "postal" ? `flex flex-wrap items-center gap-2 text-[11px] ${timeZoneTone}` : "hidden"}>
-              <span>{timeZoneLine}</span>
-              <button
-                className="retro-clean-btn rounded border border-white/15 bg-white/5 px-1.5 py-0 text-[9px] uppercase tracking-wide text-zinc-100 hover:bg-white/10 transition"
-                onClick={() => setShowCoords((v) => !v)}
-              >
-                {showCoords ? "Hide" : "Show"}
-              </button>
-              <span className="text-[11px] text-zinc-400">
-                Lat/Lon: {showCoords ? `lat ${coords.lat.toFixed(4)}°, lon ${coords.lon.toFixed(4)}°` : null}
-              </span>
-            </div>
-            {locationHint ? (
-              <div className={`flex flex-wrap items-center gap-2 text-xs ${locationHintTone}`}>
-                <span className="break-words">{locationHint}</span>
-                {status === "granted" && placeStatus === "error" ? (
-                  <button
-                    className="rounded-lg px-2 py-1 text-xs text-emerald-300 transition hover:text-emerald-200"
-                    onClick={() => retry()}
-                  >
-                    Try again
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
-        )}
-
         {/* Location panel removed from Sol/Luna/Ray/Postal to avoid duplication */}
 
         {activePanel === "coreSignature" && (
@@ -6201,7 +6210,6 @@ export default function AUTClock() {
             <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4">
               {/* Luna header — centered, with sacred hierarchy */}
               <div className="flex flex-col items-center text-center space-y-2">
-                <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
                 <div className="space-y-0.5">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
                   <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
@@ -6219,6 +6227,13 @@ export default function AUTClock() {
                     viewBox={ringViewBox}
                     className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
                   >
+                    <defs>
+                      <radialGradient id="lunaSpotlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor="#f8fafc" stopOpacity="0.28" />
+                        <stop offset="55%" stopColor="#f8fafc" stopOpacity="0.12" />
+                        <stop offset="100%" stopColor="#f8fafc" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
                     <circle
                       cx="0"
                       cy="0"
@@ -6228,58 +6243,85 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
-                    {lunaDialSegments.map((segment) => {
-                      const isActive = segment.index === lunaRayIndex;
-                      return (
-                        <g key={segment.index}>
-                          <path
-                            d={segment.path}
-                            fill={segment.ray.color}
-                            fillOpacity={isActive ? 1 : 0.78}
-                            stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
-                            strokeWidth={isActive ? 1.6 : 0.6}
+                    {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
+                    <g>
+                      {lunaConicWedges.map((wedge, i) => (
+                        <path
+                          key={i}
+                          d={wedge.d}
+                          fill={wedge.color}
+                          stroke="none"
+                        />
+                      ))}
+                    </g>
+                    {/* Active-segment white transparent spotlight */}
+                    {lunaActiveSegment ? (
+                      <>
+                        <path
+                          d={(() => {
+                            const mid = lunaActiveSegment.midAngle;
+                            const half = segmentAngle * 1.05;
+                            const inner = polarToCartesian(RING_INNER_RADIUS - 10, mid - half);
+                            const outerL = polarToCartesian(RING_OUTER_RADIUS + 8, mid - half);
+                            const outerR = polarToCartesian(RING_OUTER_RADIUS + 8, mid + half);
+                            const innerR = polarToCartesian(RING_INNER_RADIUS - 10, mid + half);
+                            return [
+                              "M 0 0",
+                              `L ${inner.x.toFixed(3)} ${inner.y.toFixed(3)}`,
+                              `L ${outerL.x.toFixed(3)} ${outerL.y.toFixed(3)}`,
+                              `A ${RING_OUTER_RADIUS + 8} ${RING_OUTER_RADIUS + 8} 0 0 1 ${outerR.x.toFixed(3)} ${outerR.y.toFixed(3)}`,
+                              `L ${innerR.x.toFixed(3)} ${innerR.y.toFixed(3)}`,
+                              "Z",
+                            ].join(" ");
+                          })()}
+                          fill="url(#lunaSpotlight)"
+                          stroke="none"
+                        />
+                        {/* Luna Ray Key image: arrow-key pivoted from dial center, tip at origin, ridges right */}
+                        <g transform={`rotate(${(lunaPointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                          <image
+                            href="/luna-ray-key.png"
+                            x="-707"
+                            y="-2000"
+                            width="1414"
+                            height="2000"
+                            opacity="0.92"
                           />
-                          <text
-                            x={segment.labelX.toFixed(3)}
-                            y={segment.labelY.toFixed(3)}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            fontSize="4.1"
-                            fill={segment.ray.labelColor ?? "#e2e8f0"}
-                          >
-                            {segment.labelLines.map((line, lineIdx) => (
-                              <tspan
-                                key={`${segment.index}-${lineIdx}`}
-                                x={segment.labelX.toFixed(3)}
-                                dy={lineIdx === 0 ? (segment.labelLines.length > 1 ? "-0.2em" : "0") : "1.1em"}
-                              >
-                                {line}
-                              </tspan>
-                            ))}
-                          </text>
                         </g>
-                      );
-                    })}
-                    <line
-                      x1={lunaPointerInner.x.toFixed(3)}
-                      y1={lunaPointerInner.y.toFixed(3)}
-                      x2={lunaPointerCoord.x.toFixed(3)}
-                      y2={lunaPointerCoord.y.toFixed(3)}
-                      stroke="#f8fafc"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                    {/* Moon image at center */}
-                    <image
-                      href="/hsm-planets/Moon.png"
-                      x="-7"
-                      y="-7"
-                      width="14"
-                      height="14"
-                      preserveAspectRatio="xMidYMid slice"
-                      clipPath="circle(7px at 0 0)"
-                    />
-                    <circle cx="0" cy="0" r="7" fill="none" stroke="#f1f5f9" strokeWidth="0.8" />
+                      </>
+                    ) : null}
+                    {/* Labels outside the ring: zodiac symbols inside, names outside */}
+                    {lunaDialSegments.map((segment) => (
+                      <g key={`label-${segment.index}`}>
+                        <text
+                          x={segment.symbolX.toFixed(3)}
+                          y={segment.symbolY.toFixed(3)}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="5.2"
+                          fill={segment.ray.labelColor ?? "#e2e8f0"}
+                          style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                        >
+                          {segment.ray.symbol}
+                        </text>
+                        <text
+                          x={segment.labelX.toFixed(3)}
+                          y={segment.labelY.toFixed(3)}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="4.0"
+                          fill="#e2e8f0"
+                          style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                          transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
+                        >
+                          {segment.ray.name}
+                        </text>
+                      </g>
+                    ))}
+                    {/* MoonPhaseIcon at center of Luna Ray Dial */}
+                    <g transform="translate(-18.56, -18.56) scale(0.58)">
+                      <MoonPhaseIcon phaseName={moonPhaseName} illumination={luna?.illum ?? 0.5} />
+                    </g>
                   </svg>
                 </div>
               </div>
