@@ -1,0 +1,3564 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { createPortal } from "react-dom";
+import { PRESENT_ONLY } from "./config/rays";
+import { useForwardGeocode } from "./hooks/useForwardGeocode";
+import { LunaRuntime } from "./lib/lunaRuntime";
+import { SolRuntime } from "./lib/solRuntime";
+import { AtlasCometMap } from "./comet/AtlasCometMap";
+import { THEME_PRESETS, type UITheme } from "./config/themePresets";
+import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
+import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
+import { useSmoothAUT } from "./hooks/useSmoothAUT";
+import { useSmoothLunaAUT } from "./hooks/useSmoothLunaAUT";
+import { Crosshair, Settings, Moon, Sun } from "lucide-react";
+import { getMoonRayFrequency, getMoonPhaseAngle, getUpcomingEclipses, getUpcomingMoonPhases } from "./lib/lunaEvents";
+
+/**
+ * AUT Time & Tools — Live Clock
+ * Sunrise→Next Sunrise maps to 00:00→12:00 AUT. 6:00 AUT marks Solar Sunset (midday).
+ * Includes:
+ *  • Polar/Solstice continuity via Equilux fallback using Apparent Solar Time (AST)
+ *  • Higher-accuracy NOAA-style ephemeris (declination & equation of time)
+ *  • Ray Windows band + cursor with within-window progress
+ *  • Alice font loader
+ *  • In‑app PWA registration (service worker + manifest via Blob)
+ */
+
+type Coordinates = { lat: number; lon: number };
+type GeolocationStatus = "pending" | "granted" | "denied" | "unavailable";
+
+type PolarMode = {
+  mode: "polar_night" | "polar_day";
+  noonUTC: number;
+  EoT: number;
+  declDeg: number;
+};
+
+type NormalSunWindow = {
+  mode: "normal";
+  sunriseUTC: number;
+  sunsetUTC: number;
+  noonUTC: number;
+  EoT: number;
+  declDeg: number;
+};
+
+type SunWindow = PolarMode | NormalSunWindow;
+
+type AUTBase = {
+  autHours: number;
+  autClock: string;
+  sunriseLocal: Date;
+  sunsetLocal: Date;
+  solarNoonLocal: Date;
+  nextSunriseLocal: Date;
+  segmentLabel: string;
+  progress: number;
+  segLenMin: number;
+  cycleLenMin: number;
+  dayLenMin: number;
+  nightLenMin: number;
+};
+
+type NormalAUT = AUTBase & {
+  mode: "normal";
+  noonUTC: number;
+};
+
+type EquiluxAUT = AUTBase & {
+  mode: "equilux";
+};
+
+type AUTResult = NormalAUT | EquiluxAUT;
+
+type PlaceStatus = "idle" | "loading" | "ready" | "error";
+type ZipStatus = "idle" | "loading" | "success" | "error";
+type TimeZoneStatus = "idle" | "loading" | "success" | "error";
+
+type TimeZoneInfo = {
+  timeZone: string;
+  abbreviation?: string;
+  offsetMinutes?: number;
+};
+
+type AtmosphereSample = {
+  temperatureC?: number;
+  temperatureF?: number;
+  seaLevelPressure?: number;
+  ozone?: number;
+  ozoneUnits?: string;
+  updated?: Date;
+  stationId?: string;
+  stationName?: string;
+};
+
+type AtmosphereStatus = "idle" | "loading" | "ready" | "error";
+
+type HistoricalTempSample = {
+  avgC?: number;
+  avgF?: number;
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string | null;
+  source?: string;
+};
+
+type CompassStatus = "idle" | "active" | "denied" | "unsupported";
+type PanelId =
+  | "clock"
+  | "cosmic"
+  | "sol"
+  | "luna"
+  | "compass"
+  | "heartlight"
+  | "coreSignature"
+  | "community"
+  | "weekrays"
+  | "rayreading"
+  | "atmosphere"
+  | "postal"
+  | "settings";
+type RayWindow = { name: string; start: number; end: number; color: string; labelColor?: string };
+type RayWindowTimes = {
+  start: { aut: string; local: string };
+  end: { aut: string; local: string };
+};
+type WeeklyRayCycle = {
+  id: string;
+  dayIndex: number; // JS day: 0 = Sunday, ... 6 = Saturday
+  dayLabel: string;
+  dayAbbrev: string;
+  cycle: 1 | 2;
+  name: string;
+  code: string;
+  description: string;
+  color: string;
+  labelColor?: string;
+};
+type WeekRayWindowTimes = { start: string; end: string };
+type RayReading = { title: string; core: string; gifts: string; ideal: string; affirmation: string };
+type WeekRayReading = { title: string; body: string };
+type CoreSignatureProfile = {
+  name: string;
+  code: string;
+  photoData?: string;
+  photoName?: string;
+  adminCes?: string;
+  updatedAt?: number;
+  uiTheme?: UITheme;
+  theme?: UITheme;
+};
+type CommunityPost = {
+  id: string;
+  name: string;
+  code: string;
+  message: string;
+  createdAt: number;
+  photoData?: string;
+  photoName?: string;
+  imageData?: string;
+  imageName?: string;
+};
+
+const MAX_POST_IMAGE_BYTES = 2_000_000; // ≈2 MB guardrail for attached images
+
+const FALLBACK_PLACE_LABEL = "Charlotte, NC";
+const PLACE_CACHE_PREFIX = "aut-place:";
+const COORD_PRECISION = 3;
+const RING_OUTER_RADIUS = 62;
+const RING_INNER_RADIUS = 22;
+const POINTER_RADIUS = 58;
+const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
+const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
+const RING_VIEWBOX_PADDING = 10;
+const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
+const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
+const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+const UI_THEME_STORAGE_KEY = "aut-ui-theme";
+const ATLAS_THEMES_STORAGE_KEY = "aut-atlas-saved-themes";
+const ATLAS_ACTIVE_THEME_STORAGE_KEY = "aut-atlas-active-theme";
+const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
+  { id: "clock", label: "AUT Clock" },
+  { id: "cosmic", label: "Cosmic Calendar" },
+  { id: "sol", label: "Sol Panel" },
+  { id: "luna", label: "Luna Panel" },
+  { id: "compass", label: "Gyro Compass" },
+  { id: "heartlight", label: "Ray Astrology" },
+  { id: "community", label: "Community" },
+  { id: "weekrays", label: "Rays of the Week" },
+  { id: "rayreading", label: "Ray Reading" },
+  { id: "atmosphere", label: "Atmosphere Panel" },
+  { id: "postal", label: "Location Lookup" },
+  { id: "coreSignature", label: "CES Profile" },
+  { id: "settings", label: "Settings" },
+];
+const CORE_DIGIT_COLORS: Record<string, string> = {
+  "0": "#0b0b0f",
+  "1": "#ef4444",
+  "2": "#fb923c",
+  "3": "#facc15",
+  "4": "#22c55e",
+  "5": "#14b8a6",
+  "6": "#3b82f6",
+  "7": "#4338ca",
+  "8": "#8b5cf6",
+  "9": "#d946ef",
+};
+const CORE_SPECIAL_GRADIENT = "conic-gradient(#ff0000, #ff7f00, #ffee00, #22c55e, #14b8a6, #3b82f6, #4338ca, #8b5cf6, #d946ef, #ff0000)";
+const CORS_PROXY = "https://cors.isomorphic-git.org/";
+const TEMIS_ENDPOINT = "https://services.temis.nl/api/tco3/";
+const HISTORICAL_START_YEAR = 1993;
+const DEVICE_ID_STORAGE_KEY = "aut-device-id";
+const CES_PROFILE_STORAGE_KEY = "aut-ces-profile";
+
+function generateDeviceId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `dev-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
+
+const LARB_RAYS = [
+  {
+    id: "red",
+    name: "Red Ray",
+    virtue: "Presence",
+    color: "#ef4444",
+    mantra:
+      "The pulse of embodied life. Rooted vitality, courage, and the will to be. The grounding of soul into matter where every heartbeat affirms “I am.”",
+  },
+  {
+    id: "orange",
+    name: "Orange Ray",
+    virtue: "Essence",
+    color: "#fb923c",
+    mantra:
+      "Creative river of feeling and flow. The dance of emotion, artistry, and sacred sensuality that bridges survival into joyful expression.",
+  },
+  {
+    id: "yellow",
+    name: "Yellow Ray",
+    virtue: "Sovereignty",
+    color: "#facc15",
+    mantra:
+      "Solar clarity and self-leadership. Confidence, discernment, and luminous will harmonizing into empowered radiance.",
+  },
+  {
+    id: "green",
+    name: "Green Ray",
+    virtue: "Union",
+    color: "#22c55e",
+    mantra:
+      "Heartlight coherence and manifestation. Compassionate connection with Earth and ALL; harmony that flourishes through love.",
+  },
+  {
+    id: "turquoise",
+    name: "Turquoise Ray",
+    virtue: "Harmony",
+    color: "#2dd4bf",
+    mantra:
+      "Bridge of empathy and higher communication. The current where emotional intelligence meets intuitive knowing, allowing peace to ripple through connection and creation.",
+  },
+  {
+    id: "blue",
+    name: "Blue Ray",
+    virtue: "Expression",
+    color: "#3b82f6",
+    mantra:
+      "Crystalline voice of truth. The current of communication, resonance, and boundary grace through which being speaks itself.",
+  },
+  {
+    id: "indigo",
+    name: "Indigo Ray",
+    virtue: "Perception",
+    color: "#6366f1",
+    mantra:
+      "Inner vision and intuitive wisdom. The dream-seer’s frequency that unveils mysteries and weaves imagination into revelation.",
+  },
+  {
+    id: "violet",
+    name: "Violet Ray",
+    virtue: "Integration",
+    color: "#8b5cf6",
+    mantra:
+      "Bridge of spirit and form. The transmutational current of transformation, death-rebirth, and sacred wholeness.",
+  },
+  {
+    id: "magenta",
+    name: "Magenta Ray",
+    virtue: "Reunion",
+    color: "#d946ef",
+    mantra:
+      "The infinite spiral of ALL. Union of Red and Violet, dissolving duality into remembrance, unconditional love, and cosmic return.",
+  },
+] as const;
+
+type LarbRayDefinition = (typeof LARB_RAYS)[number];
+type LarbRayId = LarbRayDefinition["id"];
+
+const LARB_RAY_LOOKUP = Object.fromEntries(LARB_RAYS.map((ray) => [ray.id, ray])) as Record<
+  LarbRayId,
+  LarbRayDefinition
+>;
+
+const RAY_NAME_TO_LARB_ID: Record<string, LarbRayId | undefined> = {
+  Red: "red",
+  Orange: "orange",
+  Yellow: "yellow",
+  Green: "green",
+  Turquoise: "turquoise",
+  Blue: "blue",
+  Indigo: "indigo",
+  Violet: "violet",
+  Magenta: "magenta",
+};
+
+const LARB_STORAGE_KEY = "aut-larb-archives";
+const LARB_MAX_RAY_SLOTS = 9;
+const LARB_TOTAL_ORBS = 12; // 1 head + 2 eyes + 9 aura orbs
+const LARB_HEAD_INDEX = 0;
+const LARB_EYE_INDICES: [number, number] = [1, 2];
+const LARB_AURA_COUNT = 9;
+const LARB_DEFAULT_CHORD: LarbRayId[] = ["red", "turquoise", "violet"];
+const LARB_RAY_TEMPO_FACTORS: Record<LarbRayId, number> = {
+  red: 0.38,
+  orange: 0.46,
+  yellow: 0.56,
+  green: 0.72,
+  turquoise: 0.88,
+  blue: 1.08,
+  indigo: 1.38,
+  violet: 1.88,
+  magenta: 2.95,
+};
+const LARB_ARCHIVE_LIMIT = 12;
+const LARB_CLUSTER_BASE = { x: 50, y: 40 };
+const LARB_CLUSTER_LIMIT = { x: 16, y: 12 };
+const LARB_CLUSTER_Y_SCALE = 0.7;
+
+const LARB_EYE_MODES = [
+  { id: "round", label: "Pulse", detail: "Open, gentle gaze that mirrors presence." },
+  { id: "nova", label: "Nova", detail: "Faceted iris that sparks when harmonized." },
+  { id: "crescent", label: "Crescent", detail: "Dreaming eyelids that catch moonlight." },
+] as const;
+
+type LarbEyeShape = (typeof LARB_EYE_MODES)[number]["id"];
+
+type LarbEyeSettings = {
+  shape: LarbEyeShape;
+  glow: number; // 0–100
+  shimmer: number; // 0–100
+  staticCharge: number; // 0–100
+};
+
+type LarbArchetype = {
+  id: string;
+  name: string;
+  rayChord: LarbRayId[];
+  eye: LarbEyeSettings;
+  savedAt: number;
+};
+
+type SecretLarbSanctumProps = {
+  onClose: () => void;
+  activeRayWindow: RayWindow | null;
+  activeLarbRayId: LarbRayId | null;
+  rayProgressPct: number;
+  rayWindowTimes: RayWindowTimes | null;
+  autClock: string;
+  remainingMinutes: number;
+};
+
+type PlasmaEyeCanvasProps = {
+  id: string;
+  diameter: number;
+  charge: number;
+  primaryColor: string;
+  secondaryColor: string;
+  offsetX: number;
+  offsetY: number;
+};
+
+type PlasmaArc = {
+  baseAngle: number;
+  spread: number;
+  seed: number;
+  bend: number;
+  driftSpeed: number;
+  life: number;
+  maxLife: number;
+};
+
+function roundedCoord(value: number, precision = COORD_PRECISION): number {
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
+}
+
+function coordsCacheKey(coords: Coordinates): string {
+  const lat = roundedCoord(coords.lat);
+  const lon = roundedCoord(coords.lon);
+  return `${lat.toFixed(COORD_PRECISION)},${lon.toFixed(COORD_PRECISION)}`;
+}
+
+function readSession(key: string): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return window.sessionStorage.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeSession(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function readStoredTheme(): UITheme {
+  if (typeof window === "undefined") return "normal";
+  try {
+    const stored = window.localStorage.getItem(UI_THEME_STORAGE_KEY);
+    return stored === "retro" || stored === "normal" || stored === "atlas" ? stored : "normal";
+  } catch {
+    return "normal";
+  }
+}
+
+function persistTheme(theme: UITheme): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(UI_THEME_STORAGE_KEY, theme);
+  } catch {
+    // ignore
+  }
+}
+
+function extractPlaceName(response: any): string | undefined {
+  const sanitize = (label?: string) =>
+    typeof label === "string" ? label.replace(/\s*\(the\)/gi, "").trim() : label;
+  if (!response || typeof response !== "object") return undefined;
+  const locality = typeof response.city === "string" && response.city.trim().length > 0
+    ? response.city.trim()
+    : typeof response.locality === "string" && response.locality.trim().length > 0
+    ? response.locality.trim()
+    : undefined;
+  const region =
+    typeof response.principalSubdivision === "string" && response.principalSubdivision.trim().length > 0
+      ? response.principalSubdivision.trim()
+      : undefined;
+  const country =
+    typeof response.countryName === "string" && response.countryName.trim().length > 0
+      ? response.countryName.trim()
+      : undefined;
+  const cleanCountry =
+    country && /\(the\)$/i.test(country) ? country.replace(/\s*\(the\)$/i, "") : country;
+
+  const parts: string[] = [];
+  if (locality) parts.push(locality);
+  if (region && !parts.includes(region)) parts.push(region);
+  if (cleanCountry && !parts.includes(cleanCountry)) parts.push(cleanCountry);
+  return sanitize(parts.length > 0 ? parts.join(", ") : undefined);
+}
+
+function polarToCartesian(radius: number, angle: number): { x: number; y: number } {
+  return {
+    x: radius * Math.cos(angle),
+    y: radius * Math.sin(angle),
+  };
+}
+
+function describeWedge(
+  outerRadius: number,
+  innerRadius: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const outerStart = polarToCartesian(outerRadius, startAngle);
+  const outerEnd = polarToCartesian(outerRadius, endAngle);
+  const innerEnd = polarToCartesian(innerRadius, endAngle);
+  const innerStart = polarToCartesian(innerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  return [
+    `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+    `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+    "Z",
+  ].join(" ");
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  const num = parseInt(clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
+}
+function lerpColor(a: string, b: string, t: number): string {
+  const ca = hexToRgb(a);
+  const cb = hexToRgb(b);
+  return rgbToHex(
+    ca.r + (cb.r - ca.r) * t,
+    ca.g + (cb.g - ca.g) * t,
+    ca.b + (cb.b - ca.b) * t
+  );
+}
+// Color for any conic Ray dial: windows ordered by `topIndex` placed at -PI/2 (top).
+function colorForRayAngle(angle: number, windows: { color: string }[], topIndex: number): string {
+  const ordered = Array.from({ length: windows.length }, (_, i) => windows[(topIndex + i) % windows.length]);
+  const angleFromTop = (angle + Math.PI / 2) % (2 * Math.PI);
+  if (angleFromTop < 0) return ordered[0].color;
+  const t = (angleFromTop / (2 * Math.PI)) * windows.length;
+  const idx = Math.floor(t) % windows.length;
+  const nextIdx = (idx + 1) % windows.length;
+  return lerpColor(ordered[idx].color, ordered[nextIdx].color, t - idx);
+}
+
+// Luna-specific wrapper for backward compatibility.
+function colorForLunaAngle(angle: number): string {
+  return colorForRayAngle(angle, LUNA_RAY_WINDOWS, LUNA_TOP_INDEX);
+}
+
+function describeThinWedge(outerRadius: number, innerRadius: number, startAngle: number, endAngle: number): string {
+  const outerStart = polarToCartesian(outerRadius, startAngle);
+  const outerEnd = polarToCartesian(outerRadius, endAngle);
+  const innerEnd = polarToCartesian(innerRadius, endAngle);
+  const innerStart = polarToCartesian(innerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  return [
+    `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+    `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+    "Z",
+  ].join(" ");
+}
+
+function normalizeDegrees(value: number): number {
+  return ((value % 360) + 360) % 360;
+}
+
+function headingToLabel(degrees: number): string {
+  const normalized = normalizeDegrees(degrees);
+  const index = Math.round(normalized / 45) % COMPASS_CARDINALS.length;
+  return COMPASS_CARDINALS[index];
+}
+
+type HorizonTrackPoint = { ts: Date; alt: number; az: number };
+type HorizonArcPoint = HorizonTrackPoint & { x: number; y: number; cappedAlt: number };
+type HorizonArc = {
+  width: number;
+  height: number;
+  leftPadding: number;
+  rightPadding: number;
+  topPadding: number;
+  bottomPadding: number;
+  chartWidth: number;
+  chartHeight: number;
+  path: string;
+  areaPath: string | null;
+  horizonY: number;
+  bands: Array<{ label: string; y: number }>;
+  points: HorizonArcPoint[];
+  current: HorizonArcPoint | null;
+};
+
+function buildHorizonArc(
+  track: HorizonTrackPoint[],
+  now: Date,
+  options?: { minAltitude?: number; maxAltitude?: number }
+): HorizonArc | null {
+  if (!track || track.length < 2) return null;
+
+  const width = 360;
+  const height = 200;
+  const leftPadding = 28;
+  const rightPadding = 28;
+  const topPadding = 18;
+  const bottomPadding = 28;
+  const chartWidth = width - leftPadding - rightPadding;
+  const chartHeight = height - topPadding - bottomPadding;
+  const minAlt = options?.minAltitude ?? -10;
+  const maxAlt = options?.maxAltitude ?? 90;
+  const clampAltitude = (alt: number) => Math.max(minAlt, Math.min(maxAlt, alt));
+
+  const points: HorizonArcPoint[] = track.map((entry) => {
+    const azRad = (entry.az * Math.PI) / 180;
+    const xNorm = (1 - Math.sin(azRad)) / 2; // East left, West right
+    const cappedAlt = clampAltitude(entry.alt);
+    const altNorm = (cappedAlt - minAlt) / (maxAlt - minAlt);
+    const x = leftPadding + xNorm * chartWidth;
+    const y = topPadding + (1 - altNorm) * chartHeight;
+    return { ...entry, x, y, cappedAlt };
+  });
+
+  const horizonAltNorm = (0 - minAlt) / (maxAlt - minAlt);
+  const horizonY = topPadding + (1 - horizonAltNorm) * chartHeight;
+
+  const path = points
+    .map((point, idx) => `${idx === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+    .join(" ");
+
+  const areaPoints = points.map((point) => ({
+    x: point.x,
+    y: Math.min(point.y, horizonY),
+  }));
+
+  const areaPath =
+    areaPoints.length >= 2
+      ? [
+          `M${areaPoints[0].x.toFixed(1)},${horizonY.toFixed(1)}`,
+          ...areaPoints.map((point) => `L${point.x.toFixed(1)},${point.y.toFixed(1)}`),
+          `L${areaPoints[areaPoints.length - 1].x.toFixed(1)},${horizonY.toFixed(1)}`,
+          "Z",
+        ].join(" ")
+      : null;
+
+  const sixtyAltNorm = (60 - minAlt) / (maxAlt - minAlt);
+  const thirtyAltNorm = (30 - minAlt) / (maxAlt - minAlt);
+  const bands = [
+    { label: "60°", y: topPadding + (1 - sixtyAltNorm) * chartHeight },
+    { label: "30°", y: topPadding + (1 - thirtyAltNorm) * chartHeight },
+  ];
+
+  const nowMs = now.getTime();
+  const current = points.reduce<{ diff: number; point: HorizonArcPoint | null }>(
+    (best, point) => {
+      const diff = Math.abs(point.ts.getTime() - nowMs);
+      return diff < best.diff ? { diff, point } : best;
+    },
+    { diff: Number.POSITIVE_INFINITY, point: null }
+  ).point;
+
+  return {
+    width,
+    height,
+    leftPadding,
+    rightPadding,
+    topPadding,
+    bottomPadding,
+    chartWidth,
+    chartHeight,
+    path,
+    areaPath,
+    horizonY,
+    bands,
+    points,
+    current,
+  };
+}
+
+type MoonPhaseKey =
+  | "new"
+  | "waxing-crescent"
+  | "first-quarter"
+  | "waxing-gibbous"
+  | "full"
+  | "waning-gibbous"
+  | "last-quarter"
+  | "waning-crescent";
+
+const MOON_PHASE_GRADIENTS: Record<
+  MoonPhaseKey,
+  { stops: Array<{ offset: number; color: string }>; reverse?: boolean } | null
+> = {
+  new: null,
+  full: null,
+  "waxing-crescent": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.45, color: "#0f172a" },
+      { offset: 0.52, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+  },
+  "waning-crescent": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.45, color: "#0f172a" },
+      { offset: 0.52, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+    reverse: true,
+  },
+  "first-quarter": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.5, color: "#0f172a" },
+      { offset: 0.5, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+  },
+  "last-quarter": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.5, color: "#0f172a" },
+      { offset: 0.5, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+    reverse: true,
+  },
+  "waxing-gibbous": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.2, color: "#0f172a" },
+      { offset: 0.45, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+  },
+  "waning-gibbous": {
+    stops: [
+      { offset: 0.0, color: "#0f172a" },
+      { offset: 0.2, color: "#0f172a" },
+      { offset: 0.45, color: "#f8fafc" },
+      { offset: 1.0, color: "#f8fafc" },
+    ],
+    reverse: true,
+  },
+};
+
+// Legacy gradient system — kept for reference, no longer used by MoonPhaseIcon.
+void MOON_PHASE_GRADIENTS;
+function getMoonPhaseKey(phaseName: string): MoonPhaseKey {
+  const normalized = phaseName.toLowerCase();
+  if (normalized.includes("new")) return "new";
+  if (normalized.includes("waxing crescent")) return "waxing-crescent";
+  if (normalized.includes("first quarter")) return "first-quarter";
+  if (normalized.includes("waxing gibbous")) return "waxing-gibbous";
+  if (normalized.includes("full")) return "full";
+  if (normalized.includes("waning gibbous")) return "waning-gibbous";
+  if (normalized.includes("last quarter") || normalized.includes("third quarter")) return "last-quarter";
+  if (normalized.includes("waning crescent")) return "waning-crescent";
+  return "full";
+}
+void getMoonPhaseKey;
+
+function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumination: number }) {
+  const id = useId();
+  const clipId = `${id}-moon-clip`;
+  const R = 24;
+  const cx = 24;
+  const cy = 24;
+
+  const illum = Math.max(0, Math.min(1, illumination));
+  const normalized = phaseName.toLowerCase();
+  const isWaxing = normalized.includes("waxing") || normalized === "new moon";
+  const isFull = illum >= 0.985;
+  const isNew = illum <= 0.015;
+
+  // Terminator ellipse semi-minor axis.
+  // At illum=0.5 the terminator is a straight line (k=0).
+  // At illum=0 or 1 the terminator reaches the edge (k=R).
+  const k = R * Math.abs(1 - 2 * illum);
+
+  // Build the shadow path.
+  // The shadow region is bounded by:
+  //   1. An arc of the Moon's circle (the outer limb on the shadow side)
+  //   2. The terminator ellipse arc (the day/night boundary)
+  //
+  // Both arcs connect the same two points: top (cx, cy-R) and bottom (cx, cy+R).
+  // The circle arc traces the outer edge; the ellipse arc traces the terminator.
+  //
+  // SVG arc: A rx ry x-rot large-arc sweep x y
+  //   sweep=0 = counter-clockwise, sweep=1 = clockwise
+
+  let shadowPath = "";
+  if (!isFull && !isNew) {
+    const top = `${cx},${cy - R}`;
+    const bottom = `${cx},${cy + R}`;
+    if (isWaxing) {
+      if (illum > 0.5) {
+        // Waxing gibbous: shadow crescent on left
+        shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
+      } else {
+        // Waxing crescent: shadow on left
+        shadowPath = `M ${top} A ${R},${R} 0 0,0 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
+      }
+    } else {
+      if (illum > 0.5) {
+        // Waning gibbous: shadow crescent on right
+        shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,0 ${top} Z`;
+      } else {
+        // Waning crescent: shadow on right
+        shadowPath = `M ${top} A ${R},${R} 0 0,1 ${bottom} A ${k},${R} 0 0,1 ${top} Z`;
+      }
+    }
+  }
+
+  return (
+    <svg width="64" height="64" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0" style={{ overflow: "hidden" }}>
+      <defs>
+        <clipPath id={clipId}>
+          <circle cx={cx} cy={cy} r={R} />
+        </clipPath>
+      </defs>
+      {/* Moon image: larger to fill circle, clipped to circle */}
+      <image
+        href="/hsm-planets/Moon.png"
+        x="-8"
+        y="-8"
+        width="64"
+        height="64"
+        preserveAspectRatio="xMidYMid slice"
+        clipPath={`url(#${clipId})`}
+      />
+      {/* Ecliptic shadow overlay: dark semi-transparent fill clipped to circle */}
+      {isNew ? (
+        <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
+      ) : isFull ? null : (
+        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
+      )}
+    </svg>
+  );
+}
+
+function formatOffset(minutes: number): string {
+  const sign = minutes >= 0 ? "+" : "-";
+  const abs = Math.abs(Math.round(minutes));
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+  return `${sign}${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
+}
+
+function splitRayLabel(name: string): string[] {
+  if (name.includes("-")) {
+    const parts = name.split("-");
+    return parts.map((part, idx) =>
+      idx < parts.length - 1 ? `${part.trim()}-` : part.trim()
+    );
+  }
+  const tokens = name.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  const maxLen = 10;
+  for (const token of tokens) {
+    const candidate = current ? `${current} ${token}` : token;
+    if (candidate.length > maxLen && current) {
+      lines.push(current);
+      current = token;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+type LarbOrbKind = "head" | "eye" | "aura";
+
+type LarbOrbState = {
+  id: string;
+  kind: LarbOrbKind;
+  band: number;
+  angle: number;
+  radius: number;
+  size: number;
+  blur: number;
+  speed: number;
+  wobble: number;
+};
+
+type LarbClusterOffset = {
+  x: number;
+  y: number;
+};
+
+function isLarbRayId(value: unknown): value is LarbRayId {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(LARB_RAY_LOOKUP, value);
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return `rgba(255,255,255,${alpha})`;
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeHexColor(hex: string): string | null {
+  const stripped = hex.replace("#", "").trim();
+  if (stripped.length === 6) return stripped.toLowerCase();
+  if (stripped.length === 3) {
+    return stripped
+      .split("")
+      .map((ch) => ch + ch)
+      .join("")
+      .toLowerCase();
+  }
+  return null;
+}
+
+function averageHexColor(colors: string[], fallback: string): string {
+  const palette = colors.length > 0 ? colors : [fallback];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (const hex of palette) {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) continue;
+    r += parseInt(normalized.slice(0, 2), 16);
+    g += parseInt(normalized.slice(2, 4), 16);
+    b += parseInt(normalized.slice(4, 6), 16);
+    count += 1;
+  }
+  if (count === 0) return fallback;
+  const toHex = (value: number) => value.toString(16).padStart(2, "0");
+  return `#${toHex(Math.round(r / count))}${toHex(Math.round(g / count))}${toHex(Math.round(b / count))}`;
+}
+
+function normalizeSignatureCode(raw: string): string {
+  return (raw ?? "").replace(/\D/g, "").slice(0, 9);
+}
+
+function deriveSignatureSegments(code: string): {
+  sanitized: string;
+  colors: string[];
+  special: "white" | "diamond" | "rainbow" | null;
+  lastTwo: number | null;
+} {
+  const sanitized = normalizeSignatureCode(code);
+  const padded = sanitized.padEnd(9, "0").slice(0, 9);
+  const colors = padded.split("").map((digit) => CORE_DIGIT_COLORS[digit] ?? CORE_DIGIT_COLORS["0"]);
+  const lastTwoStr = padded.slice(-2);
+  const lastTwo = lastTwoStr ? Number.parseInt(lastTwoStr, 10) : null;
+  let special: "white" | "diamond" | "rainbow" | null = null;
+  if (lastTwo === 10) special = "white";
+  if (lastTwo === 11) special = "diamond";
+  if (lastTwo === 12) special = "rainbow";
+  if (special) {
+    colors[colors.length - 1] =
+      special === "white" ? "#ffffff" : special === "diamond" ? "#e5e7eb" : "#f472b6";
+  }
+  return { sanitized: padded, colors, special, lastTwo };
+}
+
+function buildSignatureGradient(colors: string[], special: "white" | "diamond" | "rainbow" | null): string {
+  const stops = colors
+    .map((color, index) => {
+      const start = (index / colors.length) * 100;
+      const end = ((index + 1) / colors.length) * 100;
+      return `${color} ${start}% ${end}%`;
+    })
+    .join(", ");
+  const base = `conic-gradient(${stops})`;
+  if (special === "diamond") {
+    return `${base}, repeating-conic-gradient(from 45deg, rgba(255,255,255,0.5) 0deg 8deg, rgba(255,255,255,0.08) 8deg 16deg)`;
+  }
+  if (special === "rainbow") {
+    return `${base}, ${CORE_SPECIAL_GRADIENT}`;
+  }
+  if (special === "white") {
+    return `${base}, radial-gradient(circle, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 65%)`;
+  }
+  return base;
+}
+
+function formatSignatureDisplay(code: string): string {
+  const digits = normalizeSignatureCode(code);
+  if (digits.length === 0) return "—";
+  return digits.padEnd(9, "•").replace(/(.{3})/g, "$1 ").trim();
+}
+
+function clampClusterOffset(offset: LarbClusterOffset): LarbClusterOffset {
+  return {
+    x: clamp(offset.x, -LARB_CLUSTER_LIMIT.x, LARB_CLUSTER_LIMIT.x),
+    y: clamp(offset.y, -LARB_CLUSTER_LIMIT.y, LARB_CLUSTER_LIMIT.y),
+  };
+}
+
+function createPlasmaArcs(count: number): PlasmaArc[] {
+  return Array.from({ length: count }, () => ({
+    baseAngle: Math.random() * Math.PI * 2,
+    spread: 0.2 + Math.random() * 0.4,
+    seed: Math.random() * 1000,
+    bend: 0.15 + Math.random() * 0.2,
+    driftSpeed: 0.4 + Math.random() * 0.4,
+    life: 1800 + Math.random() * 1800,
+    maxLife: 1800 + Math.random() * 2200,
+  }));
+}
+
+function PlasmaEyeCanvas({
+  id,
+  diameter,
+  charge,
+  primaryColor,
+  secondaryColor,
+  offsetX,
+  offsetY,
+}: PlasmaEyeCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const arcsRef = useRef<PlasmaArc[]>([]);
+  const animationRef = useRef<number | null>(null);
+  const centerSeedRef = useRef(Math.random() * 1000);
+  const lastTimeRef = useRef(0);
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const renderSize = Math.max(diameter, 24);
+  const arcCount = Math.max(3, Math.round(4 + (charge / 100) * 8));
+
+  useEffect(() => {
+    arcsRef.current = createPlasmaArcs(arcCount);
+  }, [arcCount, diameter, charge, primaryColor, secondaryColor]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+    const scaledSize = renderSize * dpr;
+    canvas.width = scaledSize;
+    canvas.height = scaledSize;
+    canvas.style.width = `${renderSize}px`;
+    canvas.style.height = `${renderSize}px`;
+    const center = scaledSize / 2;
+    const maxRadius = Math.max(2, (diameter / 2 - 2) * dpr);
+
+    const drawFrame = (time: number) => {
+      if (!ctx) return;
+      const delta = lastTimeRef.current ? time - lastTimeRef.current : 16;
+      lastTimeRef.current = time;
+      ctx.clearRect(0, 0, scaledSize, scaledSize);
+      ctx.globalCompositeOperation = "source-over";
+      const chargeIntensity = Math.max(0.2, charge / 100);
+      const driftRadius = (1 + chargeIntensity * 1.6) * dpr;
+      const coreOffsetX =
+        Math.sin(time * 0.0023 + centerSeedRef.current) * driftRadius;
+      const coreOffsetY =
+        Math.cos(time * 0.0029 + centerSeedRef.current * 1.3) * driftRadius * 0.9;
+      const coreX = center + coreOffsetX;
+      const coreY = center + coreOffsetY;
+      ctx.lineWidth = (1 + chargeIntensity * 1.4) * dpr;
+      ctx.shadowBlur = 8 * chargeIntensity * dpr;
+      ctx.shadowColor = hexToRgba(secondaryColor, 0.55);
+
+      // Center pupil glow
+      const pupilRadius = diameter * (0.18 + chargeIntensity * 0.18) * dpr;
+      const innerGradient = ctx.createRadialGradient(
+        coreX,
+        coreY,
+        pupilRadius * 0.15,
+        coreX,
+        coreY,
+        pupilRadius
+      );
+      innerGradient.addColorStop(0, "rgba(255,255,255,0.98)");
+      innerGradient.addColorStop(0.45, hexToRgba(primaryColor, 0.92));
+      innerGradient.addColorStop(1, hexToRgba(secondaryColor, 0.55));
+      ctx.fillStyle = innerGradient;
+      ctx.beginPath();
+      ctx.arc(coreX, coreY, pupilRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.beginPath();
+      ctx.arc(coreX, coreY, pupilRadius * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      arcsRef.current.forEach((arc, idx) => {
+        const normalizedDelta = delta / 16.6;
+        arc.life -= delta;
+        if (arc.life <= 0 || Math.random() < 0.01 + chargeIntensity * 0.02) {
+          arcsRef.current[idx] = {
+            baseAngle: Math.random() * Math.PI * 2,
+            spread: 0.2 + Math.random() * 0.4,
+            seed: Math.random() * 1000,
+            bend: 0.18 + Math.random() * 0.25,
+            driftSpeed: 0.6 + Math.random() * 0.5,
+            life: 1400 + Math.random() * 1600,
+            maxLife: 1600 + Math.random() * 2200,
+          };
+          return;
+        }
+        const jitter =
+          Math.sin(time * 0.0012 * arc.driftSpeed + arc.seed) * arc.spread;
+        arc.baseAngle += 0.0008 * arc.driftSpeed * normalizedDelta;
+        const targetAngle = arc.baseAngle + jitter;
+        const segments = 20;
+        ctx.beginPath();
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          const ease = Math.pow(t, 0.9);
+          const radial = maxRadius * ease;
+          const bend =
+            Math.sin(time * 0.003 + arc.seed + t * 6) * arc.bend * (1 - ease);
+          const theta = targetAngle + bend;
+          const x = coreX + radial * Math.cos(theta);
+          const y = coreY + radial * Math.sin(theta);
+          if (i === 0) {
+            ctx.moveTo(coreX, coreY);
+            ctx.lineTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        const gradient = ctx.createLinearGradient(
+          coreX,
+          coreY,
+          coreX + Math.cos(targetAngle) * maxRadius,
+          coreY + Math.sin(targetAngle) * maxRadius
+        );
+        gradient.addColorStop(0, "rgba(255,255,255,0.9)");
+        gradient.addColorStop(0.35, hexToRgba(primaryColor, 0.8));
+        gradient.addColorStop(1, hexToRgba(secondaryColor, 0.3));
+        ctx.strokeStyle = gradient;
+        ctx.globalAlpha =
+          0.6 + (chargeIntensity * 0.35 + (arc.life / arc.maxLife) * 0.2);
+        ctx.stroke();
+      });
+      ctx.restore();
+
+      animationRef.current = window.requestAnimationFrame(drawFrame);
+    };
+
+    animationRef.current = window.requestAnimationFrame(drawFrame);
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [arcCount, charge, dpr, primaryColor, renderSize, secondaryColor]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      data-eye-id={id}
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px)`,
+        pointerEvents: "none",
+        mixBlendMode: "screen",
+        zIndex: 60,
+      }}
+    />
+  );
+}
+
+function resolveLarbIdFromRayName(name?: string | null): LarbRayId | null {
+  if (!name) return null;
+  const trimmed = name.trim();
+  return RAY_NAME_TO_LARB_ID[trimmed] ?? null;
+}
+
+function buildInitialLarbChord(activeRayId: LarbRayId | null): LarbRayId[] {
+  if (!activeRayId) return [...LARB_DEFAULT_CHORD];
+  const existing = LARB_DEFAULT_CHORD.includes(activeRayId)
+    ? [...LARB_DEFAULT_CHORD]
+    : [activeRayId, ...LARB_DEFAULT_CHORD];
+  return existing.slice(0, LARB_MAX_RAY_SLOTS);
+}
+
+function readSavedLarbArchetypes(): LarbArchetype[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LARB_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (
+          !item ||
+          typeof item !== "object" ||
+          typeof item.id !== "string" ||
+          typeof item.name !== "string" ||
+          !Array.isArray(item.rayChord) ||
+          typeof item.eye !== "object"
+        ) {
+          return null;
+        }
+        const rayChord = item.rayChord.filter((ray: unknown): ray is LarbRayId => isLarbRayId(ray));
+        if (rayChord.length === 0) return null;
+        const eye: LarbEyeSettings = {
+          shape: LARB_EYE_MODES.some((mode) => mode.id === item.eye?.shape)
+            ? item.eye.shape
+            : "round",
+          glow: Math.max(0, Math.min(100, Number(item.eye?.glow) || 60)),
+          shimmer: Math.max(0, Math.min(100, Number(item.eye?.shimmer) || 50)),
+          staticCharge: Math.max(0, Math.min(100, Number(item.eye?.staticCharge) ?? 35)),
+        };
+        return {
+          id: item.id,
+          name: item.name,
+          rayChord: rayChord.slice(0, LARB_MAX_RAY_SLOTS),
+          eye,
+          savedAt: typeof item.savedAt === "number" ? item.savedAt : Date.now(),
+        } as LarbArchetype;
+      })
+      .filter(Boolean) as LarbArchetype[];
+  } catch {
+    return [];
+  }
+}
+
+function persistLarbArchetypes(list: LarbArchetype[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LARB_STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    // ignore write failures
+  }
+}
+
+function createOrbState(index: number): LarbOrbState {
+  const kind: LarbOrbKind =
+    index === LARB_HEAD_INDEX ? "head" : LARB_EYE_INDICES.includes(index) ? "eye" : "aura";
+  const auraIndex = index - (LARB_HEAD_INDEX + LARB_EYE_INDICES.length);
+  const auraFraction = auraIndex >= 0 ? auraIndex / Math.max(1, LARB_AURA_COUNT) : 0;
+  const baseAngle =
+    kind === "head"
+      ? -Math.PI / 2 + (Math.random() - 0.5) * 0.15
+      : kind === "eye"
+      ? (index === LARB_EYE_INDICES[0] ? -0.32 : 0.32) - Math.PI / 2
+      : auraFraction * 2 * Math.PI - Math.PI / 2 + (Math.random() - 0.5) * 0.25;
+  const radius =
+    kind === "head"
+      ? 6 + Math.random() * 2
+      : kind === "eye"
+      ? 16 + Math.random() * 4
+      : 26 + Math.random() * 18;
+  const size =
+    kind === "head"
+      ? 110 + Math.random() * 10
+      : kind === "eye"
+      ? 58 + Math.random() * 6
+      : 32 + Math.random() * 26;
+  const blur =
+    kind === "head"
+      ? 1.5 + Math.random() * 1.5
+      : kind === "eye"
+      ? 2 + Math.random() * 2
+      : 4 + Math.random() * 9;
+  const wobble = (Math.random() - 0.5) * (kind === "aura" ? 14 : 6);
+  const speed =
+    kind === "aura" ? 4 + Math.random() * 4 : kind === "eye" ? 6 + Math.random() * 3 : 10 + Math.random() * 4;
+  return {
+    id: `larb-orb-${index}-${Math.random().toString(36).slice(2, 6)}`,
+    kind,
+    band: index,
+    angle: baseAngle,
+    radius,
+    size,
+    blur,
+    speed,
+    wobble,
+  };
+}
+
+function randomizeOrbPosition(prev: LarbOrbState): LarbOrbState {
+  if (prev.kind === "head") {
+    return {
+      ...prev,
+      angle: -Math.PI / 2 + (Math.random() - 0.5) * 0.12,
+      radius: clamp(prev.radius + (Math.random() - 0.5) * 2, 4, 10),
+      wobble: (Math.random() - 0.5) * 4,
+    };
+  }
+  if (prev.kind === "eye") {
+    return {
+      ...prev,
+      angle: prev.angle + (Math.random() - 0.5) * 0.25,
+      radius: clamp(prev.radius + (Math.random() - 0.5) * 3, 12, 24),
+      wobble: (Math.random() - 0.5) * 6,
+      speed: 5 + Math.random() * 4,
+    };
+  }
+  return {
+    ...prev,
+    angle: prev.angle + (Math.random() - 0.5) * 0.5,
+    radius: clamp(prev.radius + (Math.random() - 0.5) * 8, 18, 44),
+    wobble: (Math.random() - 0.5) * 14,
+    speed: 4 + Math.random() * 4,
+    size: clamp(prev.size + (Math.random() - 0.5) * 10, 28, 60),
+    blur: clamp(prev.blur + (Math.random() - 0.5) * 4, 2, 14),
+  };
+}
+
+function computeResonanceScore(
+  chord: LarbRayId[],
+  activeRayId: LarbRayId | null,
+  eye: LarbEyeSettings
+): number {
+  let score = chord.length * 18;
+  if (activeRayId && chord.includes(activeRayId)) {
+    score += 28;
+  }
+  score += eye.glow * 0.25;
+  score += eye.shimmer * 0.2;
+  score += eye.staticCharge * 0.15;
+  return Math.max(5, Math.min(100, Math.round(score)));
+}
+
+function describeChord(chord: LarbRayId[]): string {
+  if (chord.length === 0) return "Awaiting song";
+  return chord
+    .map((id) => LARB_RAY_LOOKUP[id]?.virtue ?? id)
+    .join(" • ");
+}
+
+// --- Math helpers ---
+const DEG = Math.PI / 180;
+const RAD = 180 / Math.PI;
+
+function dayOfYear(d: Date): number {
+  const start = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const diff = (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - start.getTime()) / 86400000;
+  return diff + 1; // Jan 1 → 1
+}
+
+// NOAA-style fractional year gamma and derived EoT & declination (highly precise for our purpose)
+function solarParamsNOAA(n: number /* day of year */): { declDeg: number; EoT: number } {
+  const gamma = (2 * Math.PI * (n - 1)) / 365.0; // fractional year at local-noon baseline
+  const declRad = Math.asin(
+    0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma) -
+      0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma) -
+      0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma)
+  );
+  const EoT =
+    229.18 *
+    (0.000075 +
+      0.001868 * Math.cos(gamma) -
+      0.032077 * Math.sin(gamma) -
+      0.014615 * Math.cos(2 * gamma) -
+      0.040849 * Math.sin(2 * gamma)); // minutes
+  return { declDeg: declRad * RAD, EoT };
+}
+
+function solarNoonUTCMinutes(longitudeDeg: number, EoT: number): number {
+  return 720 - 4 * longitudeDeg - EoT; // minutes from 00:00 UTC
+}
+
+// Returns sunrise/sunset/noon plus a mode flag for polar conditions
+function sunriseSunsetUTCMinutes(dateUTC: Date, latDeg: number, lonDeg: number): SunWindow {
+  const n = dayOfYear(dateUTC);
+  const { EoT, declDeg } = solarParamsNOAA(n);
+  const noonUTC = solarNoonUTCMinutes(lonDeg, EoT);
+
+  // Hour angle for standard upper-limb with refraction (alpha = 0.833°)
+  const alpha = 0.833;
+  const phi = latDeg * DEG;
+  const decl = declDeg * DEG;
+  const x =
+    (Math.sin(-alpha * DEG) - Math.sin(phi) * Math.sin(decl)) /
+    (Math.cos(phi) * Math.cos(decl));
+
+  if (x > 1) {
+    // Sun stays below horizon (polar night)
+    return { mode: "polar_night", noonUTC, EoT, declDeg };
+  }
+  if (x < -1) {
+    // Sun stays above horizon (polar day)
+    return { mode: "polar_day", noonUTC, EoT, declDeg };
+  }
+
+  const h0 = Math.acos(Math.min(1, Math.max(-1, x))) * RAD; // degrees
+  const sunriseUTC = noonUTC - 4 * h0;
+  const sunsetUTC = noonUTC + 4 * h0;
+  return { mode: "normal", sunriseUTC, sunsetUTC, noonUTC, EoT, declDeg };
+}
+
+function minutesLocalToUTCMinutes(d: Date): number {
+  const utcMidnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return (d.getTime() - utcMidnight) / 60000; // minutes since today's UTC 00:00
+}
+
+function minutesToHHMMSS(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = Math.floor(mins % 60);
+  const s = Math.floor((mins * 60) % 60);
+  const pad = (x: number) => x.toString().padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+function formatClock(hhFloat: number): string {
+  const totalMin = (((hhFloat % 12) + 12) % 12) * 60;
+  return minutesToHHMMSS(totalMin);
+}
+
+function formatMonthDayLong(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+}
+
+function utcMinutesToLocalDate(utcMinutes: number, baseDateUTC: Date): Date {
+  const baseUTC = Date.UTC(
+    baseDateUTC.getUTCFullYear(),
+    baseDateUTC.getUTCMonth(),
+    baseDateUTC.getUTCDate()
+  );
+  return new Date(baseUTC + utcMinutes * 60000);
+}
+
+// Apparent Solar Time (AST) minutes from midnight, normalized 0..1440
+function apparentSolarMinutesUTC(tUTCmin: number, lonDeg: number, EoT: number): number {
+  const ast = tUTCmin + 4 * lonDeg + EoT; // minutes
+  return ((ast % 1440) + 1440) % 1440;
+}
+
+// Equilux fallback: split the day into two equal halves around solar noon using AST
+function computeAUTEquilux(nowLocal: Date, lonDeg: number, EoT: number, noonUTC: number): EquiluxAUT {
+  const tUTC = minutesLocalToUTCMinutes(nowLocal);
+  const astMin = apparentSolarMinutesUTC(tUTC, lonDeg, EoT); // 0..1440
+  // Day half centered on AST noon: 03:00..09:00; Night half: 09:00..15:00→wrap
+  const dayStart = 180; // 03:00 AST
+  const dayEnd = 540; // 09:00 AST
+  let autHours = 0;
+  let segmentLabel = "";
+  let progress = 0;
+  let segLenMin = 0;
+
+  if (astMin >= dayStart && astMin < dayEnd) {
+    const ratio = (astMin - dayStart) / 360; // 6h day
+    autHours = 6 * ratio; // 0..6
+    segmentLabel = "Daylight // Lux";
+    progress = ratio;
+    segLenMin = 360;
+  } else {
+    // Night half: from 09:00→03:00 AST
+    // Normalize via wrap
+    const delta = astMin >= dayEnd ? astMin - dayEnd : astMin + (1440 - dayEnd);
+    const ratio = delta / 360;
+    autHours = 6 + 6 * ratio; // 6..12
+    segmentLabel = "Nighttime // Umbra";
+    progress = ratio;
+    segLenMin = 360;
+  }
+
+  // For cards: virtual sunrise/sunset based on AST half splits
+  const todayUTC = new Date(
+    Date.UTC(
+      nowLocal.getUTCFullYear(),
+      nowLocal.getUTCMonth(),
+      nowLocal.getUTCDate()
+    )
+  );
+  const sunriseVirtualUTC = noonUTC - 180; // 03:00 before noon
+  const sunsetVirtualUTC = noonUTC + 180; // 09:00 after noon
+  const tomorrowUTC = new Date(
+    Date.UTC(
+      nowLocal.getUTCFullYear(),
+      nowLocal.getUTCMonth(),
+      nowLocal.getUTCDate() + 1
+    )
+  );
+
+  return {
+    autHours,
+    autClock: formatClock(autHours),
+    sunriseLocal: utcMinutesToLocalDate(sunriseVirtualUTC, todayUTC),
+    sunsetLocal: utcMinutesToLocalDate(sunsetVirtualUTC, todayUTC),
+    solarNoonLocal: utcMinutesToLocalDate(noonUTC, todayUTC),
+    nextSunriseLocal: utcMinutesToLocalDate(sunriseVirtualUTC, tomorrowUTC),
+    segmentLabel,
+    progress,
+    segLenMin,
+    cycleLenMin: 720,
+    dayLenMin: 360,
+    nightLenMin: 360,
+    mode: "equilux",
+  };
+}
+
+function computeAUT(nowLocal: Date, latDeg: number, lonDeg: number): AUTResult {
+  // Build UTC anchors
+  const todayUTC = new Date(
+    Date.UTC(
+      nowLocal.getUTCFullYear(),
+      nowLocal.getUTCMonth(),
+      nowLocal.getUTCDate()
+    )
+  );
+  const yesterdayUTC = new Date(
+    Date.UTC(
+      nowLocal.getUTCFullYear(),
+      nowLocal.getUTCMonth(),
+      nowLocal.getUTCDate() - 1
+    )
+  );
+  const tomorrowUTC = new Date(
+    Date.UTC(
+      nowLocal.getUTCFullYear(),
+      nowLocal.getUTCMonth(),
+      nowLocal.getUTCDate() + 1
+    )
+  );
+
+  const today = sunriseSunsetUTCMinutes(todayUTC, latDeg, lonDeg);
+  const tUTC = minutesLocalToUTCMinutes(nowLocal); // 0..1440
+
+  // Polar continuity using Equilux AST split
+  if (today.mode === "polar_day" || today.mode === "polar_night") {
+    return computeAUTEquilux(nowLocal, lonDeg, today.EoT, today.noonUTC);
+  }
+
+  if (today.mode !== "normal") {
+    return computeAUTEquilux(nowLocal, lonDeg, today.EoT, today.noonUTC);
+  }
+
+  // Normal sunrise/sunset flow
+  const { sunriseUTC: sunriseToday, sunsetUTC: sunsetToday, noonUTC } = today;
+  const yesterday = sunriseSunsetUTCMinutes(yesterdayUTC, latDeg, lonDeg);
+  const tomorrow = sunriseSunsetUTCMinutes(tomorrowUTC, latDeg, lonDeg);
+
+  if (yesterday.mode !== "normal" || tomorrow.mode !== "normal") {
+    return computeAUTEquilux(nowLocal, lonDeg, today.EoT, today.noonUTC);
+  }
+
+  const { sunsetUTC: sunsetYest } = yesterday;
+  const { sunriseUTC: sunriseTom } = tomorrow;
+
+  let sunriseLocal = utcMinutesToLocalDate(sunriseToday, todayUTC);
+  let sunsetLocal = utcMinutesToLocalDate(sunsetToday, todayUTC);
+  let nextSunriseLocal = utcMinutesToLocalDate(sunriseTom, tomorrowUTC);
+
+  const spanAfter = (endMin: number, startMin: number): number => endMin + 1440 - startMin; // next-day minus today
+  const spanBefore = (endMin: number, startMin: number): number => endMin - startMin + 1440; // today minus yesterday
+
+  let autHours = 0;
+  let segmentLabel = "";
+  let progress = 0;
+  let segLenMin = 0;
+
+  if (tUTC >= sunriseToday && tUTC < sunsetToday) {
+    const dayLen = sunsetToday - sunriseToday;
+    const ratio = (tUTC - sunriseToday) / dayLen;
+    autHours = 6 * ratio;
+    segmentLabel = "Daylight // Lux";
+    segLenMin = dayLen;
+    progress = ratio;
+  } else if (tUTC >= sunsetToday) {
+    const nightLen = spanAfter(sunriseTom, sunsetToday);
+    const ratio = (tUTC - sunsetToday) / nightLen;
+    autHours = 6 + 6 * ratio;
+    segmentLabel = "Nighttime // Umbra";
+    segLenMin = nightLen;
+    progress = ratio;
+  } else {
+    // pre-sunrise: yesterday's sunset → today's sunrise (lift tUTC by +1440)
+    const tCont = tUTC + 1440;
+    const nightLen = spanBefore(sunriseToday, sunsetYest);
+    const ratio = (tCont - sunsetYest) / nightLen;
+    autHours = 6 + 6 * ratio;
+    segmentLabel = "Nighttime // Umbra";
+    segLenMin = nightLen;
+    progress = ratio;
+    sunsetLocal = utcMinutesToLocalDate(sunsetYest, yesterdayUTC);
+    nextSunriseLocal = utcMinutesToLocalDate(sunriseToday, todayUTC);
+  }
+
+  const dayLenMin = Math.max(0, sunsetToday - sunriseToday);
+  const nightLenMin = Math.max(0, spanAfter(sunriseTom, sunsetToday));
+
+  return {
+    autHours,
+    autClock: formatClock(autHours),
+    sunriseLocal,
+    sunsetLocal,
+    solarNoonLocal: utcMinutesToLocalDate(noonUTC, todayUTC),
+    nextSunriseLocal,
+    segmentLabel,
+    progress,
+    segLenMin,
+    cycleLenMin: dayLenMin + nightLenMin,
+    dayLenMin,
+    nightLenMin,
+    mode: "normal",
+    noonUTC,
+  };
+}
+
+const LOCATION_CACHE_KEY = "aut-location-cache";
+const DEFAULT_FALLBACK: Coordinates = { lat: 35.2271, lon: -80.8431 }; // Charlotte, NC
+
+function useGeolocation(defaultCoords: Coordinates = DEFAULT_FALLBACK) {
+  const [coords, setCoords] = useState<Coordinates>(defaultCoords);
+  const [status, setStatus] = useState<GeolocationStatus>("pending");
+
+  // Try to restore cached location on mount
+  useEffect(() => {
+    try {
+      const cachedRaw = localStorage.getItem(LOCATION_CACHE_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as { lat: number; lon: number; timestamp?: number };
+        if (typeof cached.lat === "number" && typeof cached.lon === "number") {
+          setCoords({ lat: cached.lat, lon: cached.lon });
+          setStatus("granted");
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    // No valid cache — request fresh location
+    requestLocation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setStatus("unavailable");
+      return;
+    }
+    setStatus("pending");
+    navigator.geolocation.getCurrentPosition(
+      (pos: GeolocationPosition) => {
+        const newCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCoords(newCoords);
+        setStatus("granted");
+        try {
+          localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify({
+            lat: newCoords.lat,
+            lon: newCoords.lon,
+            timestamp: Date.now(),
+          }));
+        } catch {
+          // ignore storage errors
+        }
+      },
+      () => {
+        setStatus("denied");
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+    );
+  }, []);
+
+  const resetToDefault = useCallback(() => {
+    setCoords(defaultCoords);
+    setStatus("pending");
+  }, [defaultCoords]);
+
+  // Unified recenter: try GPS first, fall back to default if denied/unavailable
+  const handleRecenter = useCallback(() => {
+    if (!navigator.geolocation) {
+      resetToDefault();
+      return;
+    }
+    setStatus("pending");
+    navigator.geolocation.getCurrentPosition(
+      (pos: GeolocationPosition) => {
+        const newCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCoords(newCoords);
+        setStatus("granted");
+        try {
+          localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify({
+            lat: newCoords.lat,
+            lon: newCoords.lon,
+            timestamp: Date.now(),
+          }));
+        } catch {
+          // ignore storage errors
+        }
+      },
+      () => {
+        // GPS denied — fall back to cached or default
+        try {
+          const cachedRaw = localStorage.getItem(LOCATION_CACHE_KEY);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw) as { lat: number; lon: number };
+            if (typeof cached.lat === "number" && typeof cached.lon === "number") {
+              setCoords({ lat: cached.lat, lon: cached.lon });
+              setStatus("granted");
+              return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        resetToDefault();
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
+    );
+  }, [resetToDefault]);
+
+  return { coords, status, setCoords, requestLocation, resetToDefault, handleRecenter };
+}
+
+function useReverseGeocode(
+  coords: Coordinates,
+  geoStatus: GeolocationStatus,
+  fallbackLabel: string
+) {
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const abortRef = useRef<AbortController | null>(null);
+  const [placeLabel, setPlaceLabel] = useState<string>(fallbackLabel);
+  const [placeStatus, setPlaceStatus] = useState<PlaceStatus>("idle");
+  const sanitize = useCallback(
+    (label?: string) =>
+      typeof label === "string" ? label.replace(/\s*\(the\)/gi, "").trim() : label,
+    []
+  );
+
+  const lookup = useCallback(
+    (force = false) => {
+      if (geoStatus !== "granted") {
+        abortRef.current?.abort();
+        const label = geoStatus === "pending" ? fallbackLabel : `${fallbackLabel}`;
+        setPlaceLabel(label);
+        setPlaceStatus(geoStatus === "pending" ? "idle" : "ready");
+        return;
+      }
+
+      if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
+        setPlaceLabel("Current location");
+        setPlaceStatus("error");
+        return;
+      }
+
+      const key = coordsCacheKey(coords);
+      if (!force) {
+        const cached =
+          cacheRef.current.get(key) ??
+          readSession(PLACE_CACHE_PREFIX + key);
+        if (cached) {
+          const cleaned = sanitize(cached) ?? "Current location";
+          cacheRef.current.set(key, cleaned);
+          setPlaceLabel(cleaned);
+          setPlaceStatus("ready");
+          return;
+        }
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setPlaceStatus("loading");
+
+      const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${coords.lat}&longitude=${coords.lon}&localityLanguage=en`;
+      fetch(url, { signal: controller.signal })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("reverse geocode failed");
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          const resolved = extractPlaceName(data) ?? "Current location";
+          const cleaned = sanitize(resolved) ?? "Current location";
+          cacheRef.current.set(key, cleaned);
+          writeSession(PLACE_CACHE_PREFIX + key, cleaned);
+          setPlaceLabel(cleaned);
+          setPlaceStatus("ready");
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setPlaceLabel("Current location");
+          setPlaceStatus("error");
+        });
+    },
+    [coords, geoStatus, fallbackLabel]
+  );
+
+  useEffect(() => {
+    lookup();
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [lookup]);
+
+  const retry = useCallback(() => lookup(true), [lookup]);
+
+  return { placeLabel, placeStatus, retry };
+}
+
+function useAtmosphereSnapshot(coords: Coordinates) {
+  const [status, setStatus] = useState<AtmosphereStatus>("idle");
+  const [sample, setSample] = useState<AtmosphereSample | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  const fetchJsonWithProxy = async (
+    url: string,
+    controller: AbortController,
+    headers: Record<string, string> = {},
+    base?: string
+  ) => {
+    const absolute =
+      url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : base
+        ? new URL(url, base).toString()
+        : url;
+    const attempt = async (target: string) => {
+      const resp = await fetch(target, {
+        signal: controller.signal,
+        headers,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    };
+    try {
+      return await attempt(absolute);
+    } catch (err) {
+      if (controller.signal.aborted) throw err;
+      return await attempt(`${CORS_PROXY}${absolute}`);
+    }
+  };
+
+  const extractTemisOzone = (payload: any): number | undefined => {
+    if (!payload) return undefined;
+    const candidates = [
+      payload.total_ozone,
+      payload.total_ozone_du,
+      payload.tco3,
+      payload.ozone,
+      payload.value,
+      payload?.data?.value,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "number" && Number.isFinite(candidate)) {
+        return candidate;
+      }
+    }
+    if (Array.isArray(payload?.data)) {
+      for (const item of payload.data) {
+        if (typeof item?.value === "number" && Number.isFinite(item.value)) {
+          return item.value;
+        }
+      }
+    }
+    return undefined;
+  };
+
+const fetchTemisOzone = async (controller: AbortController) => {
+  try {
+    const temis = await fetchJsonWithProxy(
+      `${TEMIS_ENDPOINT}?lat=${coords.lat.toFixed(2)}&lon=${coords.lon.toFixed(
+        2
+      )}&format=json`,
+      controller
+    );
+      return extractTemisOzone(temis);
+    } catch (err) {
+      if (controller.signal.aborted) throw err;
+      console.warn("TEMIS fetch failed", err);
+      return undefined;
+    }
+  };
+
+  const fetchNoaaObservation = async (controller: AbortController) => {
+    const headers = {
+      Accept: "application/geo+json, application/json",
+      "User-Agent": "AUTClock/1.0 (atlasisland.co)",
+    };
+    const point = await fetchJsonWithProxy(
+      `/points/${coords.lat.toFixed(4)},${coords.lon.toFixed(4)}`,
+      controller,
+      headers,
+      "https://api.weather.gov"
+    );
+    const stationsUrl: string | undefined = point?.properties?.observationStations;
+    if (!stationsUrl) throw new Error("No observation stations available.");
+    const stations = await fetchJsonWithProxy(stationsUrl, controller, headers);
+    const stationFeature = stations?.features?.[0];
+    const stationId: string | undefined = stationFeature?.properties?.stationIdentifier;
+    if (!stationId) throw new Error("No nearby station found.");
+    const stationName: string | undefined = stationFeature?.properties?.name;
+    const observation = await fetchJsonWithProxy(
+      `/stations/${stationId}/observations/latest`,
+      controller,
+      headers,
+      "https://api.weather.gov"
+    );
+    const props = observation?.properties;
+    if (!props) throw new Error("No observation data.");
+    const tempC =
+      typeof props.temperature?.value === "number" ? props.temperature.value : undefined;
+    const pressurePa =
+      typeof props.seaLevelPressure?.value === "number"
+        ? props.seaLevelPressure.value
+        : typeof props.barometricPressure?.value === "number"
+        ? props.barometricPressure.value
+        : undefined;
+    return {
+      temperatureC: tempC,
+      seaLevelPressure: typeof pressurePa === "number" ? pressurePa / 100 : undefined,
+      updated: props.timestamp ? new Date(props.timestamp) : new Date(),
+      stationId,
+      stationName,
+    };
+  };
+
+  const fetchOpenMeteo = async (controller: AbortController) => {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat.toFixed(
+      4
+    )}&longitude=${coords.lon.toFixed(
+      4
+    )}&current=temperature_2m,pressure_msl,ozone&timezone=auto`;
+    const json = await fetchJsonWithProxy(url, controller);
+    const current = json?.current;
+    if (!current) throw new Error("No fallback weather data.");
+    const tempC =
+      typeof current.temperature_2m === "number" ? current.temperature_2m : undefined;
+    const pressure =
+      typeof current.pressure_msl === "number" ? current.pressure_msl : undefined;
+    const ozone =
+      typeof current.ozone === "number" && Number.isFinite(current.ozone)
+        ? current.ozone
+        : undefined;
+    return {
+      temperatureC: tempC,
+      seaLevelPressure: pressure,
+      ozone,
+      ozoneUnits: typeof ozone === "number" ? "DU" : undefined,
+      updated: current.time ? new Date(current.time) : new Date(),
+    };
+  };
+
+  const fetchOpenMeteoAirQuality = async (controller: AbortController) => {
+    const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${coords.lat.toFixed(
+      4
+    )}&longitude=${coords.lon.toFixed(4)}&current=ozone`;
+    const json = await fetchJsonWithProxy(url, controller);
+    const ozone =
+      typeof json?.current?.ozone === "number" && Number.isFinite(json.current.ozone)
+        ? json.current.ozone
+        : undefined;
+    return {
+      ozone,
+      ozoneUnits: typeof ozone === "number" ? "µg/m³" : undefined,
+      updated: json?.current?.time ? new Date(json.current.time) : undefined,
+    };
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    controllerRef.current?.abort();
+    controllerRef.current = controller;
+    setStatus("loading");
+    setError(null);
+    (async () => {
+      try {
+        let reading: AtmosphereSample = {};
+        let gotPrimary = false;
+        let fallbackMet: AtmosphereSample | null = null;
+        const ensureFallback = async () => {
+          if (fallbackMet) return fallbackMet;
+          try {
+            fallbackMet = await fetchOpenMeteo(controller);
+          } catch (fallbackErr) {
+            if (controller.signal.aborted) throw fallbackErr;
+            console.warn("Open-Meteo fallback failed", fallbackErr);
+          }
+          return fallbackMet;
+        };
+        try {
+          reading = await fetchNoaaObservation(controller);
+          gotPrimary = true;
+        } catch (noaaErr) {
+          if (controller.signal.aborted) throw noaaErr;
+          console.warn("NOAA observation failed; attempting fallback", noaaErr);
+          const fallback = await ensureFallback();
+          if (!fallback) throw noaaErr;
+          reading = { ...reading, ...fallback };
+          gotPrimary = true;
+        }
+        if (!gotPrimary) throw new Error("No temperature/pressure data available.");
+        if (
+          typeof reading.temperatureC !== "number" ||
+          typeof reading.seaLevelPressure !== "number"
+        ) {
+          const fallback = await ensureFallback();
+          if (fallback) {
+            if (typeof reading.temperatureC !== "number" && typeof fallback.temperatureC === "number") {
+              reading.temperatureC = fallback.temperatureC;
+            }
+            if (
+              typeof reading.seaLevelPressure !== "number" &&
+              typeof fallback.seaLevelPressure === "number"
+            ) {
+              reading.seaLevelPressure = fallback.seaLevelPressure;
+            }
+          }
+        }
+        if (typeof reading.temperatureC === "number") {
+          reading.temperatureF = reading.temperatureC * (9 / 5) + 32;
+        }
+        let ozoneApplied = false;
+        const temisOzone = await fetchTemisOzone(controller);
+        if (typeof temisOzone === "number") {
+          reading.ozone = temisOzone;
+          reading.ozoneUnits = "DU";
+          ozoneApplied = true;
+        }
+        if (!ozoneApplied) {
+          const temisFallback = await fetchOpenMeteoAirQuality(controller);
+          if (typeof temisFallback?.ozone === "number") {
+            reading.ozone = temisFallback.ozone;
+            reading.ozoneUnits = temisFallback.ozoneUnits ?? "µg/m³";
+            if (!reading.updated && temisFallback.updated) {
+              reading.updated = temisFallback.updated;
+            }
+            ozoneApplied = true;
+          }
+        }
+        if (!ozoneApplied) {
+          const fallback = await ensureFallback();
+          if (typeof fallback?.ozone === "number") {
+            reading.ozone = fallback.ozone;
+            reading.ozoneUnits = fallback.ozoneUnits ?? "DU";
+          }
+        }
+        reading.updated ??= new Date();
+        setSample(reading);
+        setStatus("ready");
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setStatus("error");
+      }
+    })();
+    return () => controller.abort();
+  }, [coords.lat, coords.lon, nonce]);
+
+  return { status, sample, error, refetch: () => setNonce((n) => n + 1) };
+}
+
+function useHistoricalTemperatureNormal(
+  coords: Coordinates,
+  dayKey: string,
+  nonce: number
+): HistoricalTempSample {
+  const [state, setState] = useState<HistoricalTempSample>({ status: "idle" });
+  const controllerRef = useRef<AbortController | null>(null);
+  const monthIndex = parseInt(dayKey.slice(5, 7), 10) - 1;
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+  useEffect(() => {
+    if (!dayKey || Number.isNaN(monthIndex)) return;
+    const controller = new AbortController();
+    controllerRef.current?.abort();
+    controllerRef.current = controller;
+    setState({ status: "loading" });
+
+    const fetchWithProxy = async (url: string) => {
+      const attempt = async (target: string) => {
+        const resp = await fetch(target, { signal: controller.signal, headers: { Accept: "application/json" } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+      };
+      try {
+        return await attempt(url);
+      } catch (err) {
+        if (controller.signal.aborted) throw err;
+        return attempt(`${CORS_PROXY}${url}`);
+      }
+    };
+
+    const fetchOpenMeteoDaily = async () => {
+      const start = new Date(Date.UTC(HISTORICAL_START_YEAR, 0, 1));
+      const end = new Date(`${dayKey}T00:00:00Z`);
+      const monthDay = dayKey.slice(5, 10);
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${coords.lat.toFixed(
+        4
+      )}&longitude=${coords.lon.toFixed(
+        4
+      )}&start_date=${start.toISOString().slice(0, 10)}&end_date=${end
+        .toISOString()
+        .slice(0, 10)}&daily=temperature_2m_mean&timezone=UTC`;
+      const json = await fetchWithProxy(url);
+      const times: string[] = json?.daily?.time ?? [];
+      const temps: Array<number | null> = json?.daily?.temperature_2m_mean ?? [];
+      let sum = 0;
+      let count = 0;
+      for (let i = 0; i < times.length; i++) {
+        if (times[i]?.slice(5, 10) === monthDay) {
+          const val = temps[i];
+          if (typeof val === "number" && Number.isFinite(val)) {
+            sum += val;
+            count += 1;
+          }
+        }
+      }
+      if (count === 0) throw new Error("No historical data");
+      const avgC = sum / count;
+      return { avgC, source: "Open-Meteo Climatology" };
+    };
+
+    (async () => {
+      try {
+        const monthKey = monthNames[Math.max(0, Math.min(monthNames.length - 1, monthIndex))];
+        const nasaUrl = `https://power.larc.nasa.gov/api/temporal/climatology/point?parameters=T2M&community=RE&longitude=${coords.lon.toFixed(
+          2
+        )}&latitude=${coords.lat.toFixed(2)}&start=19810101&end=20101231&format=JSON`;
+        let avgC: number | undefined;
+        try {
+          const nasaJson = await fetchWithProxy(nasaUrl);
+          avgC = nasaJson?.properties?.parameter?.T2M?.[monthKey];
+        } catch (nasaErr) {
+          if (controller.signal.aborted) return;
+          console.warn("NASA POWER climatology fetch failed", nasaErr);
+        }
+
+        let source = "NASA POWER (1981–2010 monthly mean)";
+        if (typeof avgC !== "number" || !Number.isFinite(avgC)) {
+          const fallback = await fetchOpenMeteoDaily();
+          avgC = fallback.avgC;
+          source = fallback.source;
+        }
+
+        if (typeof avgC !== "number" || !Number.isFinite(avgC)) throw new Error("No climatology data");
+
+        setState({
+          status: "ready",
+          avgC,
+          avgF: avgC * (9 / 5) + 32,
+          source,
+        });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setState({
+          status: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+
+    return () => controller.abort();
+  }, [coords.lat, coords.lon, dayKey, nonce, monthIndex]);
+
+  return state;
+}
+
+// Alice font loader + PWA (manifest + SW) registration
+function useAliceAndPWA() {
+  useEffect(() => {
+    // Alice font
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Alice&display=swap";
+    document.head.appendChild(link);
+
+    // Manifest via Blob
+    const manifest = {
+      name: "AUT — Atlastizen Universal Time",
+      short_name: "AUT",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#0a0a0a",
+      theme_color: "#16a34a",
+      icons: [
+        {
+          src: "/icons/aut-icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/icons/aut-icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/icons/aut-icon-maskable-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable",
+        },
+      ],
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifest)], {
+      type: "application/json",
+    });
+    const manifestUrl = URL.createObjectURL(manifestBlob);
+    const mlink = document.createElement("link");
+    mlink.rel = "manifest";
+    mlink.href = manifestUrl;
+    document.head.appendChild(mlink);
+
+    // Minimal service worker via Blob (pass-through + immediate claim)
+    if ("serviceWorker" in navigator) {
+      const swCode =
+        "self.addEventListener('install', e => { self.skipWaiting(); });\n" +
+        "self.addEventListener('activate', e => { self.clients.claim(); });\n" +
+        "self.addEventListener('fetch', e => { /* passthrough */ });";
+      const swBlob = new Blob([swCode], { type: "text/javascript" });
+      const swUrl = URL.createObjectURL(swBlob);
+      navigator.serviceWorker.register(swUrl).catch(() => {});
+    }
+  }, []);
+}
+
+// Ray windows: 12 windows across 12 AUT hours (1h each)
+const RAY_WINDOWS: RayWindow[] = [
+  { name: "Red", start: 0, end: 1, color: "#ef4444" },
+  { name: "Orange", start: 1, end: 2, color: "#f97316" },
+  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc" },
+  { name: "Green", start: 3, end: 4, color: "#22c55e" },
+  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf" },
+  { name: "Blue", start: 5, end: 6, color: "#3b82f6" },
+  { name: "Indigo", start: 6, end: 7, color: "#6366f1" },
+  { name: "Violet", start: 7, end: 8, color: "#8b5cf6" },
+  { name: "Magenta", start: 8, end: 9, color: "#d946ef" },
+  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc" },
+  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc" },
+  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc" },
+];
+
+// Luna Ray Windows — 12 Ray frequencies mapped across the synodic month (~29.53 days).
+// Each window spans ~2.46 days. Zodiac signs follow the natural Ray-to-sign mapping.
+const LUNA_RAY_WINDOWS: Array<{
+  name: string;
+  start: number; // 0..12 (lunar AUT hours)
+  end: number;
+  color: string;
+  labelColor?: string;
+  sign: string;
+  symbol: string;
+}> = [
+  { name: "Red", start: 0, end: 1, color: "#ef4444", sign: "Aries", symbol: "\u2648\uFE0E" },
+  { name: "Orange", start: 1, end: 2, color: "#f97316", sign: "Taurus", symbol: "\u2649\uFE0E" },
+  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc", sign: "Gemini", symbol: "\u264A\uFE0E" },
+  { name: "Green", start: 3, end: 4, color: "#22c55e", sign: "Cancer", symbol: "\u264B\uFE0E" },
+  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf", sign: "Leo", symbol: "\u264C\uFE0E" },
+  { name: "Blue", start: 5, end: 6, color: "#3b82f6", sign: "Virgo", symbol: "\u264D\uFE0E" },
+  { name: "Indigo", start: 6, end: 7, color: "#6366f1", sign: "Libra", symbol: "\u264E\uFE0E" },
+  { name: "Violet", start: 7, end: 8, color: "#8b5cf6", sign: "Scorpio", symbol: "\u264F\uFE0E" },
+  { name: "Magenta", start: 8, end: 9, color: "#d946ef", sign: "Sagittarius", symbol: "\u2650\uFE0E" },
+  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc", sign: "Capricorn", symbol: "\u2651\uFE0E" },
+  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc", sign: "Aquarius", symbol: "\u2652\uFE0E" },
+  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc", sign: "Pisces", symbol: "\u2653\uFE0E" },
+];
+
+// Luna dial anchor: Indigo / Libra points north (top).
+const LUNA_TOP_INDEX = LUNA_RAY_WINDOWS.findIndex((r) => r.name === "Indigo");
+
+// Rays of the Week — two 12-hour cycles per day, flowing Saturday → Friday
+const WEEK_RAY_DAY_ORDER = [6, 0, 1, 2, 3, 4, 5]; // Saturday first
+const WEEK_RAY_TOP_INDEX = 0; // Place Saturday cycle 1 at 12 o'clock
+const WEEK_RAY_SEQUENCE_LABELS = [
+  "0-1",
+  "1-2",
+  "2-3",
+  "3-4",
+  "4-5",
+  "5-6",
+  "6-7",
+  "7-8",
+  "8-9",
+  "9-10",
+  "10-11",
+  "11-12",
+];
+
+function toLocalISODate(date: Date): string {
+  const dt = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return dt.toISOString().slice(0, 10);
+}
+const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
+  {
+    id: "sat-c1",
+    dayIndex: 6,
+    dayLabel: "Saturday",
+    dayAbbrev: "Sat",
+    cycle: 1,
+    name: "Carbon Red",
+    code: "CR",
+    description: "Emerging Carbon (black hue) into Red (CR) opens Saturday.",
+    color: "#0f0a0a",
+    labelColor: "#f8fafc",
+  },
+  {
+    id: "sat-c2",
+    dayIndex: 6,
+    dayLabel: "Saturday",
+    dayAbbrev: "Sat",
+    cycle: 2,
+    name: "True Red",
+    code: "RR",
+    description: "True Red (RR) carries the second Saturday cycle.",
+    color: "#e02828",
+  },
+  {
+    id: "sun-c1",
+    dayIndex: 0,
+    dayLabel: "Sunday",
+    dayAbbrev: "Sun",
+    cycle: 1,
+    name: "Red Orange",
+    code: "OR",
+    description: "Red Orange (OR) opens Sunday with a red-forward glow.",
+    color: "#e14b2b",
+  },
+  {
+    id: "sun-c2",
+    dayIndex: 0,
+    dayLabel: "Sunday",
+    dayAbbrev: "Sun",
+    cycle: 2,
+    name: "True Orange",
+    code: "OO",
+    description: "True Orange (OO) completes Sunday.",
+    color: "#f3741c",
+  },
+  {
+    id: "mon-c1",
+    dayIndex: 1,
+    dayLabel: "Monday",
+    dayAbbrev: "Mon",
+    cycle: 1,
+    name: "True Yellow",
+    code: "YY",
+    description: "True Yellow (YY) leads Monday morning.",
+    color: "#facc15",
+  },
+  {
+    id: "mon-c2",
+    dayIndex: 1,
+    dayLabel: "Monday",
+    dayAbbrev: "Mon",
+    cycle: 2,
+    name: "Yellow Green",
+    code: "YG",
+    description: "Yellow Green (YG) hues Monday evening.",
+    color: "#a3e635",
+  },
+  {
+    id: "tue-c1",
+    dayIndex: 2,
+    dayLabel: "Tuesday",
+    dayAbbrev: "Tue",
+    cycle: 1,
+    name: "True Green",
+    code: "GG",
+    description: "True Green (GG) anchors Tuesday's first cycle.",
+    color: "#22c55e",
+  },
+  {
+    id: "tue-c2",
+    dayIndex: 2,
+    dayLabel: "Tuesday",
+    dayAbbrev: "Tue",
+    cycle: 2,
+    name: "Turquoise",
+    code: "T",
+    description: "Turquoise (T) carries Tuesday's second cycle.",
+    color: "#2dd4bf",
+  },
+  {
+    id: "wed-c1",
+    dayIndex: 3,
+    dayLabel: "Wednesday",
+    dayAbbrev: "Wed",
+    cycle: 1,
+    name: "Turquoise Blue",
+    code: "TB",
+    description: "Turquoise Blue (TB) ushers in Wednesday.",
+    color: "#0ea5e9",
+  },
+  {
+    id: "wed-c2",
+    dayIndex: 3,
+    dayLabel: "Wednesday",
+    dayAbbrev: "Wed",
+    cycle: 2,
+    name: "Blue",
+    code: "B",
+    description: "Blue (B) carries Wednesday's second arc.",
+    color: "#3b82f6",
+  },
+  {
+    id: "thu-c1",
+    dayIndex: 4,
+    dayLabel: "Thursday",
+    dayAbbrev: "Thu",
+    cycle: 1,
+    name: "Indigo",
+    code: "I",
+    description: "Indigo (I) sets the tone for Thursday.",
+    color: "#6366f1",
+  },
+  {
+    id: "thu-c2",
+    dayIndex: 4,
+    dayLabel: "Thursday",
+    dayAbbrev: "Thu",
+    cycle: 2,
+    name: "Indigo Violet",
+    code: "IV",
+    description: "Indigo Violet (IV) deepens Thursday night.",
+    color: "#6d28d9",
+  },
+  {
+    id: "fri-c1",
+    dayIndex: 5,
+    dayLabel: "Friday",
+    dayAbbrev: "Fri",
+    cycle: 1,
+    name: "Violet Magenta",
+    code: "VM",
+    description: "Violet Magenta (VM) opens Friday.",
+    color: "#c026d3",
+  },
+  {
+    id: "fri-c2",
+    dayIndex: 5,
+    dayLabel: "Friday",
+    dayAbbrev: "Fri",
+    cycle: 2,
+    name: "Magenta to Omni",
+    code: "MO",
+    description: "Magenta to Omni (White) closes the weekly ray wheel.",
+    color: "#f5e1ff",
+    labelColor: "#0f172a",
+  },
+];
+
+const WEEK_RAY_READINGS: Record<string, WeekRayReading> = {
+  "sat-c1": {
+    title: "Cycle 1 — Carbon Red (CR)",
+    body:
+      "Primordial grounding: the deep “root of roots.” This current stabilizes the nervous system, fortifies boundaries, and anchors choices into the body. Excellent for safety rituals, practical steps, and devotion to embodied integrity.",
+  },
+  "sat-c2": {
+    title: "Cycle 2 — True Red (RR)",
+    body:
+      "Vital force, courage, and momentum. This current amplifies action, movement, and survival-to-thrive power. Great for workouts, decisive conversations, protection work, and reclaiming personal sovereignty.",
+  },
+  "sun-c1": {
+    title: "Cycle 1 — Red Orange (OR)",
+    body:
+      "Desire meets devotion. This current stirs creativity through the body—sensuality, play, inspiration, and magnetic confidence. Powerful for art-making, social warmth, and transmuting intensity into creation.",
+  },
+  "sun-c2": {
+    title: "Cycle 2 — True Orange (OO)",
+    body:
+      "Joyful flow, emotional alchemy, and pleasure with presence. This current supports healing through expression—dance, voice, intimacy with life, and inner-child reconnection. Great for letting the heart laugh and the spirit glow.",
+  },
+  "mon-c1": {
+    title: "Cycle 1 — True Yellow (YY)",
+    body:
+      "Clarity, will, and empowered focus. This current strengthens decision-making, self-respect, and clean direction. Perfect for planning, leadership, money moves, and aligning daily structure with purpose.",
+  },
+  "mon-c2": {
+    title: "Cycle 2 — Yellow Green (YG)",
+    body:
+      "Heart-mind coherence: wisdom that grows through kindness. This current supports collaboration, forgiveness, learning, and gentle evolution. Great for community building, relationship healing, and creating sustainable rhythms.",
+  },
+  "tue-c1": {
+    title: "Cycle 1 — True Green (GG)",
+    body:
+      "Abundance in motion. This current expands manifestation through gratitude, generosity, and grounded optimism. Ideal for building offers, tending home and body, nurturing friendships, and letting prosperity feel safe.",
+  },
+  "tue-c2": {
+    title: "Cycle 2 — Turquoise (T)",
+    body:
+      "Flow-state communication and cleansing clarity. This current supports emotional release through water, breath, and sound—tears as medicine, laughter as liberation, voice as channel. Great for writing, sharing, singing, and ocean-minded recalibration.",
+  },
+  "wed-c1": {
+    title: "Cycle 1 — Turquoise Blue (TB)",
+    body:
+      "Heart-to-voice bridge. This current helps feelings become language, art, and honest expression. Powerful for poetry, healing conversations, creative communication, and speaking truth with tenderness.",
+  },
+  "wed-c2": {
+    title: "Cycle 2 — Blue (B)",
+    body:
+      "Truth with depth. This current sharpens discernment, integrity, and clear boundaries in communication. Great for study, research, proposals, accountability, and saying what you mean with clean energetic posture.",
+  },
+  "thu-c1": {
+    title: "Cycle 1 — Indigo (I)",
+    body:
+      "Vision opens into mystic knowing. This current supports dreams, intuition, symbols, and spiritual study—messages through synchronicities, ritual, and inner sight. Perfect for divination, shadow integration, and receiving lucid guidance.",
+  },
+  "thu-c2": {
+    title: "Cycle 2 — Indigo Violet (IV)",
+    body:
+      "Vision opens into mystic knowing. This current supports dreams, intuition, symbols, and spiritual study—messages through synchronicities, ritual, and inner sight. Perfect for divination, shadow integration, and receiving lucid guidance.",
+  },
+  "fri-c1": {
+    title: "Cycle 1 — Violet Magenta (VM)",
+    body:
+      "Transmutation through love. This current elevates artistry, forgiveness, and spiritual glamour—beauty as blessing, devotion as power. Great for ceremonies, performance, sacred aesthetics, and letting the soul shine outward.",
+  },
+  "fri-c2": {
+    title: "Cycle 2 — Magenta to Omni (MO)",
+    body:
+      "Integration, completion, and unity. This current gathers the week’s lessons into wholeness—restoration, blessing, and gentle expansion into the wider field. Beautiful for gratitude, closure rituals, healing baths, and calling in the next cycle with reverence.",
+  },
+};
+
+const RAY_READINGS: Record<string, RayReading> = {
+  "Elemental": {
+    title: "Elemental",
+    core: "Ancient remembrance and crystalline clarity.",
+    gifts: "Stability, deep nervous-system settling, \"truth in the bones,\” clean energetic containment.",
+    ideal: "Grounding, boundaries, decluttering, closing loops, body care, sacred minimalism.",
+    affirmation: "I hold the pattern that holds me.",
+  },
+  "ALL": {
+    title: "ALL",
+    core: "Sacred surrender and trust in the infinite multidimensionality of ALL.",
+    gifts: "ALL-Awareness, timeline softening, synchronicity threads revealing themselves.",
+    ideal: "Prayer, big vision downloads, blessings, wide-angle perspective, sacred surrender.",
+    affirmation: "ALL is unfolding as it is meant to for our Heartlight's Greatest & Highest Good.",
+  },
+  Red: {
+    title: "Red",
+    core: "Initiation and sacred grounding.",
+    gifts: "Courage to begin, deep root-connection, protective boundaries, decisive action, life-force ignition from the earth up.",
+    ideal: "New beginnings, grounding rituals, claiming space, physical movement, ancestral remembrance, root-charge meditations, dream journaling and integration, body temple activation and healing, setting intentions.",
+    affirmation: "I initiate. I ground. I am.",
+  },
+  Orange: {
+    title: "Orange",
+    core: "Art of Life & Essence expression.",
+    gifts: "Play, sensual alchemy, emotional flow, art through the body.",
+    ideal: "Creating, dancing, connecting, pleasure with presence, inner-child medicine, body temple nourishment, feeling and integrating.",
+    affirmation: "My Art of Life co-creates our world.",
+  },
+  Yellow: {
+    title: "Yellow",
+    core: "Clarity and empowered will.",
+    gifts: "Focus, leadership, confidence, clean direction, radiant self-respect.",
+    ideal: "Plans, money moves, structure, decisions, speaking with authority.",
+    affirmation: "My will blesses my path.",
+  },
+  Green: {
+    title: "Green",
+    core: "Manifestation and heart ecology.",
+    gifts: "Abundance, growth, devotion, nourishment, relational harmony.",
+    ideal: "Building long-term, tending home/body, community weaving, prosperity rituals.",
+    affirmation: "Home is where our Heartlight is.",
+  },
+  Turquoise: {
+    title: "Turquoise",
+    core: "Flow and heart-to-voice bridge.",
+    gifts: "Emotional clarity, gentle truth, soothing communication, cleansing movement, authentic joy.",
+    ideal: "Writing, sharing, water rituals, breathwork, compassionate conversations.",
+    affirmation: "Authentic joy flows from my Heartlight through my voice.",
+  },
+  Blue: {
+    title: "Blue",
+    core: "Truth and integrity.",
+    gifts: "Discernment, precision, broadcasting, boundary clarity, direct communication.",
+    ideal: "Study, proposals, commitments, honest conversations, clear alignment, sharing and exchanging wisdom, organizing information.",
+    affirmation: "I resonate and communicate with coherency.",
+  },
+  Indigo: {
+    title: "Indigo",
+    core: "Dreams and inner sight.",
+    gifts: "Intuition, symbolism, lucid knowing, subconscious communication, sacred pattern recognition.",
+    ideal: "Dreamwork, divination, ritual study, shadow integration, receiving messages.",
+    affirmation: "My dreams guide my being.",
+  },
+  Violet: {
+    title: "Violet",
+    core: "Transmutation and blessing.",
+    gifts: "Spiritual refinement, energetic cleansing, ceremony, artistry as blessing.",
+    ideal: "Spiritual wisdom interconnection, Greater Higher Being channeling & remembrance, transformational intentions, transmuting energies for our Heartlight's Greatest & Highest Good.",
+    affirmation: "I transformutate through & with love.",
+  },
+  Magenta: {
+    title: "Magenta",
+    core: "Remembering the unifying embrace of ALL that IS.",
+    gifts:
+      "Transmutation of desire into devotion • Magnetic authenticity • Heart-wings (love with altitude) • Embodied spirituality through voice, art, and aligned boundaries.",
+    ideal:
+      "Embodied spirituality through our being, love that discerns boundaries and harmonizes, reunifying masculine and feminine energy, collapsing polarity into wholeness, heart-led creation, sacred sensuality, relationship healing through truth, choosing boundaries that protect joy, rituals that turn intensity into beauty, embracing the cosmic kiss of Red and Violet in re-unity of ALL that IS.",
+    affirmation: "ALL-ways lead back to our Heartlight.",
+  },
+  Omni: {
+    title: "Omni",
+    core: "Integration and completion.",
+    gifts: "Wholeness, synthesis, embodied peace, quiet mastery, sacred closure.",
+    ideal: "Endings, gratitude, integration, restorative stillness, blessing the next cycle.",
+    affirmation: "I am whole. I am ready.",
+  },
+};
+
+// Sol dial anchor: ALL Ray points north (top), Red follows at 1 o'clock.
+const SOL_TOP_INDEX = RAY_WINDOWS.findIndex((r) => r.name === "ALL");
+
+// Helper: robust ray-index selection with modulo wrap & FP tolerance
+function rayIndexForAUT(hours: number): number {
+  const eps = 1e-9;
+  const hRaw = Number.isFinite(hours) ? Number(hours) : 0;
+  // Wrap  …,-1→11 , 12→0 . At exactly 12h we treat as 0h of the new cycle.
+  const h = ((hRaw % 12) + 12) % 12;
+  for (let i = 0; i < RAY_WINDOWS.length; i++) {
+    const r = RAY_WINDOWS[i];
+    const start = r.start - eps;
+    const end = r.end - eps; // make upper bound a hair inside to avoid double-hit at boundaries
+    if (h >= start && h < end) return i;
+  }
+  return 0; // fallback
+}
+
+// Rays of the Week (preview) — use civil/local time so the flow matches local day boundaries.
+function weekRayIndexForDateLocal(now: Date): number {
+  const day = now.getDay();
+  const dayOrderIndex = WEEK_RAY_DAY_ORDER.indexOf(day);
+  if (dayOrderIndex === -1) return 0;
+  const hours = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+  const cycleOffset = hours >= 12 ? 1 : 0;
+  return dayOrderIndex * 2 + cycleOffset;
+}
+
+function SecretLarbSanctum({
+  onClose,
+  activeRayWindow,
+  activeLarbRayId,
+  rayProgressPct,
+  rayWindowTimes,
+  autClock,
+  remainingMinutes,
+}: SecretLarbSanctumProps) {
+  const [selectedRayIds, setSelectedRayIds] = useState<LarbRayId[]>(() =>
+    buildInitialLarbChord(activeLarbRayId)
+  );
+  const [eyeSettings, setEyeSettings] = useState<LarbEyeSettings>({
+    shape: "round",
+    glow: 68,
+    shimmer: 46,
+    staticCharge: 35,
+  });
+  const [savedArchetypes, setSavedArchetypes] = useState<LarbArchetype[]>(() =>
+    readSavedLarbArchetypes()
+  );
+  const [archetypeName, setArchetypeName] = useState("");
+  const [orbs, setOrbs] = useState<LarbOrbState[]>(() =>
+    Array.from({ length: LARB_TOTAL_ORBS }, (_, idx) => createOrbState(idx))
+  );
+  const [clusterOffset, setClusterOffset] = useState<LarbClusterOffset>({ x: 0, y: 0 });
+  const clusterOffsetRef = useRef(clusterOffset);
+  const clusterRef = useRef<HTMLDivElement | null>(null);
+  const [clusterSize, setClusterSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+  const [pointerSnapshot, setPointerSnapshot] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const dragStateRef = useRef<{
+    mode: "cluster" | "orb" | null;
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    rect: DOMRect | null;
+    originOffset: LarbClusterOffset;
+    orbId?: string;
+    startLocalX?: number;
+    startLocalY?: number;
+    moved: boolean;
+  }>({
+    mode: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    rect: null,
+    originOffset: { x: 0, y: 0 },
+    moved: false,
+  });
+  const [bubble, setBubble] = useState<{ id: number; text: string } | null>(null);
+  const bubbleTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    clusterOffsetRef.current = clusterOffset;
+  }, [clusterOffset]);
+
+  useEffect(() => {
+    persistLarbArchetypes(savedArchetypes);
+  }, [savedArchetypes]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (bubbleTimerRef.current) {
+        window.clearTimeout(bubbleTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clusterRef.current) return;
+    const updateSize = () => {
+      const rect = clusterRef.current?.getBoundingClientRect();
+      if (rect) {
+        setClusterSize({ width: rect.width, height: rect.height });
+      }
+    };
+    updateSize();
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(clusterRef.current);
+    window.addEventListener("resize", updateSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateSize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const rect = clusterRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+        setPointerSnapshot({ x, y });
+      } else {
+        setPointerSnapshot(null);
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, []);
+
+  const chordPalette = selectedRayIds.reduce<string[]>((acc, id) => {
+    const color = LARB_RAY_LOOKUP[id]?.color;
+    if (color) acc.push(color);
+    return acc;
+  }, []);
+  const fallbackPalette = ["#c084fc", "#38bdf8", "#34d399"];
+  const auraPalette = chordPalette.length > 0 ? chordPalette : fallbackPalette;
+  const sliderAccentComposite = averageHexColor(chordPalette, fallbackPalette[0]);
+  const auraGradient = `radial-gradient(circle at 50% 20%, ${auraPalette
+    .map((color, idx) => `${color} ${Math.min(95, 18 + idx * 28)}%`)
+    .join(", ")})`;
+  const sliderAccent = sliderAccentComposite ?? auraPalette[0] ?? activeRayWindow?.color ?? "#c084fc";
+  const activeLarbRay = activeLarbRayId ? LARB_RAY_LOOKUP[activeLarbRayId] : undefined;
+  const resonanceScore = computeResonanceScore(selectedRayIds, activeLarbRayId, eyeSettings);
+  const chordLabel = describeChord(selectedRayIds);
+  const minutesLabel =
+    remainingMinutes >= 1
+      ? `${Math.round(remainingMinutes)} min remaining`
+      : "Moments until the next window";
+  const canSave = selectedRayIds.length > 0;
+  const energySynced = activeLarbRayId ? selectedRayIds.includes(activeLarbRayId) : false;
+  const eyeColorPrimary = auraPalette[0] ?? sliderAccent;
+  const eyeColorSecondary = auraPalette[1] ?? eyeColorPrimary;
+  const glowRadius = 8 + (eyeSettings.glow / 100) * 22;
+  const shimmerRadius = 4 + (eyeSettings.shimmer / 100) * 18;
+  const clusterCenter = useMemo(
+    () => ({
+      x: LARB_CLUSTER_BASE.x + clusterOffset.x,
+      y: LARB_CLUSTER_BASE.y + clusterOffset.y,
+    }),
+    [clusterOffset]
+  );
+
+  const bubbleMessages = useMemo(() => {
+    const pool: string[] = [];
+    if (activeLarbRay?.mantra) pool.push(activeLarbRay.mantra);
+    if (activeRayWindow?.name) {
+      pool.push(`${activeRayWindow.name} window humming at ${rayProgressPct}%`);
+      if (activeLarbRay?.virtue) {
+        pool.push(`${activeLarbRay.virtue} ripples through this chord.`);
+      }
+      pool.push(minutesLabel);
+    }
+    if (chordLabel) pool.push(`Chord weaving: ${chordLabel}`);
+    pool.push(`Resonance steady at ${resonanceScore}%.`);
+    return pool.filter((text) => text && text.trim().length > 0);
+  }, [
+    activeLarbRay?.mantra,
+    activeLarbRay?.virtue,
+    activeRayWindow?.name,
+    chordLabel,
+    minutesLabel,
+    resonanceScore,
+    rayProgressPct,
+  ]);
+
+  const maybeShowBubble = useCallback(() => {
+    if (Math.random() < 0.45) return;
+    if (!bubbleMessages.length) return;
+    const choice = bubbleMessages[Math.floor(Math.random() * bubbleMessages.length)];
+    setBubble({ id: Date.now(), text: choice });
+    if (bubbleTimerRef.current) {
+      window.clearTimeout(bubbleTimerRef.current);
+    }
+    bubbleTimerRef.current = window.setTimeout(() => setBubble(null), 6000);
+  }, [bubbleMessages]);
+
+  const resetDragState = () => {
+    dragStateRef.current = {
+      mode: null,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      rect: null,
+      originOffset: clusterOffsetRef.current,
+      moved: false,
+    };
+  };
+
+  const handleOrbTap = useCallback(
+    (orbId: string) => {
+      setOrbs((prev) => {
+        const target = prev.find((orb) => orb.id === orbId);
+        if (!target) return prev;
+        const updated = randomizeOrbPosition(target);
+        const partnerBand =
+          target.kind === "eye"
+            ? target.band === LARB_EYE_INDICES[0]
+              ? LARB_EYE_INDICES[1]
+              : LARB_EYE_INDICES[0]
+            : null;
+        const partnerAngle =
+          partnerBand !== null
+            ? Math.atan2(Math.sin(updated.angle), -Math.cos(updated.angle))
+            : null;
+        return prev.map((orb) => {
+          if (orb.id === orbId) return updated;
+          if (partnerBand !== null && orb.band === partnerBand && partnerAngle !== null) {
+            return { ...orb, angle: partnerAngle, radius: updated.radius };
+          }
+          return orb;
+        });
+      });
+      setClusterOffset((prev) =>
+        clampClusterOffset({
+          x: prev.x + (Math.random() - 0.5) * 2,
+          y: prev.y + (Math.random() - 0.5) * 1.4,
+        })
+      );
+      maybeShowBubble();
+    },
+    [maybeShowBubble]
+  );
+
+  const handleClusterPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement | null)?.dataset?.orbId) return;
+    const rect = clusterRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      mode: "cluster",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect,
+      originOffset: clusterOffsetRef.current,
+      moved: false,
+    };
+  };
+
+  const handleClusterPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "cluster" || drag.pointerId !== event.pointerId || !drag.rect) return;
+    const dxPercent = ((event.clientX - drag.startX) / drag.rect.width) * 100;
+    const dyPercent = ((event.clientY - drag.startY) / drag.rect.height) * 100;
+    if (Math.abs(dxPercent) > 0.4 || Math.abs(dyPercent) > 0.4) {
+      drag.moved = true;
+    }
+    setClusterOffset(
+      clampClusterOffset({
+        x: drag.originOffset.x + dxPercent,
+        y: drag.originOffset.y + dyPercent,
+      })
+    );
+  };
+
+  const handleClusterPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "cluster" || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!drag.moved) {
+      maybeShowBubble();
+    }
+    resetDragState();
+  };
+
+  const handleClusterPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "cluster" || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    resetDragState();
+  };
+
+  const handleOrbPointerDown = (orbId: string) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = clusterRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const localX = ((event.clientX - rect.left) / rect.width) * 100;
+    const localY = ((event.clientY - rect.top) / rect.height) * 100;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      mode: "orb",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect,
+      originOffset: clusterOffsetRef.current,
+      orbId,
+      startLocalX: localX,
+      startLocalY: localY,
+      moved: false,
+    };
+  };
+
+  const handleOrbPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "orb" || drag.pointerId !== event.pointerId || !drag.rect || !drag.orbId) return;
+    const activeOrb = orbs.find((orb) => orb.id === drag.orbId);
+    if (!activeOrb) return;
+    const localX = ((event.clientX - drag.rect.left) / drag.rect.width) * 100;
+    const localY = ((event.clientY - drag.rect.top) / drag.rect.height) * 100;
+    const center = {
+      x: LARB_CLUSTER_BASE.x + clusterOffsetRef.current.x,
+      y: LARB_CLUSTER_BASE.y + clusterOffsetRef.current.y,
+    };
+    const dx = localX - center.x;
+    const yScale = activeOrb.kind === "head" ? 0.4 : activeOrb.kind === "eye" ? 0.55 : LARB_CLUSTER_Y_SCALE;
+    const dy = (localY - center.y) / yScale;
+    const radius = Math.sqrt(dx * dx + dy * dy);
+    if (!drag.moved) {
+      drag.moved =
+        Math.abs(localX - (drag.startLocalX ?? localX)) > 0.5 ||
+        Math.abs(localY - (drag.startLocalY ?? localY)) > 0.5;
+    }
+    const newAngle = Math.atan2(dy, dx);
+    const minRadius = activeOrb.kind === "head" ? 4 : activeOrb.kind === "eye" ? 10 : 16;
+    const maxRadius = activeOrb.kind === "head" ? 14 : activeOrb.kind === "eye" ? 26 : 48;
+    const newRadius = clamp(radius, minRadius, maxRadius);
+    const partnerBand =
+      activeOrb.kind === "eye"
+        ? activeOrb.band === LARB_EYE_INDICES[0]
+          ? LARB_EYE_INDICES[1]
+          : LARB_EYE_INDICES[0]
+        : null;
+    const partnerAngle = partnerBand !== null ? Math.atan2(dy, -dx) : null;
+    setOrbs((prev) =>
+      prev.map((orb) => {
+        if (orb.id === drag.orbId) {
+          return { ...orb, angle: newAngle, radius: newRadius };
+        }
+        if (partnerBand !== null && orb.band === partnerBand && partnerAngle !== null) {
+          return { ...orb, angle: partnerAngle, radius: newRadius };
+        }
+        return orb;
+      })
+    );
+    setClusterOffset((prev) =>
+      clampClusterOffset({
+        x: prev.x + dx * 0.01,
+        y: prev.y + (localY - center.y) * 0.006,
+      })
+    );
+  };
+
+  const handleOrbPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "orb" || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!drag.moved && drag.orbId) {
+      handleOrbTap(drag.orbId);
+    }
+    resetDragState();
+  };
+
+  const handleOrbPointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.mode !== "orb" || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    resetDragState();
+  };
+
+  const handleClusterKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      maybeShowBubble();
+    }
+  };
+
+  const staticChargeScale = eyeSettings.staticCharge / 100;
+  const staticHaloColor = hexToRgba(eyeColorSecondary, 0.25 + staticChargeScale * 0.45);
+  const computedOrbs = orbs.map((orb) => {
+    const wobbleAngle = orb.angle + orb.wobble * 0.01;
+    const yScale = orb.kind === "head" ? 0.4 : orb.kind === "eye" ? 0.55 : LARB_CLUSTER_Y_SCALE;
+    const offsetX = Math.cos(wobbleAngle) * orb.radius;
+    const offsetY = Math.sin(wobbleAngle) * orb.radius * yScale;
+    const left = clamp(clusterCenter.x + offsetX, 3, 97);
+    const top = clamp(clusterCenter.y + offsetY, 3, 97);
+    const color =
+      auraPalette[orb.band % auraPalette.length] ?? fallbackPalette[orb.band % fallbackPalette.length];
+    return { orb, left, top, color };
+  });
+  const eyeOffsets = useMemo(() => {
+    const width = clusterSize.width;
+    const height = clusterSize.height;
+    if (!width || !height)
+      return {} as Record<string, { dx: number; dy: number }>;
+    return computedOrbs.reduce((acc, entry) => {
+      if (entry.orb.kind !== "eye") return acc;
+      let dx = 0;
+      let dy = 0;
+      if (pointerSnapshot) {
+        const centerX = (entry.left / 100) * width;
+        const centerY = (entry.top / 100) * height;
+        const pointerX = clamp(pointerSnapshot.x, 0, width);
+        const pointerY = clamp(pointerSnapshot.y, 0, height);
+        dx = pointerX - centerX;
+        dy = pointerY - centerY;
+        const dist = Math.hypot(dx, dy) || 1;
+        const eyeballRadius = entry.orb.size / 2;
+        const pupilRadius = (entry.orb.size * 0.55) / 2;
+        const maxOffset = Math.max(0, eyeballRadius - pupilRadius - 3);
+        const limited = Math.min(dist, maxOffset);
+        dx = (dx / dist) * limited;
+        dy = (dy / dist) * limited;
+      }
+      acc[entry.orb.id] = { dx, dy };
+      return acc;
+    }, {} as Record<string, { dx: number; dy: number }>);
+  }, [clusterSize.height, clusterSize.width, computedOrbs, pointerSnapshot]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-zinc-950/95 p-3 sm:p-6"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
+      <div className="mx-auto w-full max-w-6xl flex flex-col gap-4 sm:gap-6 rounded-3xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-6 shadow-2xl backdrop-blur-2xl">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-zinc-400">Secret Portal</p>
+            <h2 className="text-3xl font-semibold text-white">Welcome Home, Atlastizen!</h2>
+            <p className="text-sm text-zinc-300">
+              Sculpt a Living Aura Ray Being — drag the auric cluster, nudge the orbs, and call for a wisdom bubble when the Ray feels ready ({autClock}).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-white/20"
+            onClick={onClose}
+          >
+            Exit Sanctum
+          </button>
+        </div>
+
+        <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-zinc-900/50 to-zinc-950/70 p-5 shadow-inner shadow-black/30 space-y-6">
+              <div
+                ref={clusterRef}
+                className="relative h-[320px] sm:h-[400px] md:h-[460px] overflow-hidden rounded-[2.25rem] border border-white/10 bg-gradient-to-b from-zinc-950/85 via-zinc-900/40 to-zinc-950/85 shadow-[0_0_90px_rgba(8,8,15,0.9)]"
+                role="button"
+                tabIndex={0}
+            aria-label="Living Aura Ray Being"
+            style={{ touchAction: "none" }}
+            onPointerDown={handleClusterPointerDown}
+            onPointerMove={handleClusterPointerMove}
+            onPointerUp={handleClusterPointerUp}
+            onPointerCancel={handleClusterPointerCancel}
+            onKeyDown={handleClusterKey}
+          >
+            <div
+              className="pointer-events-none absolute inset-10 rounded-full blur-3xl larb-aura-shell"
+              style={{ background: auraGradient, opacity: 0.85 }}
+            />
+            <div
+              className="pointer-events-none absolute inset-0 larb-gradient-sheen"
+              style={{
+                backgroundImage: `linear-gradient(120deg, ${hexToRgba(auraPalette[0] ?? "#a855f7", 0.22)}, transparent, ${hexToRgba(
+                  auraPalette[1] ?? "#38bdf8",
+                  0.22
+                )})`,
+              }}
+            />
+            {computedOrbs.map(({ orb, left, top, color }) => {
+              const pupilOffset = eyeOffsets[orb.id] ?? { dx: 0, dy: 0 };
+              const pupilDiameter = orb.kind === "eye" ? orb.size * 0.55 : orb.size;
+
+              const auraRay =
+                orb.kind === "aura" ? LARB_RAYS[orb.band % LARB_RAYS.length] : null;
+              const auraTempo = auraRay ? LARB_RAY_TEMPO_FACTORS[auraRay.id] ?? 1 : 1;
+              const auraDriftX = auraRay
+                ? orb.wobble * 1.6 + Math.sin(orb.band * 1.31 + orb.radius) * 18
+                : 0;
+              const auraDriftY = auraRay
+                ? -orb.wobble * 2.1 + Math.cos(orb.band * 1.07 + orb.radius) * 16
+                : 0;
+
+              const containerStyle: CSSProperties = {
+                position: "absolute",
+                left: `${left}%`,
+                top: `${top}%`,
+                width: `${orb.size}px`,
+                height: `${orb.size}px`,
+                transform: "translate(-50%, -50%)",
+                ...(auraRay
+                  ? ({
+                      "--larb-drift-x": `${auraDriftX.toFixed(2)}px`,
+                      "--larb-drift-y": `${auraDriftY.toFixed(2)}px`,
+                      "--larb-tempo": `${auraTempo}`,
+                    } as CSSProperties)
+                  : {}),
+              };
+              const buttonStyle: CSSProperties = {
+                position: "absolute",
+                inset: 0,
+                zIndex: orb.kind === "eye" ? 50 : orb.kind === "head" ? 45 : 10 + orb.band,
+                borderRadius:
+                  orb.kind === "eye"
+                    ? eyeSettings.shape === "nova"
+                      ? "42% 58% 58% 42% / 48% 52% 44% 56%"
+                      : eyeSettings.shape === "crescent"
+                      ? "58% 42% 70% 30% / 60% 40% 65% 35%"
+                      : "50%"
+                    : orb.kind === "head"
+                    ? "45% 55% 60% 40% / 65% 35% 60% 40%"
+                    : "9999px",
+                border:
+                  orb.kind === "eye"
+                    ? "1px solid rgba(255,255,255,0.55)"
+                    : orb.kind === "head"
+                    ? "1px solid rgba(255,255,255,0.25)"
+                    : "1px solid rgba(255,255,255,0.12)",
+                background:
+                  orb.kind === "head"
+                    ? `radial-gradient(circle at 52% 30%, ${hexToRgba(
+                        auraPalette[0] ?? "#f472b6",
+                        0.85
+                      )}, ${hexToRgba(auraPalette[auraPalette.length - 1] ?? "#38bdf8", 0.35)})`
+                    : orb.kind === "eye"
+                    ? `radial-gradient(circle at 40% 35%, rgba(255,255,255,0.95), ${hexToRgba(eyeColorPrimary, 0.45)})`
+                    : `radial-gradient(circle, rgba(255,255,255,0.9) 0%, ${hexToRgba(color, 0.55)} 60%, transparent 85%)`,
+                boxShadow:
+                  orb.kind === "eye"
+                    ? `0 0 ${glowRadius}px ${hexToRgba(
+                        eyeColorPrimary,
+                        0.35
+                      )}, inset 0 0 ${shimmerRadius}px rgba(255,255,255,0.85)${
+                        staticChargeScale > 0.05 ? `, 0 0 ${12 + staticChargeScale * 24}px ${staticHaloColor}` : ""
+                      }`
+                    : orb.kind === "head"
+                    ? `0 0 60px ${hexToRgba(auraPalette[0] ?? "#f472b6", 0.3)}, inset 0 0 25px ${hexToRgba(
+                        auraPalette[1] ?? "#38bdf8",
+                        0.45
+                      )}`
+                    : `0 0 32px ${hexToRgba(color, 0.45)}`,
+                filter:
+                  orb.kind === "eye"
+                    ? `drop-shadow(0 0 ${glowRadius / 2}px ${hexToRgba(eyeColorSecondary, 0.35)})`
+                    : orb.kind === "head"
+                    ? `drop-shadow(0 0 40px ${hexToRgba(auraPalette[0] ?? "#f472b6", 0.35)})`
+                    : `blur(${orb.blur}px)`,
+                ...(orb.kind === "aura" ? {} : { animationDuration: `${orb.speed}s` }),
+              };
+              return (
+                <div key={orb.id} className={orb.kind === "aura" ? "larb-orb" : ""} style={containerStyle}>
+                  <button
+                    type="button"
+                    data-orb-id={orb.id}
+                    className="w-full h-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                    style={buttonStyle}
+                    onPointerDown={handleOrbPointerDown(orb.id)}
+                    onPointerMove={handleOrbPointerMove}
+                    onPointerUp={handleOrbPointerUp}
+                    onPointerCancel={handleOrbPointerCancel}
+                    aria-label={orb.kind === "head" ? "Head orb" : orb.kind === "eye" ? "Eye orb" : "Aura orb"}
+                  />
+                  {orb.kind === "eye" ? (
+                    <PlasmaEyeCanvas
+                      id={orb.id}
+                      diameter={pupilDiameter}
+                      charge={eyeSettings.staticCharge}
+                      primaryColor={eyeColorPrimary}
+                      secondaryColor={eyeColorSecondary}
+                      offsetX={pupilOffset.dx}
+                      offsetY={pupilOffset.dy}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+            {bubble ? (
+              <div className="absolute left-5 top-5 max-w-xs rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white shadow-xl backdrop-blur">
+                <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-200">World Bubble</p>
+                <p className="mt-2 leading-relaxed text-white/90">{bubble.text}</p>
+              </div>
+            ) : (
+              <div className="absolute left-5 top-5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/70">
+                Tap or drag to coax a wisdom bubble.
+              </div>
+            )}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-center text-[11px] uppercase tracking-[0.28em] text-zinc-300">
+              Drag anywhere or nudge an orb — they share one gravity.
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Chord</p>
+              <p className="mt-2 text-sm font-semibold text-white">{chordLabel}</p>
+                <p className="text-xs text-emerald-200">
+                  {energySynced ? "In sync with the live Ray." : "Add the live Ray to sync energy."}
+                </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Resonance</p>
+                <span className="text-sm text-white">{resonanceScore}%</span>
+              </div>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-300 via-sky-400 to-fuchsia-400" style={{ width: `${resonanceScore}%` }} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Cycle</p>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {activeRayWindow ? activeRayWindow.name : "Awaiting Ray"}
+              </p>
+              <p className="text-xs text-zinc-400">{minutesLabel}</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="space-y-5">
+            <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Ray Wheel</p>
+                  <p className="text-sm text-zinc-300">Connect with any Rays you resonate with.</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold text-white/90 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => {
+                    if (!activeLarbRayId) return;
+                    setSelectedRayIds((prev) => {
+                      if (prev.includes(activeLarbRayId)) return prev;
+                      const next = [...prev, activeLarbRayId];
+                      return next.slice(-LARB_MAX_RAY_SLOTS);
+                    });
+                  }}
+                  disabled={!activeLarbRayId}
+                >
+                  Tune to Now
+                </button>
+              </div>
+              <div className="relative mx-auto mt-6 h-64 w-64">
+                <div
+                  className="pointer-events-none absolute inset-[34%] rounded-full border border-white/10 bg-white/5 shadow-inner shadow-white/5"
+                  aria-hidden="true"
+                />
+                {LARB_RAYS.map((ray, index) => {
+                  const angle = (index / LARB_RAYS.length) * Math.PI * 2 - Math.PI / 2;
+                  const left = 50 + 40 * Math.cos(angle);
+                  const top = 50 + 40 * Math.sin(angle);
+                  const isSelected = selectedRayIds.includes(ray.id);
+                  return (
+                    <button
+                      key={ray.id}
+                      type="button"
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/80 shadow-lg transition focus:outline-none focus:ring-2 focus:ring-white/70 ${
+                        isSelected ? "scale-110 border-white/80 bg-white/20" : "border-white/10 bg-white/10"
+                      }`}
+                      style={{
+                        left: `${left}%`,
+                        top: `${top}%`,
+                        backgroundImage: `linear-gradient(135deg, ${hexToRgba(ray.color, 0.65)}, ${hexToRgba(ray.color, 0.3)})`,
+                      }}
+                      onClick={() => {
+                        setSelectedRayIds((prev) => {
+                          if (prev.includes(ray.id as LarbRayId)) {
+                            return prev.filter((id) => id !== ray.id);
+                          }
+                          if (prev.length >= LARB_MAX_RAY_SLOTS) {
+                            return [...prev.slice(1), ray.id as LarbRayId];
+                          }
+                          return [...prev, ray.id as LarbRayId];
+                        });
+                      }}
+                      aria-pressed={isSelected}
+                      aria-label={`Toggle ${ray.name}`}
+                    >
+                      {ray.virtue}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-5 rounded-2xl border border-white/15 bg-white/5 p-4 shadow-inner shadow-white/5">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.35em] text-zinc-400">
+                  <span>Ray Chord</span>
+                  <span className="text-zinc-200">{selectedRayIds.length}/{LARB_MAX_RAY_SLOTS}</span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {Array.from({ length: LARB_MAX_RAY_SLOTS }, (_, idx) => selectedRayIds[idx] ?? null).map(
+                    (rayId, idx) => {
+                      const ray = rayId ? LARB_RAY_LOOKUP[rayId] : null;
+                      return (
+                        <div
+                          key={`chord-slot-${idx}`}
+                          className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                        >
+                          <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">Slot {idx + 1}</span>
+                          <span className="text-sm font-medium">
+                            {ray ? `${ray.name} • ${ray.virtue}` : "Open frequency"}
+                          </span>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-emerald-200">
+                  {energySynced
+                    ? "In resonance with the current window."
+                    : "Add the live Ray to sync energy."}
+                </p>
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Eye settings</p>
+                <p className="text-sm text-zinc-300">The two brightest orbs act as eyes.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {LARB_EYE_MODES.map((mode) => {
+                  const isActive = eyeSettings.shape === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      className={`flex-1 rounded-xl border px-3 py-2 text-left transition ${
+                        isActive ? "border-white/70 bg-white/15 text-white" : "border-white/10 bg-white/5 text-zinc-300"
+                      }`}
+                      onClick={() => setEyeSettings((prev) => ({ ...prev, shape: mode.id }))}
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.25em]">{mode.label}</div>
+                      <div className="text-[11px] text-zinc-400">{mode.detail}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="space-y-3">
+                <label className="flex justify-between text-xs uppercase tracking-[0.35em] text-zinc-400">
+                  <span>Glow</span>
+                  <span>{eyeSettings.glow}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                value={eyeSettings.glow}
+                onChange={(event) =>
+                  setEyeSettings((prev) => ({ ...prev, glow: Number(event.target.value) }))
+                }
+                className="w-full"
+                style={{ accentColor: sliderAccent }}
+              />
+              </div>
+              <div className="space-y-3">
+                <label className="flex justify-between text-xs uppercase tracking-[0.35em] text-zinc-400">
+                  <span>Shimmer</span>
+                  <span>{eyeSettings.shimmer}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={eyeSettings.shimmer}
+                  onChange={(event) =>
+                    setEyeSettings((prev) => ({ ...prev, shimmer: Number(event.target.value) }))
+                  }
+                  className="w-full"
+                  style={{ accentColor: sliderAccent }}
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="flex justify-between text-xs uppercase tracking-[0.35em] text-zinc-400">
+                  <span>Static Charge</span>
+                  <span>{eyeSettings.staticCharge}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={eyeSettings.staticCharge}
+                  onChange={(event) =>
+                    setEyeSettings((prev) => ({ ...prev, staticCharge: Number(event.target.value) }))
+                  }
+                  className="w-full"
+                  style={{ accentColor: sliderAccent }}
+                />
+                <p className="text-[10px] text-zinc-400">Higher charge adds static electricity around the eyes.</p>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/5">
+              <div className="flex flex-col gap-1">
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Archetype archive</p>
+                <p className="text-sm text-zinc-300">Save this being’s chord + gaze.</p>
+              </div>
+              <div className="mt-3 flex flex-col gap-2">
+                <input
+                  type="text"
+                  value={archetypeName}
+                  onChange={(event) => setArchetypeName(event.target.value)}
+                  placeholder="Name your Archetype"
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-white/40 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+                <button
+                  type="button"
+                  className="rounded-xl border border-white/20 bg-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => {
+                    if (selectedRayIds.length === 0) return;
+                    const trimmed = archetypeName.trim();
+                    const name =
+                      trimmed ||
+                      `LARB ${new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+                    const entry: LarbArchetype = {
+                      id:
+                        typeof crypto !== "undefined" && "randomUUID" in crypto
+                          ? crypto.randomUUID()
+                          : `larb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      name,
+                      rayChord: selectedRayIds.slice(0, LARB_MAX_RAY_SLOTS),
+                      eye: { ...eyeSettings },
+                      savedAt: Date.now(),
+                    };
+                    setSavedArchetypes((prev) => [entry, ...prev].slice(0, LARB_ARCHIVE_LIMIT));
+                    setArchetypeName("");
+                  }}
+                  disabled={!canSave}
+                >
+                  Save Archetype
+                </button>
+              </div>
+              <div className="mt-4 space-y-3 text-sm">
+                {savedArchetypes.length === 0 ? (
+                  <p className="text-zinc-400">No archived beings yet — your next save will appear here.</p>
+                ) : (
+                  savedArchetypes.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-white">{entry.name}</div>
+                        <div className="text-[11px] text-zinc-400">
+                          {describeChord(entry.rayChord)} • {new Date(entry.savedAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-white/20 px-2 py-1 text-xs text-emerald-200 hover:bg-white/10"
+                          onClick={() => {
+                            setSelectedRayIds(entry.rayChord.slice(0, LARB_MAX_RAY_SLOTS));
+                            setEyeSettings(entry.eye);
+                          }}
+                        >
+                          Load
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-white/20 px-2 py-1 text-xs text-rose-200 hover:bg-white/10"
+                          onClick={() => setSavedArchetypes((prev) => prev.filter((item) => item.id !== entry.id))}
+                          aria-label={`Delete ${entry.name}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-5">
+            <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/5">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-zinc-400">
+                <span>Ray Wheel Sync</span>
+                <span className="text-zinc-100">
+                  {activeRayWindow ? `${activeRayWindow.name} Cycle` : "Awaiting Ray"}
+                </span>
+              </div>
+              <div className="mt-3 space-y-1 text-sm text-zinc-300">
+                <div>
+                  {rayWindowTimes
+                    ? `${rayWindowTimes.start.aut} → ${rayWindowTimes.end.aut} AUT`
+                    : "Timing data pending"}
+                </div>
+                <div className="text-xs text-zinc-400">
+                  {rayWindowTimes
+                    ? `${rayWindowTimes.start.local} → ${rayWindowTimes.end.local} local`
+                    : "—"}
+                </div>
+                <div className="text-xs text-zinc-400">
+                  Progress {rayProgressPct}% • {minutesLabel}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-white/5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-400">Ray telemetry</p>
+                  <p className="text-sm text-zinc-300">Chord + gaze diagnostics</p>
+                </div>
+                <div className="text-xs text-emerald-200">
+                  {energySynced ? "Synced with live Ray" : "Tune to live Ray for extra resonance"}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 text-sm text-zinc-300 sm:grid-cols-2">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Chord</div>
+                  <div className="text-sm text-white">{chordLabel}</div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Eyes</div>
+                  <div className="text-sm text-white capitalize">
+                    {eyeSettings.shape} • glow {eyeSettings.glow}% • shimmer {eyeSettings.shimmer}%
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+export default function AUTClock() {
+  useAliceAndPWA();
+
+  // Charlotte NoDa fallback
+  con

@@ -181,7 +181,7 @@ const RING_INNER_RADIUS = 22;
 const POINTER_RADIUS = 58;
 const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
 const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
-const RING_VIEWBOX_PADDING = 10;
+const RING_VIEWBOX_PADDING = 16;
 const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
 const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
@@ -3729,6 +3729,7 @@ export default function AUTClock() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
   const [clockDialMode, setClockDialMode] = useState<"sol" | "luna">("luna");
+  const [solDialOrientation, setSolDialOrientation] = useState<"tracking" | "planning">("tracking");
   const [_showCoords, _setShowCoords] = useState(false);
   void _showCoords;
   void _setShowCoords; // kept for future coordinate-toggle UI
@@ -4538,7 +4539,8 @@ export default function AUTClock() {
     ? data.dayLenMin / 6
     : data.nightLenMin / 6;
   const remainingRealMin = Math.max(0, remainingAUTHours * minutesPerAutHour);
-  const rayProgressPct = Math.round(rayProgress * 100);
+  const _rayProgressPct = Math.round(rayProgress * 100);
+  void _rayProgressPct; // kept for future progress UI
 
   // Atlas theme sparkle click effect (Ray-hued accent)
   useEffect(() => {
@@ -4834,8 +4836,9 @@ export default function AUTClock() {
   const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
-    // Anchor ALL Ray at top (12 o'clock / north); Red follows at 1 o'clock.
-    const offset = -Math.PI / 2 - segmentAngle / 2;
+    // Anchor cycle boundaries at clock-hour positions: ALL/Red boundary at 12 o'clock,
+    // so 1 o'clock = Red/Orange, 2 o'clock = Orange/Yellow (start of Yellow), etc.
+    const offset = -Math.PI / 2 - segmentAngle;
     return RAY_WINDOWS.map((ray, index) => {
       const dialPosition = ((index - SOL_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
@@ -4878,6 +4881,30 @@ export default function AUTClock() {
       return {
         d: describeThinWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle),
         color: colorForRayAngle(startAngle + step / 2, RAY_WINDOWS, SOL_TOP_INDEX),
+      };
+    });
+  }, []);
+  // Sol cycle boundary ticks and AUT hour numbers (0/12 at north, 1-11 clockwise).
+  const solCycleTicks = useMemo(() => {
+    return Array.from({ length: 13 }, (_, i) => {
+      const hour = i; // 0..12, with 0/12 at north
+      const angle = -Math.PI / 2 + (hour / 12) * (2 * Math.PI);
+      // Small outward nubs outside the colored ring
+      const inner = polarToCartesian(RING_OUTER_RADIUS + 1, angle);
+      const outer = polarToCartesian(RING_OUTER_RADIUS + 4, angle);
+      const labelPos = polarToCartesian(RING_OUTER_RADIUS + 10, angle);
+      const isCardinal = hour % 3 === 0;
+      return {
+        hour,
+        label: hour === 0 ? "12" : String(hour),
+        angle,
+        x1: inner.x,
+        y1: inner.y,
+        x2: outer.x,
+        y2: outer.y,
+        labelX: labelPos.x,
+        labelY: labelPos.y,
+        isCardinal,
       };
     });
   }, []);
@@ -6385,11 +6412,18 @@ export default function AUTClock() {
                     </div>
                   ) : null}
                 </div>
-                <div className="text-sm text-zinc-300 text-right shrink-0">
-                  <div>{rayProgressPct}% through this cycle</div>
-                  <div>≈ {Math.ceil(remainingAUTHours * 60)} AUT min left</div>
-                  <div>≈ {Math.ceil(remainingRealMin)} real min</div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSolDialOrientation((prev) => (prev === "tracking" ? "planning" : "tracking"))}
+                  className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
+                  title={solDialOrientation === "tracking" ? "Switch to planning mode (key faces north)" : "Switch to tracking mode (active Ray at top)"}
+                >
+                  <img
+                    src="/ray-dial-compass-toggle.png"
+                    alt={solDialOrientation === "tracking" ? "Planning mode compass" : "Tracking mode compass"}
+                    className={`h-8 w-8 object-contain transition-transform duration-300 ${solDialOrientation === "planning" ? "rotate-0" : "rotate-45"}`}
+                  />
+                </button>
               </div>
 
               <div className="flex justify-center mt-1">
@@ -6414,69 +6448,101 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
-                    {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
-                    <g>
-                      {solConicWedges.map((wedge, i) => (
-                        <path
-                          key={i}
-                          d={wedge.d}
-                          fill={wedge.color}
-                          stroke="none"
-                        />
+                    {/* Rotating ring group: in planning mode the dial rotates so active Ray aligns under fixed north key */}
+                    <g transform={solDialOrientation === "planning" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                      {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
+                      <g>
+                        {solConicWedges.map((wedge, i) => (
+                          <path
+                            key={i}
+                            d={wedge.d}
+                            fill={wedge.color}
+                            stroke="none"
+                          />
+                        ))}
+                      </g>
+                      {/* Active-segment white transparent spotlight */}
+                      {activeSegment ? (
+                        <>
+                          <path
+                            d={(() => {
+                              const mid = activeSegment.midAngle;
+                              const half = segmentAngle * 1.05;
+                              const inner = polarToCartesian(RING_INNER_RADIUS - 10, mid - half);
+                              const outerL = polarToCartesian(RING_OUTER_RADIUS + 8, mid - half);
+                              const outerR = polarToCartesian(RING_OUTER_RADIUS + 8, mid + half);
+                              const innerR = polarToCartesian(RING_INNER_RADIUS - 10, mid + half);
+                              return [
+                                "M 0 0",
+                                `L ${inner.x.toFixed(3)} ${inner.y.toFixed(3)}`,
+                                `L ${outerL.x.toFixed(3)} ${outerL.y.toFixed(3)}`,
+                                `A ${RING_OUTER_RADIUS + 8} ${RING_OUTER_RADIUS + 8} 0 0 1 ${outerR.x.toFixed(3)} ${outerR.y.toFixed(3)}`,
+                                `L ${innerR.x.toFixed(3)} ${innerR.y.toFixed(3)}`,
+                                "Z",
+                              ].join(" ");
+                            })()}
+                            fill="url(#solSpotlight)"
+                            stroke="none"
+                          />
+                        </>
+                      ) : null}
+                      {/* Labels outside the ring */}
+                      {dialSegments.map((segment) => (
+                        <text
+                          key={`label-${segment.index}`}
+                          x={segment.labelX.toFixed(3)}
+                          y={segment.labelY.toFixed(3)}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="4.4"
+                          fill={segment.ray.labelColor ?? "#e2e8f0"}
+                          style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                          transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
+                        >
+                          {segment.ray.name}
+                        </text>
                       ))}
                     </g>
-                    {/* Active-segment white transparent spotlight */}
-                    {activeSegment ? (
-                      <>
-                        <path
-                          d={(() => {
-                            const mid = activeSegment.midAngle;
-                            const half = segmentAngle * 1.05;
-                            const inner = polarToCartesian(RING_INNER_RADIUS - 10, mid - half);
-                            const outerL = polarToCartesian(RING_OUTER_RADIUS + 8, mid - half);
-                            const outerR = polarToCartesian(RING_OUTER_RADIUS + 8, mid + half);
-                            const innerR = polarToCartesian(RING_INNER_RADIUS - 10, mid + half);
-                            return [
-                              "M 0 0",
-                              `L ${inner.x.toFixed(3)} ${inner.y.toFixed(3)}`,
-                              `L ${outerL.x.toFixed(3)} ${outerL.y.toFixed(3)}`,
-                              `A ${RING_OUTER_RADIUS + 8} ${RING_OUTER_RADIUS + 8} 0 0 1 ${outerR.x.toFixed(3)} ${outerR.y.toFixed(3)}`,
-                              `L ${innerR.x.toFixed(3)} ${innerR.y.toFixed(3)}`,
-                              "Z",
-                            ].join(" ");
-                          })()}
-                          fill="url(#solSpotlight)"
-                          stroke="none"
-                        />
-                        {/* Ray Key pointer image pivoted from dial center */}
-                        <g transform={`rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
-                          <image
-                            href="/ray-key.png"
-                            x="-744.7"
-                            y="-1766"
-                            width="1414"
-                            height="2000"
-                            opacity="0.92"
+                    {/* Sol AUT cycle boundary ticks and numbers — rotate with the dial but stay upright like a Ferris wheel */}
+                    <g transform={solDialOrientation === "planning" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                      {solCycleTicks.map((tick) => (
+                        <g key={`tick-${tick.hour}`}>
+                          <line
+                            x1={tick.x1.toFixed(3)}
+                            y1={tick.y1.toFixed(3)}
+                            x2={tick.x2.toFixed(3)}
+                            y2={tick.y2.toFixed(3)}
+                            stroke="#94a3b8"
+                            strokeWidth={tick.isCardinal ? "1.0" : "0.5"}
+                            strokeLinecap="round"
+                            opacity={tick.isCardinal ? 0.9 : 0.6}
                           />
+                          <text
+                            x={tick.labelX.toFixed(3)}
+                            y={tick.labelY.toFixed(3)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize={tick.isCardinal ? "4.6" : "3.6"}
+                            fill="#e2e8f0"
+                            style={{ textShadow: "0 1px 2px rgba(15,23,42,0.9)" }}
+                            transform={solDialOrientation === "planning" ? `rotate(${(pointerAngle * 180) / Math.PI + 90}, ${tick.labelX.toFixed(3)}, ${tick.labelY.toFixed(3)})` : undefined}
+                          >
+                            {tick.label}
+                          </text>
                         </g>
-                      </>
-                    ) : null}
-                    {/* Labels outside the ring */}
-                    {dialSegments.map((segment) => (
-                      <text
-                        key={`label-${segment.index}`}
-                        x={segment.labelX.toFixed(3)}
-                        y={segment.labelY.toFixed(3)}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize="4.4"
-                        fill={segment.ray.labelColor ?? "#e2e8f0"}
-                        style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
-                        transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
-                      >
-                        {segment.ray.name}
-                      </text>
-                    ))}
+                      ))}
+                    </g>
+                    {/* Fixed north Ray Key pointer image in planning mode; points to active Ray in tracking mode */}
+                    <g transform={solDialOrientation === "planning" ? "rotate(0) scale(0.035)" : `rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                      <image
+                        href="/ray-key.png"
+                        x="-744.7"
+                        y="-1766"
+                        width="1414"
+                        height="2000"
+                        opacity="0.92"
+                      />
+                    </g>
                   </svg>
                 </div>
               </div>
