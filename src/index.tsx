@@ -6269,7 +6269,16 @@ export default function AUTClock() {
                       strokeWidth="1.6"
                       strokeLinecap="round"
                     />
-                    {/* Central indicator hub */}
+                    {/* Moon image at center */}
+                    <image
+                      href="/hsm-planets/Moon.png"
+                      x="-7"
+                      y="-7"
+                      width="14"
+                      height="14"
+                      preserveAspectRatio="xMidYMid slice"
+                      clipPath="circle(7px at 0 0)"
+                    />
                     <circle cx="0" cy="0" r="7" fill="none" stroke="#f1f5f9" strokeWidth="0.8" />
                   </svg>
                 </div>
