@@ -775,7 +775,7 @@ function MoonPhaseIcon({ phaseName, illumination }: { phaseName: string; illumin
       {isNew ? (
         <circle cx={cx} cy={cy} r={R} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
       ) : isFull ? null : (
-        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} transform={`translate(${cx}, ${cy}) scale(0.94) translate(${-cx}, ${-cy}) translate(1.5, 1.5)`} />
+        <path d={shadowPath} fill="rgba(15,23,42,0.55)" clipPath={`url(#${clipId})`} />
       )}
     </svg>
   );
@@ -2524,7 +2524,7 @@ const RAY_READINGS: Record<string, RayReading> = {
     core: "Transmutation and blessing.",
     gifts: "Spiritual refinement, energetic cleansing, ceremony, artistry as blessing.",
     ideal: "Spiritual wisdom interconnection, Greater Higher Being channeling & remembrance, transformational intentions, transmuting energies for our Heartlight's Greatest & Highest Good.",
-    affirmation: "I transmute through love.",
+    affirmation: "I transformutate through & with love.",
   },
   Magenta: {
     title: "Magenta",
