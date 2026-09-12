@@ -180,7 +180,6 @@ const RING_OUTER_RADIUS = 62;
 const RING_INNER_RADIUS = 22;
 const POINTER_RADIUS = 58;
 const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
-const RAY_LABEL_RADIUS = LABEL_RADIUS - 4;
 const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
 const RING_VIEWBOX_PADDING = 10;
 const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
@@ -524,16 +523,20 @@ function lerpColor(a: string, b: string, t: number): string {
     ca.b + (cb.b - ca.b) * t
   );
 }
-// Color for a given angle on the Luna dial: angle measured in SVG polar convention
-// (0 at 3 o'clock, increasing clockwise via the arc commands). Indigo (LUNA_TOP_INDEX) sits at -PI/2 (top).
-function colorForLunaAngle(angle: number): string {
-  const ordered = Array.from({ length: LUNA_RAY_WINDOWS.length }, (_, i) => LUNA_RAY_WINDOWS[(LUNA_TOP_INDEX + i) % LUNA_RAY_WINDOWS.length]);
+// Color for any conic Ray dial: windows ordered by `topIndex` placed at -PI/2 (top).
+function colorForRayAngle(angle: number, windows: { color: string }[], topIndex: number): string {
+  const ordered = Array.from({ length: windows.length }, (_, i) => windows[(topIndex + i) % windows.length]);
   const angleFromTop = (angle + Math.PI / 2) % (2 * Math.PI);
   if (angleFromTop < 0) return ordered[0].color;
-  const t = (angleFromTop / (2 * Math.PI)) * LUNA_RAY_WINDOWS.length;
-  const idx = Math.floor(t) % LUNA_RAY_WINDOWS.length;
-  const nextIdx = (idx + 1) % LUNA_RAY_WINDOWS.length;
+  const t = (angleFromTop / (2 * Math.PI)) * windows.length;
+  const idx = Math.floor(t) % windows.length;
+  const nextIdx = (idx + 1) % windows.length;
   return lerpColor(ordered[idx].color, ordered[nextIdx].color, t - idx);
+}
+
+// Luna-specific wrapper for backward compatibility.
+function colorForLunaAngle(angle: number): string {
+  return colorForRayAngle(angle, LUNA_RAY_WINDOWS, LUNA_TOP_INDEX);
 }
 
 function describeThinWedge(outerRadius: number, innerRadius: number, startAngle: number, endAngle: number): string {
@@ -2595,10 +2598,8 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
 };
 
-const TOP_RAY_INDEX = (() => {
-  const idx = RAY_WINDOWS.findIndex((r) => r.name === "Red");
-  return idx === -1 ? 0 : idx;
-})();
+// Sol dial anchor: ALL Ray points north (top), Red follows at 1 o'clock.
+const SOL_TOP_INDEX = RAY_WINDOWS.findIndex((r) => r.name === "ALL");
 
 // Helper: robust ray-index selection with modulo wrap & FP tolerance
 function rayIndexForAUT(hours: number): number {
@@ -3728,7 +3729,9 @@ export default function AUTClock() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
   const [clockDialMode, setClockDialMode] = useState<"sol" | "luna">("luna");
-  const [showCoords, setShowCoords] = useState(false);
+  const [_showCoords, _setShowCoords] = useState(false);
+  void _showCoords;
+  void _setShowCoords; // kept for future coordinate-toggle UI
   const panelSelectId = useId();
   const themeSelectId = useId();
   const messageInputId = useId();
@@ -4415,7 +4418,7 @@ export default function AUTClock() {
     return FALLBACK_PLACE_LABEL;
   })();
 
-  const timeZoneLine = (() => {
+  const _timeZoneLine = (() => {
     if (timeZoneStatus === "loading") return "Resolving time zone…";
     if (timeZoneStatus === "error") {
       return timeZoneError ? `Time zone unavailable (${timeZoneError})` : "Time zone unavailable.";
@@ -4430,13 +4433,15 @@ export default function AUTClock() {
     }
     return "Time zone: Device time";
   })();
+  void _timeZoneLine;
 
-  const timeZoneTone =
+  const _timeZoneTone =
     timeZoneStatus === "error"
       ? "text-amber-300"
       : timeZoneStatus === "loading"
       ? "text-zinc-400"
       : "text-zinc-400";
+  void _timeZoneTone;
 
   const locationHint = (() => {
     if (status === "granted") {
@@ -4829,14 +4834,15 @@ export default function AUTClock() {
   const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
-    const offset = Math.PI / 2 - segmentAngle / 2;
+    // Anchor ALL Ray at top (12 o'clock / north); Red follows at 1 o'clock.
+    const offset = -Math.PI / 2 - segmentAngle / 2;
     return RAY_WINDOWS.map((ray, index) => {
-      const dialPosition = ((index - TOP_RAY_INDEX + count) % count + count) % count;
+      const dialPosition = ((index - SOL_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
       const endAngle = startAngle + segmentAngle;
       const midAngle = startAngle + segmentAngle / 2;
       const path = describeWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle);
-      const labelPosition = polarToCartesian(RAY_LABEL_RADIUS, midAngle);
+      const labelPosition = polarToCartesian(RING_OUTER_RADIUS + 8, midAngle);
       const labelLines = splitRayLabel(ray.name);
       return {
         ray,
@@ -4844,6 +4850,7 @@ export default function AUTClock() {
         dialPosition,
         startAngle,
         endAngle,
+        midAngle,
         path,
         labelX: labelPosition.x,
         labelY: labelPosition.y,
@@ -4861,8 +4868,19 @@ export default function AUTClock() {
   const pointerAngle = activeSegment
     ? activeSegment.startAngle + rayProgress * segmentAngle
     : Math.PI;
-  const pointerCoord = polarToCartesian(POINTER_RADIUS, pointerAngle);
-  const pointerInner = polarToCartesian(RING_INNER_RADIUS - 6, pointerAngle);
+  // Conic-gradient ring path data for Sol dial.
+  const solConicWedges = useMemo(() => {
+    const slices = 360;
+    const step = (2 * Math.PI) / slices;
+    return Array.from({ length: slices }, (_, i) => {
+      const startAngle = -Math.PI / 2 + i * step;
+      const endAngle = startAngle + step;
+      return {
+        d: describeThinWedge(RING_OUTER_RADIUS, RING_INNER_RADIUS, startAngle, endAngle),
+        color: colorForRayAngle(startAngle + step / 2, RAY_WINDOWS, SOL_TOP_INDEX),
+      };
+    });
+  }, []);
 
   // ── Luna Ray Dial computation ──
   // The Luna Ray Dial is interconnected with the Moon's actual ecliptic longitude,
@@ -4952,7 +4970,6 @@ export default function AUTClock() {
   const lunaPointerAngle = lunaActiveSegment
     ? lunaActiveSegment.startAngle + lunaRayProgress * segmentAngle
     : Math.PI;
-  const lunaPointerCoord = polarToCartesian(POINTER_RADIUS, lunaPointerAngle);
   // Conic-gradient ring path data for Luna dial: 360 thin wedges rendered as separate paths.
   const lunaConicWedges = useMemo(() => {
     const slices = 360;
@@ -6280,9 +6297,9 @@ export default function AUTClock() {
                         {/* Luna Ray Key image: arrow-key pivoted from dial center, tip at origin, ridges right */}
                         <g transform={`rotate(${(lunaPointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
                           <image
-                            href="/luna-ray-key.png"
-                            x="-707"
-                            y="-2000"
+                            href="/ray-key.png"
+                            x="-744.7"
+                            y="-1766"
                             width="1414"
                             height="2000"
                             opacity="0.92"
@@ -6381,6 +6398,13 @@ export default function AUTClock() {
                     viewBox={ringViewBox}
                     className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
                   >
+                    <defs>
+                      <radialGradient id="solSpotlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor="#f8fafc" stopOpacity="0.28" />
+                        <stop offset="55%" stopColor="#f8fafc" stopOpacity="0.12" />
+                        <stop offset="100%" stopColor="#f8fafc" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
                     <circle
                       cx="0"
                       cy="0"
@@ -6390,48 +6414,69 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
-                    {dialSegments.map((segment) => {
-                      const isActive = segment.index === rayIndex;
-                      return (
-                        <g key={segment.index}>
-                          <path
-                            d={segment.path}
-                            fill={segment.ray.color}
-                            fillOpacity={isActive ? 1 : 0.78}
-                            stroke={isActive ? "#f8fafc" : "rgba(15,23,42,0.55)"}
-                            strokeWidth={isActive ? 1.6 : 0.6}
+                    {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
+                    <g>
+                      {solConicWedges.map((wedge, i) => (
+                        <path
+                          key={i}
+                          d={wedge.d}
+                          fill={wedge.color}
+                          stroke="none"
+                        />
+                      ))}
+                    </g>
+                    {/* Active-segment white transparent spotlight */}
+                    {activeSegment ? (
+                      <>
+                        <path
+                          d={(() => {
+                            const mid = activeSegment.midAngle;
+                            const half = segmentAngle * 1.05;
+                            const inner = polarToCartesian(RING_INNER_RADIUS - 10, mid - half);
+                            const outerL = polarToCartesian(RING_OUTER_RADIUS + 8, mid - half);
+                            const outerR = polarToCartesian(RING_OUTER_RADIUS + 8, mid + half);
+                            const innerR = polarToCartesian(RING_INNER_RADIUS - 10, mid + half);
+                            return [
+                              "M 0 0",
+                              `L ${inner.x.toFixed(3)} ${inner.y.toFixed(3)}`,
+                              `L ${outerL.x.toFixed(3)} ${outerL.y.toFixed(3)}`,
+                              `A ${RING_OUTER_RADIUS + 8} ${RING_OUTER_RADIUS + 8} 0 0 1 ${outerR.x.toFixed(3)} ${outerR.y.toFixed(3)}`,
+                              `L ${innerR.x.toFixed(3)} ${innerR.y.toFixed(3)}`,
+                              "Z",
+                            ].join(" ");
+                          })()}
+                          fill="url(#solSpotlight)"
+                          stroke="none"
+                        />
+                        {/* Ray Key pointer image pivoted from dial center */}
+                        <g transform={`rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                          <image
+                            href="/ray-key.png"
+                            x="-744.7"
+                            y="-1766"
+                            width="1414"
+                            height="2000"
+                            opacity="0.92"
                           />
-                          <text
-                            x={segment.labelX.toFixed(3)}
-                            y={segment.labelY.toFixed(3)}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            fontSize="4.1"
-                            fill={segment.ray.labelColor ?? "#e2e8f0"}
-                          >
-                            {segment.labelLines.map((line, lineIdx) => (
-                              <tspan
-                                key={`${segment.index}-${lineIdx}`}
-                                x={segment.labelX.toFixed(3)}
-                                dy={lineIdx === 0 ? (segment.labelLines.length > 1 ? "-0.2em" : "0") : "1.1em"}
-                              >
-                                {line}
-                              </tspan>
-                            ))}
-                          </text>
                         </g>
-                      );
-                    })}
-                    <line
-                      x1={pointerInner.x.toFixed(3)}
-                      y1={pointerInner.y.toFixed(3)}
-                      x2={pointerCoord.x.toFixed(3)}
-                      y2={pointerCoord.y.toFixed(3)}
-                      stroke="#f8fafc"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                    <circle cx="0" cy="0" r="6" fill="#0b1120" stroke="#f1f5f9" strokeWidth="1" />
+                      </>
+                    ) : null}
+                    {/* Labels outside the ring */}
+                    {dialSegments.map((segment) => (
+                      <text
+                        key={`label-${segment.index}`}
+                        x={segment.labelX.toFixed(3)}
+                        y={segment.labelY.toFixed(3)}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="4.4"
+                        fill={segment.ray.labelColor ?? "#e2e8f0"}
+                        style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                        transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
+                      >
+                        {segment.ray.name}
+                      </text>
+                    ))}
                   </svg>
                 </div>
               </div>
