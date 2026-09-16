@@ -30,7 +30,7 @@ export const ZODIAC_HUES = [
   "#6366f1", // 6  Libra     — Indigo
   "#8b5cf6", // 7  Scorpio   — Violet
   "#d946ef", // 8  Sagittarius — Magenta
-  "#0f0a0a", // 9  Capricorn — Omni / Carbon
+  "#ffffff", // 9  Capricorn — Omni / Carbon Ray
   "#a5f3fc", // 10 Aquarius  — Elemental
   "#7dd3fc", // 11 Pisces    — ALL
 ] as const;
@@ -80,6 +80,36 @@ export const HOUSE_THEMES = [
   "Retreat, Unconscious, Release",
 ] as const;
 
+/** Home Beings — which planetary body is home in each zodiac sign (modern home) */
+export const HOME_BEINGS = [
+  "Mars",
+  "Venus",
+  "Mercury",
+  "Moon",
+  "Sun",
+  "Mercury",
+  "Venus",
+  "Pluto",
+  "Jupiter",
+  "Saturn",
+  "Uranus",
+  "Neptune",
+] as const;
+
+/** Home Beings symbols */
+export const HOME_BEING_GLYPHS: Record<string, string> = {
+  Mars: "♂",
+  Venus: "♀",
+  Mercury: "☿",
+  Moon: "☾",
+  Sun: "☉",
+  Pluto: "♇",
+  Jupiter: "♃",
+  Saturn: "♄",
+  Uranus: "♅",
+  Neptune: "♆",
+};
+
 /* ── Types ─────────────────────────────────────────────────────────────── */
 export type ZodiacPlacement = {
   signIndex: number;
@@ -108,6 +138,8 @@ export type ExtendedChartData = {
   ic: ChartAngle;
   houses: House[];
   sun: ZodiacPlacement;
+  zenith: ZodiacPlacement;
+  planets: Array<{ body: string; placement: ZodiacPlacement }>;
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -224,6 +256,40 @@ export function buildChart(date: Date, lat: number, lon: number): ExtendedChartD
   const ascZod = zodiacFromLongitude(asc);
   houses[0] = { ...houses[0], cusp: ascZod };
 
+  // Compute zenith — the constellation directly overhead
+  const raDeg = lst; // Right Ascension = Local Sidereal Time
+  const decDeg = lat; // Declination = observer latitude
+  const raRad = (raDeg * Math.PI) / 180;
+  const decRad = (decDeg * Math.PI) / 180;
+  const oblRad = (obl * Math.PI) / 180;
+  const sinLon = Math.sin(raRad) * Math.cos(oblRad) + Math.tan(decRad) * Math.sin(oblRad);
+  const cosLon = Math.cos(raRad);
+  let zenithLon = (Math.atan2(sinLon, cosLon) * 180) / Math.PI;
+  zenithLon = wrapAngle(zenithLon);
+
+  // Compute planet placements for the chart moment
+  const time = Astronomy.MakeTime(date);
+  const planetBodies = [
+    Astronomy.Body.Moon,
+    Astronomy.Body.Mercury,
+    Astronomy.Body.Venus,
+    Astronomy.Body.Mars,
+    Astronomy.Body.Jupiter,
+    Astronomy.Body.Saturn,
+    Astronomy.Body.Uranus,
+    Astronomy.Body.Neptune,
+    Astronomy.Body.Pluto,
+  ] as const;
+  const planets = planetBodies.map((body) => {
+    const eq = Astronomy.Equator(body, time, observer, true, true);
+    const ecl = Astronomy.Ecliptic(eq.vec);
+    const lon = wrapAngle(ecl.elon);
+    return {
+      body: body as string,
+      placement: zodiacFromLongitude(lon),
+    };
+  });
+
   return {
     ascendant: { angleName: "Ascendant", ...ascZod },
     descendant: { angleName: "Descendant", ...zodiacFromLongitude(desc) },
@@ -231,6 +297,8 @@ export function buildChart(date: Date, lat: number, lon: number): ExtendedChartD
     ic: { angleName: "IC", ...zodiacFromLongitude(ic) },
     houses,
     sun: zodiacFromLongitude(sunLon),
+    zenith: zodiacFromLongitude(zenithLon),
+    planets,
   };
 }
 

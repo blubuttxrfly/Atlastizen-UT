@@ -20,6 +20,7 @@ import { AtlasCometMap } from "./comet/AtlasCometMap";
 import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
+import GaiaRayDial from "./components/GaiaRayDial";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
 import { useSmoothLunaAUT } from "./hooks/useSmoothLunaAUT";
 import { Crosshair, Settings, Moon, Sun } from "lucide-react";
@@ -191,7 +192,7 @@ const ATLAS_ACTIVE_THEME_STORAGE_KEY = "aut-atlas-active-theme";
 const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "clock", label: "AUT Clock" },
   { id: "cosmic", label: "Cosmic Calendar" },
-  { id: "sol", label: "Sol Panel" },
+  { id: "sol", label: "Gaia-Sol Ray Dial" },
   { id: "luna", label: "Luna Panel" },
   { id: "compass", label: "Gyro Compass" },
   { id: "heartlight", label: "Ray Astrology" },
@@ -2286,7 +2287,7 @@ const WEEK_RAY_CYCLES: WeeklyRayCycle[] = [
     cycle: 1,
     name: "Carbon Red",
     code: "CR",
-    description: "Emerging Carbon (black hue) into Red (CR) opens Saturday.",
+    description: "Emerging Omni (white hue) into Red (CR) opens Saturday.",
     color: "#0f0a0a",
     labelColor: "#f8fafc",
   },
@@ -3728,8 +3729,8 @@ export default function AUTClock() {
   const [showPostRequirement, setShowPostRequirement] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
-  const [clockDialMode, setClockDialMode] = useState<"sol" | "luna">("luna");
-  const [solDialOrientation, setSolDialOrientation] = useState<"tracking" | "planning">("tracking");
+  const [clockDialMode, setClockDialMode] = useState<"luna" | "gaia" | "sol">("gaia");
+  const [solDialOrientation, setSolDialOrientation] = useState<"heartlight" | "zenith">("zenith");
   const [_showCoords, _setShowCoords] = useState(false);
   void _showCoords;
   void _setShowCoords; // kept for future coordinate-toggle UI
@@ -4889,9 +4890,9 @@ export default function AUTClock() {
     return Array.from({ length: 13 }, (_, i) => {
       const hour = i; // 0..12, with 0/12 at north
       const angle = -Math.PI / 2 + (hour / 12) * (2 * Math.PI);
-      // Small outward nubs outside the colored ring
-      const inner = polarToCartesian(RING_OUTER_RADIUS + 1, angle);
-      const outer = polarToCartesian(RING_OUTER_RADIUS + 4, angle);
+      // Tick marks with breathing room outside the colored ring
+      const inner = polarToCartesian(RING_OUTER_RADIUS + 0.5, angle);
+      const outer = polarToCartesian(RING_OUTER_RADIUS + 5, angle);
       const labelPos = polarToCartesian(RING_OUTER_RADIUS + 10, angle);
       const isCardinal = hour % 3 === 0;
       return {
@@ -4966,7 +4967,7 @@ export default function AUTClock() {
   const lunaDialSegments = useMemo(() => {
     const count = LUNA_RAY_WINDOWS.length;
     // Anchor Indigo/Libra at top (12 o'clock, -PI/2 in SVG polar convention).
-    const offset = -Math.PI / 2 - segmentAngle / 2;
+    const offset = -Math.PI / 2;
     return LUNA_RAY_WINDOWS.map((ray, index) => {
       const dialPosition = ((index - LUNA_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
@@ -5452,13 +5453,21 @@ export default function AUTClock() {
                 onClick={() => setActivePanel("clock")}
                 title="Ray Dial"
               >
-                <div
-                  className="h-7 w-7 sm:h-9 sm:w-9 rounded-full"
-                  style={{
-                    background:
-                      "conic-gradient(from -15deg, #6366f1 0deg 30deg, #8b5cf6 30deg 60deg, #d946ef 60deg 90deg, #fafafa 90deg 120deg, #a5f3fc 120deg 150deg, #7dd3fc 150deg 180deg, #ef4444 180deg 210deg, #fb923c 210deg 240deg, #facc15 240deg 270deg, #22c55e 270deg 300deg, #2dd4bf 300deg 330deg, #3b82f6 330deg 360deg)",
-                  }}
-                />
+                <div className="relative h-7 w-7 sm:h-9 sm:w-9 rounded-full overflow-hidden">
+                  <div
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background:
+                        "conic-gradient(from 0deg, #6366f1 0deg, #8b5cf6 30deg, #d946ef 60deg, #ffffff 90deg, #a5f3fc 120deg, #7dd3fc 150deg, #ef4444 180deg, #f97316 210deg, #facc15 240deg, #22c55e 270deg, #2dd4bf 300deg, #3b82f6 330deg, #6366f1 360deg)",
+                    }}
+                  />
+                  <img
+                    src="/ray-key.png"
+                    alt=""
+                    className="absolute top-1/2 left-1/2 h-[60%] w-auto object-contain opacity-90 pointer-events-none"
+                    style={{ transform: "translate(-50%, -50%)" }}
+                  />
+                </div>
               </button>
               <button
                 type="button"
@@ -6236,6 +6245,18 @@ export default function AUTClock() {
               </button>
               <button
                 type="button"
+                aria-pressed={clockDialMode === "gaia"}
+                onClick={() => setClockDialMode("gaia")}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                  clockDialMode === "gaia"
+                    ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100 shadow-md shadow-emerald-500/20"
+                    : "border-zinc-600/50 bg-zinc-800/40 text-zinc-400 hover:bg-zinc-700/40 hover:text-zinc-200"
+                }`}
+              >
+                Gaia
+              </button>
+              <button
+                type="button"
                 aria-pressed={clockDialMode === "sol"}
                 onClick={() => setClockDialMode("sol")}
                 className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
@@ -6401,6 +6422,9 @@ export default function AUTClock() {
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Sol Ray Dial</div>
+                  <div className="text-[10px] text-zinc-400">
+                    The Ray Key faces your zenith, aligned with the active cycle.
+                  </div>
                   <div className="text-lg font-semibold" style={{ color: activeRay.color }}>
                     Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
                   </div>
@@ -6414,14 +6438,14 @@ export default function AUTClock() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSolDialOrientation((prev) => (prev === "tracking" ? "planning" : "tracking"))}
+                  onClick={() => setSolDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
                   className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
-                  title={solDialOrientation === "tracking" ? "Switch to planning mode (key faces north)" : "Switch to tracking mode (active Ray at top)"}
+                  title={solDialOrientation === "heartlight" ? "Switch to Zenith (Ray Key faces upward)" : "Switch to Heartlight Alignment (Intuitive compass orientation)"}
                 >
                   <img
                     src="/ray-dial-compass-toggle.png"
-                    alt={solDialOrientation === "tracking" ? "Planning mode compass" : "Tracking mode compass"}
-                    className={`h-8 w-8 object-contain transition-transform duration-300 ${solDialOrientation === "planning" ? "rotate-0" : "rotate-45"}`}
+                    alt={solDialOrientation === "heartlight" ? "Heartlight mode compass" : "Zenith mode compass"}
+                    className={`h-8 w-8 object-contain transition-transform duration-300 ${solDialOrientation === "zenith" ? "rotate-0" : "rotate-45"}`}
                   />
                 </button>
               </div>
@@ -6448,8 +6472,8 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
-                    {/* Rotating ring group: in planning mode the dial rotates so active Ray aligns under fixed north key */}
-                    <g transform={solDialOrientation === "planning" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                    {/* Rotating ring group: in zenith mode the dial rotates so active Ray aligns under fixed north key */}
+                    <g transform={solDialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
                       {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
                       <g>
                         {solConicWedges.map((wedge, i) => (
@@ -6504,7 +6528,7 @@ export default function AUTClock() {
                       ))}
                     </g>
                     {/* Sol AUT cycle boundary ticks and numbers — rotate with the dial but stay upright like a Ferris wheel */}
-                    <g transform={solDialOrientation === "planning" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                    <g transform={solDialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
                       {solCycleTicks.map((tick) => (
                         <g key={`tick-${tick.hour}`}>
                           <line
@@ -6525,15 +6549,15 @@ export default function AUTClock() {
                             fontSize={tick.isCardinal ? "4.6" : "3.6"}
                             fill="#e2e8f0"
                             style={{ textShadow: "0 1px 2px rgba(15,23,42,0.9)" }}
-                            transform={solDialOrientation === "planning" ? `rotate(${(pointerAngle * 180) / Math.PI + 90}, ${tick.labelX.toFixed(3)}, ${tick.labelY.toFixed(3)})` : undefined}
+                            transform={solDialOrientation === "zenith" ? `rotate(${(pointerAngle * 180) / Math.PI + 90}, ${tick.labelX.toFixed(3)}, ${tick.labelY.toFixed(3)})` : undefined}
                           >
                             {tick.label}
                           </text>
                         </g>
                       ))}
                     </g>
-                    {/* Fixed north Ray Key pointer image in planning mode; points to active Ray in tracking mode */}
-                    <g transform={solDialOrientation === "planning" ? "rotate(0) scale(0.035)" : `rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                    {/* Fixed north Ray Key pointer image in zenith mode; points to active Ray in Heartlight mode */}
+                    <g transform={solDialOrientation === "zenith" ? "rotate(0) scale(0.035)" : `rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
                       <image
                         href="/ray-key.png"
                         x="-744.7"
@@ -6575,6 +6599,21 @@ export default function AUTClock() {
                   </div>
                 </div>
               </div>
+            </div>
+            )}
+
+            {/* ── Gaia Ray Dial (when toggled to Gaia) ── */}
+            {clockDialMode === "gaia" && (
+            <div className="mt-1 space-y-3 overflow-hidden rounded-2xl p-3 sm:p-4"
+            >
+              <GaiaRayDial
+                lat={coords.lat}
+                lon={coords.lon}
+                sunriseDate={data.sunriseLocal}
+                sunsetDate={data.sunsetLocal}
+                now={now}
+                rayReadings={RAY_READINGS}
+              />
             </div>
             )}
 

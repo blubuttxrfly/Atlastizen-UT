@@ -6,6 +6,8 @@ import {
   type ExtendedChartData,
   type ChartAngle,
   HOUSE_THEMES,
+  HOME_BEINGS,
+  HOME_BEING_GLYPHS,
   buildChart,
   buildLiveChart,
   buildNatalChart,
@@ -151,7 +153,7 @@ const ZODIAC_HUES = [
   "#6366f1", // Libra
   "#8b5cf6", // Scorpio
   "#d946ef", // Sagittarius
-  "#0f0a0a", // Capricorn (Carbon)
+  "#ffffff", // Capricorn (Omni)
   "#a5f3fc", // Aquarius (Elemental)
   "#7dd3fc", // Pisces (ALL)
 ];
@@ -1778,16 +1780,16 @@ function HeartlightSystemMap() {
             className="flex w-full items-center justify-between font-semibold text-sky-100"
             onClick={() => setHouseInfoOpen((v) => !v)}
           >
-            <span>House Information</span>
+            <span>Home Information</span>
             <span className="text-xs text-sky-200/80">{houseInfoOpen ? "Hide" : "Show"}</span>
           </button>
           {houseInfoOpen ? (
             <div className="mt-2 space-y-3 text-[0.8rem] text-slate-100">
               <p className="text-slate-200">
-                The 12 houses are the 12 slices of the sky at your birth moment. Each represents a sphere of life experience. Unlike the zodiac signs (fixed star patterns), the houses are determined by Earth&apos;s rotation and your location on the planet.
+                The 12 Homes are the 12 slices of the sky at your birth moment. Each represents a sphere of life experience. The zodiac signs are fixed star patterns, and the Homes are determined by our Earth&apos;s rotation and your location on the planet.
               </p>
               <p className="text-slate-200">
-                House 1 begins at the <strong className="text-sky-100">Ascendant</strong> — the eastern horizon. The remaining houses follow counter-clockwise.
+                Home 1 begins at the Ascendant, the eastern horizon. The remaining Homes follow counter-clockwise.
               </p>
               <div className="mt-1 space-y-1.5">
                 {Array.from({ length: 12 }, (_, i) => {
@@ -1798,7 +1800,7 @@ function HeartlightSystemMap() {
                     : { color: hue };
                   return (
                     <div key={i} className="flex flex-wrap items-start gap-x-2 border-b border-sky-500/10 pb-1.5 last:border-b-0 last:pb-0">
-                      <span className="font-semibold shrink-0" style={labelStyle}>{`House ${i + 1} — ${ZODIAC_RAY_NAMES[i]}`}</span>
+                      <span className="font-semibold shrink-0" style={labelStyle}>{`Home ${i + 1}, ${ZODIAC_RAY_NAMES[i]}`}</span>
                       <span className="text-slate-200">{HOUSE_THEMES[i]}</span>
                     </div>
                   );
@@ -1807,7 +1809,7 @@ function HeartlightSystemMap() {
               <div className="rounded-md border border-sky-500/20 bg-sky-900/20 p-2.5">
                 <span className="text-xs font-semibold text-sky-300">C.E.S. Cosmology: Elemental Ray</span>
                 <p className="mt-1 text-xs leading-relaxed text-sky-200/70">
-                  House 11 resonates with the <strong className="text-sky-300">Elemental Ray</strong> honoring our Universe&apos;s C.E.S. — Crystalline-Carbon. Carbon is the foundational element of our reality: carbon-based life forms and the structural basis of our Universe itself.
+                  Home 11 resonates with the <strong className="text-sky-300">Elemental Ray</strong> honoring our Universe&apos;s C.E.S., Crystalline-Carbon. Carbon is the foundational element of our reality, carbon-based life forms and the structural basis of our Universe itself.
                 </p>
               </div>
             </div>
@@ -2148,7 +2150,7 @@ function ChartPanel({
         </div>
       )}
 
-      {/* Four angles */}
+      {/* Four angles + Zenith */}
       {chartData && (
         <>
           <div className="grid grid-cols-2 gap-2">
@@ -2157,6 +2159,16 @@ function ChartPanel({
             <AngleCard angle={chartData.midheaven} label="Midheaven (MC)" />
             <AngleCard angle={chartData.ic} label="IC (Imum Coeli)" />
           </div>
+          {/* Zenith Ray Alignment */}
+          <div className="rounded-md border border-sky-500/20 bg-slate-900/60 px-3 py-2 space-y-1">
+            <div className="text-[0.65rem] uppercase tracking-wide text-sky-200/60">Zenith Ray Alignment</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-lg" style={carbonTextStyle(chartData.zenith.signIndex)}>{chartData.zenith.signSymbol}</span>
+              <span className="text-sm font-semibold text-slate-100">{chartData.zenith.signName} {chartData.zenith.degrees}°{chartData.zenith.minutes > 0 ? ` ${chartData.zenith.minutes}'` : ""}</span>
+              <span className="ml-auto text-xs" style={carbonTextStyle(chartData.zenith.signIndex)}>{ZODIAC_RAY_NAMES[chartData.zenith.signIndex]}</span>
+            </div>
+            <div className="text-[0.65rem] text-slate-300">The constellation directly overhead. The astrological Z of complete present alignment.</div>
+          </div>
           {/* Sun */}
           <div className="flex items-center gap-2 rounded-md border border-sky-500/10 bg-slate-900/40 px-2.5 py-1.5">
             <span className="text-sm font-semibold text-sky-100">Sun:</span>
@@ -2164,16 +2176,16 @@ function ChartPanel({
             <span className="text-sm font-medium text-slate-200">{chartData.sun.signName} {chartData.sun.degrees}°</span>
             <span className="ml-auto text-xs" style={carbonTextStyle(chartData.sun.signIndex)}>{ZODIAC_RAY_NAMES[chartData.sun.signIndex]}</span>
           </div>
-          {/* Houses: 1–6 left column, 7–12 right column */}
+          {/* Homes: 1–6 left column, 7–12 right column */}
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               {chartData.houses.slice(0, 6).map((h) => (
-                <HouseRow key={h.houseNumber} house={h} />
+                <HomeRow key={h.houseNumber} house={h} planets={chartData.planets} />
               ))}
             </div>
             <div className="flex flex-col gap-1">
               {chartData.houses.slice(6, 12).map((h) => (
-                <HouseRow key={h.houseNumber} house={h} />
+                <HomeRow key={h.houseNumber} house={h} planets={chartData.planets} />
               ))}
             </div>
           </div>
@@ -2251,29 +2263,40 @@ function AngleCard({ angle, label }: { angle: ChartAngle; label: string }) {
   );
 }
 
-function HouseRow({ house }: { house: import("../lib/extendedChart").House }) {
+function HomeRow({ house, planets }: { house: import("../lib/extendedChart").House; planets: Array<{ body: string; placement: import("../lib/extendedChart").ZodiacPlacement }> }) {
   const isCarbon = house.cusp.signIndex === CAPRICORN_INDEX;
+  const homeBeing = HOME_BEINGS[house.cusp.signIndex];
+  const homeGlyph = HOME_BEING_GLYPHS[homeBeing] ?? "";
+  const occupants = planets.filter((p) => p.placement.signIndex === house.cusp.signIndex);
   return (
-    <div className="flex items-center gap-2 rounded-md border border-sky-500/10 bg-slate-900/40 px-2 py-1.5">
-      <div
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-bold ${isCarbon ? "text-white border border-white/40" : "text-white"}`}
-        style={{ backgroundColor: house.rayColor }}
-      >
-        {house.houseNumber}
+    <div className="flex flex-col gap-1 rounded-md border border-sky-500/10 bg-slate-900/40 px-2 py-1.5">
+      <div className="flex items-center gap-2">
+        <div
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-bold ${isCarbon ? "text-white border border-white/40" : "text-white"}`}
+          style={{ backgroundColor: house.rayColor }}
+        >
+          {house.houseNumber}
+        </div>
+        <span
+          className="text-[0.8rem] font-medium text-slate-200 shrink-0"
+          style={isCarbon ? { WebkitTextStroke: "0.3px rgba(255,255,255,0.6)", textShadow: "0 0 4px rgba(255,255,255,0.4)" } : undefined}
+        >
+          {house.cusp.signSymbol} {house.cusp.signName}
+        </span>
+        <span className="text-[0.65rem] text-slate-400 truncate">{house.theme}</span>
+        <span
+          className="ml-auto text-[0.65rem] font-medium shrink-0"
+          style={carbonTextStyle(house.cusp.signIndex)}
+        >
+          {house.rayName}
+        </span>
       </div>
-      <span
-        className="text-[0.8rem] font-medium text-slate-200 shrink-0"
-        style={isCarbon ? { WebkitTextStroke: "0.3px rgba(255,255,255,0.6)", textShadow: "0 0 4px rgba(255,255,255,0.4)" } : undefined}
-      >
-        {house.cusp.signSymbol} {house.cusp.signName}
-      </span>
-      <span className="text-[0.65rem] text-slate-400 truncate">{house.theme}</span>
-      <span
-        className="ml-auto text-[0.65rem] font-medium shrink-0"
-        style={carbonTextStyle(house.cusp.signIndex)}
-      >
-        {house.rayName}
-      </span>
+      <div className="flex items-center gap-1 text-[0.6rem] text-slate-500">
+        <span>{homeGlyph} {homeBeing} home is here</span>
+        {occupants.length > 0 && (
+          <span className="text-slate-400">, visited by: {occupants.map((o) => o.body).join(", ")}</span>
+        )}
+      </div>
     </div>
   );
 }
