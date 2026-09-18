@@ -15,6 +15,7 @@ type Props = {
   sunriseDate: Date;
   sunsetDate: Date;
   now: Date;
+  onActiveRayChange?: (ray: { name: string; color: string }) => void;
   rayReadings: Record<string, { title: string; core: string; gifts: string; ideal: string; affirmation: string }>;
 };
 
@@ -98,7 +99,7 @@ function readingKey(rayName: string): string {
   return rayName.replace(" Ray", "").split(" / ")[0].trim();
 }
 
-export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, rayReadings }: Props) {
+export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, rayReadings, onActiveRayChange }: Props) {
   const [orientation, setOrientation] = useState<"heartlight" | "zenith">("zenith");
 
   const liveChart = useMemo(() => computeLiveAlignments(lat, lon, now), [lat, lon, now]);
@@ -113,6 +114,13 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
 
   const gaiaRayIndex = earthFacing.signIndex;
   const gaiaRay = GAIA_RAY_WINDOWS[gaiaRayIndex];
+
+  // Report active Gaia Ray up to parent for sparkle theming
+  useMemo(() => {
+    if (onActiveRayChange && gaiaRay) {
+      onActiveRayChange({ name: gaiaRay.name, color: gaiaRay.color });
+    }
+  }, [gaiaRay, onActiveRayChange]);
 
   // Exact degree progress within the active segment (0..1)
   const rayProgress = (earthFacing.longitude % 30) / 30;
@@ -184,8 +192,9 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1 min-w-0">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div />
+        <div className="text-center space-y-1 min-w-0">
           <div className="text-xs uppercase tracking-wide text-zinc-400">
             Astro Gaia Ray Dial
           </div>
@@ -196,30 +205,32 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
             The Ray Key faces your zenith, the constellation directly overhead.
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))
-          }
-          className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
-          title={
-            orientation === "heartlight"
-              ? "Switch to Zenith (Ray Key faces upward)"
-              : "Switch to Heartlight Alignment (Intuitive compass orientation)"
-          }
-        >
-          <img
-            src="/ray-dial-compass-toggle.png"
-            alt={
-              orientation === "heartlight"
-                ? "Heartlight mode compass"
-                : "Zenith mode compass"
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              setOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))
             }
-            className={`h-8 w-8 object-contain transition-transform duration-300 ${
-              orientation === "zenith" ? "rotate-0" : "rotate-45"
-            }`}
-          />
-        </button>
+            className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
+            title={
+              orientation === "heartlight"
+                ? "Switch to Zenith (Ray Key faces upward)"
+                : "Switch to Heartlight Alignment (Intuitive compass orientation)"
+            }
+          >
+            <img
+              src="/ray-dial-compass-toggle.png"
+              alt={
+                orientation === "heartlight"
+                  ? "Heartlight mode compass"
+                  : "Zenith mode compass"
+              }
+              className={`h-8 w-8 object-contain transition-transform duration-300 ${
+                orientation === "zenith" ? "rotate-0" : "rotate-45"
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* SVG Gaia dial */}

@@ -34,6 +34,11 @@ export type CosmicCalendarPanelProps = {
   autDateLabel?: string;
   autEarthSolarCyclesLabel?: string;
   autLunarCyclesLabel?: string;
+  lunaCycleLabel?: string;
+  lunaYearLabel?: string;
+  moonThresholdLabel?: string;
+  resonantRayLabel?: string;
+  resonantRayColor?: string;
   localTimeLabel?: string;
   localDateLabel?: string;
   locationLabel?: string;
@@ -47,6 +52,11 @@ export function CosmicCalendarPanel({
   autDateLabel,
   autEarthSolarCyclesLabel,
   autLunarCyclesLabel,
+  lunaCycleLabel,
+  lunaYearLabel,
+  moonThresholdLabel,
+  resonantRayLabel,
+  resonantRayColor,
   localTimeLabel,
   localDateLabel,
   locationLabel,
@@ -147,6 +157,36 @@ export function CosmicCalendarPanel({
             Cumulative synodic lunar cycles (New Moon → New Moon) since Moon formation. Anchor ≈4.51B years ago; mean
             synodic month 29.530588853 days. Creation of ALL sets AUT Year 0; AUT-M tracks the Moon’s journey across
             that cosmic span.
+          </p>
+        </article>
+      ) : null}
+
+      {(lunaCycleLabel || lunaYearLabel) ? (
+        <article className="themed-subcard p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.24em] text-cyan-200/80">Luna Year</div>
+              <div className="text-3xl font-semibold text-white tabular-nums">{lunaYearLabel ?? "—"}</div>
+            </div>
+            <span className="rounded-full border border-cyan-300/50 bg-cyan-500/15 px-3 py-1 text-[11px] uppercase tracking-wide text-cyan-100">
+              {moonThresholdLabel ?? "Moon — of 12"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-200">
+            <span>Luna Cycle:</span>
+            <span className="font-semibold">{lunaCycleLabel ?? "—"}</span>
+            {resonantRayLabel && resonantRayColor ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="text-slate-400">· Resonant Ray:</span>
+                <span className="font-semibold" style={{ color: resonantRayColor }}>{resonantRayLabel}</span>
+              </span>
+            ) : null}
+          </div>
+          <p className="text-sm leading-relaxed text-slate-200">
+            Sacred 12-Ray lunar canon anchored to March 26, 0005 CE, a New Moon Hybrid Solar Eclipse in Aries.
+            The Vernal Equinox of that year arrived around March 23-24 in the Julian calendar, placing this epoch 2-3 days after the celestial gate opened.
+            Our Sun stood at the threshold of Aries, the zero-degree moment when ecliptic longitude reaches exactly 0° and day and night hold perfect balance.
+            Luna Year 1 begins at this epoch, each sacred year spans 12 complete synodic cycles (~354 days), and each Moon Threshold carries the frequency of its corresponding Ray.
           </p>
         </article>
       ) : null}

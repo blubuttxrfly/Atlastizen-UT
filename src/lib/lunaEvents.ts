@@ -444,6 +444,22 @@ export type NextPhaseEvent = {
   daysUntil: number;
 };
 
+/* ── Find the most recent New Moon before a given date ── */
+export function getRecentNewMoon(date: Date = new Date()): Date | null {
+  try {
+    // Search backward for the most recent New Moon
+    // Start searching from 60 days before the given date
+    const searchStart = new Date(date.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const result = SearchMoonPhase(0, searchStart, 60);
+    if (result && result.date.getTime() <= date.getTime()) {
+      return result.date;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const PHASE_TARGETS: Array<{ name: string; targetAngle: number; lunaAut: string }> = [
   { name: "New Moon", targetAngle: 0, lunaAut: "00:00:00" },
   { name: "First Quarter", targetAngle: 90, lunaAut: "06:00:00" },
