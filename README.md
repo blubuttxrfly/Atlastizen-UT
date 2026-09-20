@@ -1,8 +1,8 @@
 # AUT Time & Tools 📟
 
-**A celestial-resonant time system and living toolkit for sovereign beings, aligned through Sol, Luna, and the Heartlight of ALL that IS.**
+**A celestial-resonant time system and living toolkit for sovereign beings, aligned through Luna, Gaia, Sol and the Heartlight of ALL that IS.**
 
-AUT (Atlastizen Universal Time) is a location-aware, sun-centered time format that divides each day into 12 sacred segments aligned to your local sunrise and sunset. Built as a progressive web experience with deep astrological, meteorological, and spiritual tooling.
+AUT (Atlastizen Universal Time/Technology) is a location-aware, sun-centered time format that divides each day into 12 sacred segments aligned to your local sunrise and sunset. Built as a progressive web experience with deep astrological, meteorological, and spiritual tooling.
 
 This repository holds a **living prototype**. The astronomical calculations powering the Ray Dials, Luna Cycles, and Cosmic Calendar draw from publicly available ephemeris engines, including NASA JPL Horizons data and the open-source `astronomy-engine` library by Don Cross. These engines are accessible to ALL beings with an internet connection and a willingness to learn.
 
@@ -10,15 +10,15 @@ This repository holds a **living prototype**. The astronomical calculations powe
 
 ## Core Philosophy 🌞
 
-Most clocks divide the day into 24 fixed hours without regard for where you stand or what the sky is doing. AUT measures the living rhythm of light and shadow at your exact coordinates through **three sacred Zenith points**: Sol Zenith (our Sun at highest point), Luna Zenith (our Moon at peak), and the present alignment of your Heartlight with ALL that IS. Dawn marks the beginning. Sol Zenith marks the apex. Dusk marks the turning. Luna Zenith marks the emotional and intuitive peak of the cycle. These three Zenith points together form a tripod of sovereign awareness, grounding you in celestial truth.
+Most clocks divide the day into 24 fixed hours without regard for where you stand or what the sky is doing. AUT measures the living rhythm of light and shadow at your exact coordinates through **three sacred Zenith points**: Sol Zenith (our Sun at highest point), Luna Zenith (our Moon at peak), and the present alignment of your Heartlight with ALL that IS. Dawn records the beginning. Sol Zenith records the apex. Dusk records the turning. Luna Zenith records the emotional and intuitive peak of the cycle. These three Zenith points together form a trinity of sovereign awareness, grounding you in celestial truth.
 
-Our life ancestry on Earth has ALL-ways carried a sacred interconnection with our Sun, our Moon, and the greater cosmos. We have been reading these lights for eons as our internal compass. Our Sun set forth life beginning, melting away icy terrains through ages, revealing the sacred divine spark of life from our ocean. Our Moon pulls the tides within our bodies and across our Earth. Together, Sol and Luna weave the pattern that ALL beings dance within.
+Our life ancestry on Gaia(Earth) has ALL-ways carried a sacred interconnection with Sol(Sun), Luna(Moon), and the greater cosmos. We have been reading these lights for eons as our internal compass. Sol set forth life beginning, melting away icy terrains through ages, revealing the sacred divine spark of life from our ocean. Luna pulls the tides within our bodies and across Gaia. Together, Sol and Luna weave the pattern that ALL beings dance within.
 
-The 12 Ray frequencies are interconnected patterns with ALL that IS, expressions of Universal Light Language experienced as felt vibration, color, and virtue. Each Ray is a word in the vocabulary of our Universe of ALL, inviting embodiment, healing, and remembrance.
+The 12 Ray frequencies are interconnected patterns with ALL that IS, expressions of Universal Light Language experienced as felt vibration, color, and virtue. Each Ray is a frequency articulated as a word of our Universe of ALL, inviting embodiment, healing, and remembrance.
 
 ---
 
-## About the Creator 🦋
+## About the Creator 🌈🦋🐦‍🔥
 
 **Zaria Morphoenix** is an Artist of Life, Energy Healer, Channel of Ray Frequencies of Heartlight, Co-Creator of the Heartlight Collective, and Multidimensional Being of ALL that IS. This app is a living expression of their calling to help beings align with the interconnectedness of the cosmos and our healing life journey.
 
@@ -56,18 +56,18 @@ The 12 Ray frequencies are interconnected patterns with ALL that IS, expressions
 
 ---
 
-## The Three Ray Dials 🌈
+## The Ray Dials 🌈
 
 The AUT Ray Dial page contains three interconnected rotating dials, each tracking a different celestial body through the 12 sacred Ray frequencies:
 
 ### AUT / Sol Ray Dial
-The primary dial. Tracks our Sun through the day, mapping your local solar cycle into 12 sacred segments. Dawn marks 00:00 AUT, Sol Zenith is 03:00 AUT, Dusk is 06:00 AUT, and New Dawn resets at 12:00 AUT. Features a ferris-wheel effect that keeps zodiac symbols upright in Zenith mode.
+The primary dial. Tracks our Sun through the day, mapping your local solar cycle into 12 sacred segments. Dawn is 00:00 AUT, Sol Zenith is 03:00 AUT, Dusk is 06:00 AUT, and New Dawn resets at 12:00 AUT. Features a ferris-wheel effect that keeps zodiac symbols upright in Zenith mode.
 
 ### Luna Ray Dial
 Tracks our Moon through its synodic cycle, displaying current phase, illumination percentage, zodiac sign, and active Ray frequency. Features a 12-Moon Threshold tracker with Ray-colored dots showing progress through the current Luna Year. Zenith mode is default, with rotating dial and upright zodiac symbols.
 
 ### Astro Gaia Ray Dial
-Tracks our Earth through the zodiac from a geocentric perspective, displaying the current astrological season and active Ray frequency. Features the same ferris-wheel effect for upright symbols in Zenith mode.
+Tracks Gaia through the zodiac from a geocentric perspective, displaying the current astrological season and active Ray frequency. Features the same ferris-wheel effect for upright symbols in Zenith mode.
 
 ---
 
@@ -125,7 +125,7 @@ The Luna Year is a sacred 12-Moon calendar anchored to **March 26, 0005 CE**, a 
 |-------|------|
 | **Normal** | Subtle aurora gradients with emerald accents |
 | **Retro Sci-Fi** | Emerald vector-grid nostalgia with phosphor glow |
-| **Atlas Island** | Gilded temple-tech, midnight teal with violet-gold glow, plus Lux (brighter) and Umbra (deeper) tone variants |
+| **Atlas Island** | Gilded temple-tech, Multi-Ray hue selector, midnight teal with violet-gold glow, plus Lux (brighter) and Umbra (deeper) tone variants |
 
 ---
 
