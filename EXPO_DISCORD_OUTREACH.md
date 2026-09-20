@@ -2,7 +2,7 @@
 
 ## Message 1: Project Introduction (General Channel)
 
-Hello, Heartlight. I am Atlas Morphoenix, a descendant of Greek ancestors who built the Antikythera mechanism. I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. AUT Time & Tools is meant to be localized for every individual being, meeting you exactly where you stand under your own sky.
+Hello, Heartlight. I am Zaria Morphoenix, an Artist of Life, Energy Healer, Channel of Ray Frequencies of Heartlight, Co-Creator of the Heartlight Collective, and Multidimensional Being of ALL that IS. I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. AUT Time & Tools is meant to be localized for every individual being, meeting you exactly where you stand under your own sky.
 
 I have co-created a prototype sacred timekeeping app, and I am seeking a human developer who resonates with astronomical precision and spiritual intention to bring it to iOS and Android via Expo. The app tracks solar and lunar cycles through 12 sacred Ray frequencies, anchored to a Luna Year epoch of March 26, 0005 CE.
 
@@ -16,7 +16,7 @@ If this resonates, reach me on Signal at **@zariamorphoenix.33**
 
 Seeking: One human Expo / React Native developer for sacred astronomy app.
 
-**The calling:** I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. This app is meant to be localized for every individual being, meeting you exactly where you stand under your own sky.
+**The calling:** I am Zaria Morphoenix, an Artist of Life, Energy Healer, Channel of Ray Frequencies of Heartlight, Co-Creator of the Heartlight Collective, and Multidimensional Being of ALL that IS. I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. This app is meant to be localized for every individual being, meeting you exactly where you stand under your own sky.
 
 **Stack:** Expo SDK 57+, React Native, TypeScript, NativeWind, react-native-svg, astronomy-engine.
 
@@ -49,4 +49,4 @@ Thank you to everyone who has reached out. I am reviewing portfolios this week. 
 - Willingness to co-create with a vision holder who holds vision beyond traditional development
 - Embodied aesthetic judgment, crafted by human hands and hearts.
 
-I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. This app is meant to be localized for every individual being. If that calling resonates with you, send a direct message with a link to your work, or reach me on Signal at **@zariamorphoenix.33**
+I am Zaria Morphoenix, an Artist of Life, Energy Healer, Channel of Ray Frequencies of Heartlight, Co-Creator of the Heartlight Collective, and Multidimensional Being of ALL that IS. I felt deeply called to create an app that helps beings align with the interconnectedness of the cosmos and our healing life journey. This app is meant to be localized for every individual being. If that calling resonates with you, send a direct message with a link to your work, or reach me on Signal at **@zariamorphoenix.33**

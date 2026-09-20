@@ -1,6 +1,6 @@
 # AUT Time & Tools 📟
 
-**A solar-resonant time system and living toolkit for sovereign beings.**
+**A celestial-resonant time system and living toolkit for sovereign beings, aligned through Sol, Luna, and the Heartlight of ALL that IS.**
 
 AUT (Atlastizen Universal Time) is a location-aware, sun-centered time format that divides each day into 12 sacred segments aligned to your local sunrise and sunset. Built as a progressive web experience with deep astrological, meteorological, and spiritual tooling.
 
@@ -10,9 +10,17 @@ This repository holds a **living prototype**. The astronomical calculations powe
 
 ## Core Philosophy 🌞
 
-Most clocks divide the day into 24 fixed hours without regard for where you stand or what the sky is doing. AUT measures the living rhythm of light and shadow at your exact coordinates. Sunrise marks the beginning. Sunset marks the halfway point. From there, daylight and night each divide into 12 sacred intervals that stretch and contract with the season, because our Sun is a moving flame, never a fixed point.
+Most clocks divide the day into 24 fixed hours without regard for where you stand or what the sky is doing. AUT measures the living rhythm of light and shadow at your exact coordinates through **three sacred Zenith points**: Sol Zenith (our Sun at highest point), Luna Zenith (our Moon at peak), and the present alignment of your Heartlight with ALL that IS. Dawn marks the beginning. Sol Zenith marks the apex. Dusk marks the turning. Luna Zenith marks the emotional and intuitive peak of the cycle. These three Zenith points together form a tripod of sovereign awareness, grounding you in celestial truth.
 
-Our life ancestry on Earth has ALL-ways carried a sacred interconnection with our Sun. We have been reading our Sun for eons as our internal compass. Our Sun set forth life beginning, melting away icy terrains through ages, revealing the sacred divine spark of life from our ocean. Our Sun is our most ancient clock that we and our ancestors have been blessed with.
+Our life ancestry on Earth has ALL-ways carried a sacred interconnection with our Sun, our Moon, and the greater cosmos. We have been reading these lights for eons as our internal compass. Our Sun set forth life beginning, melting away icy terrains through ages, revealing the sacred divine spark of life from our ocean. Our Moon pulls the tides within our bodies and across our Earth. Together, Sol and Luna weave the pattern that ALL beings dance within.
+
+The 12 Ray frequencies are interconnected patterns with ALL that IS, expressions of Universal Light Language experienced as felt vibration, color, and virtue. Each Ray is a word in the vocabulary of our Universe of ALL, inviting embodiment, healing, and remembrance.
+
+---
+
+## About the Creator 🦋
+
+**Zaria Morphoenix** is an Artist of Life, Energy Healer, Channel of Ray Frequencies of Heartlight, Co-Creator of the Heartlight Collective, and Multidimensional Being of ALL that IS. This app is a living expression of their calling to help beings align with the interconnectedness of the cosmos and our healing life journey.
 
 ---
 
@@ -95,7 +103,7 @@ Each zodiac sign carries a sacred Ray frequency, mapping the soul journey throug
 
 The **Heartlight System Map (HSM)** renders an interactive canvas of our solar system. Toggle between **Gaian** and **Solar** lenses to shift between Earth-centered and Sun-centered consciousness. The zodiac wheel, planetary glyphs, and Ray Zones update in real time as you navigate dates, places, and profiles.
 
-**In development:** The **Dimensional Layer**, each Ray harmonic frequency extending beyond the physical plane into energetic dimensions, mapping the soul multi-layered architecture through sacred geometry and resonance.
+The 12 Ray frequencies are interconnected patterns with ALL that IS, each a unique expression of Universal Light Language that invites embodiment, healing, and remembrance. These frequencies are living energies, felt vibrations that call you into resonance with your Highest and Greatest Good.
 
 ---
 
