@@ -194,7 +194,7 @@ const RING_INNER_RADIUS = 22;
 const POINTER_RADIUS = 58;
 const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
 const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
-const RING_VIEWBOX_PADDING = 44;
+const RING_VIEWBOX_PADDING = 30;
 const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
 const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
@@ -4779,8 +4779,8 @@ export default function AUTClock() {
      No auto-sync to now — the user controls time navigation. */
 
   const ringSizeClass = PRESENT_ONLY
-    ? "max-w-[20rem] sm:max-w-[24rem] xl:max-w-[28rem]"
-    : "max-w-[24rem] sm:max-w-[28rem] lg:max-w-[32rem] xl:max-w-[36rem]";
+    ? "max-w-[24rem] sm:max-w-[28rem] xl:max-w-[32rem]"
+    : "max-w-[28rem] sm:max-w-[32rem] lg:max-w-[36rem] xl:max-w-[40rem]";
   const weekRingSizeClass =
     "max-w-[18rem] sm:max-w-[21rem] lg:max-w-[23rem]";
   const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
@@ -6302,7 +6302,7 @@ export default function AUTClock() {
 
             {/* ── Luna Ray Dial ── */}
             {clockDialMode === "luna" && (
-            <div className="mt-1 space-y-3">
+            <div className="mt-1 space-y-2">
               <div className="flex justify-center">
                   <DateTimeSelector
                     pendingDate={pendingDate}
@@ -6596,7 +6596,7 @@ export default function AUTClock() {
 
             {/* ── Sol Ray Dial (when toggled to Sol) ── */}
             {clockDialMode === "sol" && (
-            <div className="mt-1 space-y-3">
+            <div className="mt-1 space-y-2">
               <div className="flex justify-center">
                   <DateTimeSelector
                     pendingDate={pendingDate}
@@ -6942,7 +6942,7 @@ export default function AUTClock() {
 
             {/* ── Gaia Ray Dial (when toggled to Gaia) ── */}
             {clockDialMode === "gaia" && (
-            <div className="mt-1 space-y-3">
+            <div className="mt-1 space-y-2">
               <div className="flex justify-center">
                   <DateTimeSelector
                     pendingDate={pendingDate}
