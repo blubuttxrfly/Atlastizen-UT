@@ -71,11 +71,7 @@ ANCHOR_DATE.setUTCFullYear(5);
 function normalizeLon(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
-
-function zodiacSign(lon: number): string {
-  const signs = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
-  return signs[Math.floor(normalizeLon(lon) / 30) % 12];
-}
+void normalizeLon;
 
 /* ── The 12 Coligny months as thresholds — CANONICAL ORDER ──
    Index 0 = Samonios (1), through Index 11 = Cantlos (12/0).

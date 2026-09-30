@@ -395,6 +395,8 @@ export type ColignyReading = {
   lunationStart: Date;
   /** The next new moon (for synodic length) */
   nextNewMoon: Date | null;
+  /** Number of new moons since the epoch */
+  newMoonsSinceEpoch: number;
 };
 
 /**
@@ -475,6 +477,7 @@ export function getColignyReading(date: Date): ColignyReading {
     moonEclipticLon: moonLon,
     lunationStart: currentNewMoon.date,
     nextNewMoon: nextNewMoon?.date ?? null,
+    newMoonsSinceEpoch,
   };
 }
 

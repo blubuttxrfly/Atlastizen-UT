@@ -164,6 +164,7 @@ export function LunaGaiaSolRayDial({
       return { signIndex: 0, signName: "Aries", longitude: 0, degrees: 0, minutes: 0, signSymbol: "♈" };
     }
   }, [date, lat, lon]);
+  void zenith;
 
   /* Rotation anchored on current month's ecliptic threshold + lunation progress.
      This tracks where we ARE in the LUNAR month on the ecliptic wheel.
