@@ -21,10 +21,20 @@ import { THEME_PRESETS, type UITheme } from "./config/themePresets";
 import { DAYS_PER_YEAR_APPROX, MOON_FORMATION_YEARS_AGO, SYNODIC_MONTH_DAYS, EARTH_FORMATION_YEARS_AGO } from "./config/autDate";
 import { CosmicCalendarPanel } from "./components/CosmicCalendarPanel";
 import GaiaRayDial from "./components/GaiaRayDial";
+import { LunaGaiaSolRayDial } from "./components/LunaGaiaSolRayDial";
+import { DateTimeSelector } from "./components/DateTimeSelector";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
 
 import { Crosshair, Settings, Moon, Sun } from "lucide-react";
-import { getMoonRayFrequency, getMoonPhaseAngle, getUpcomingEclipses, getUpcomingMoonPhases } from "./lib/lunaEvents";
+import { getMoonRayFrequency, getMoonPhaseAngle, getUpcomingEclipses, getUpcomingMoonPhases, getSunRayFrequency } from "./lib/lunaEvents";
+import {
+  getLunaSolSeasonInfo,
+  getCurrentLunationProgress,
+  getCurrentColignyMonth,
+  COLIGNY_MONTHS,
+  type Hemisphere,
+} from "./lib/lunaSolSeason";
+import { getColignyReading } from "./lib/colignyCalendar";
 
 /**
  * AUT Time & Tools — Live Clock
@@ -121,6 +131,8 @@ type PanelId =
   | "cosmic"
   | "sol"
   | "luna"
+  | "coligny"
+  | "lunaSolSeason"
   | "compass"
   | "heartlight"
   | "coreSignature"
@@ -130,7 +142,7 @@ type PanelId =
   | "atmosphere"
   | "postal"
   | "settings";
-type RayWindow = { name: string; start: number; end: number; color: string; labelColor?: string };
+type RayWindow = { name: string; start: number; end: number; color: string; labelColor?: string; sign?: string; symbol?: string };
 type RayWindowTimes = {
   start: { aut: string; local: string };
   end: { aut: string; local: string };
@@ -182,7 +194,7 @@ const RING_INNER_RADIUS = 22;
 const POINTER_RADIUS = 58;
 const LABEL_RADIUS = (RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2;
 const WEEK_LABEL_RADIUS = LABEL_RADIUS - 2;
-const RING_VIEWBOX_PADDING = 16;
+const RING_VIEWBOX_PADDING = 44;
 const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
 const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 const COMPASS_CARDINALS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
@@ -194,7 +206,9 @@ const PANEL_OPTIONS: Array<{ id: PanelId; label: string }> = [
   { id: "cosmic", label: "Cosmic Calendar" },
   { id: "sol", label: "Sol Panel" },
   { id: "luna", label: "Luna Panel" },
+  { id: "coligny", label: "Luna Gaia Sol Calendar" },
   { id: "compass", label: "Gyro Compass" },
+  { id: "lunaSolSeason", label: "Luna Sol Ray Dial" },
   { id: "heartlight", label: "Ray Astrology" },
   { id: "community", label: "Community" },
   { id: "weekrays", label: "Rays of the Week" },
@@ -2214,18 +2228,18 @@ function useAliceAndPWA() {
 
 // Ray windows: 12 windows across 12 AUT hours (1h each)
 const RAY_WINDOWS: RayWindow[] = [
-  { name: "Red", start: 0, end: 1, color: "#ef4444" },
-  { name: "Orange", start: 1, end: 2, color: "#f97316" },
-  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc" },
-  { name: "Green", start: 3, end: 4, color: "#22c55e" },
-  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf" },
-  { name: "Blue", start: 5, end: 6, color: "#3b82f6" },
-  { name: "Indigo", start: 6, end: 7, color: "#6366f1" },
-  { name: "Violet", start: 7, end: 8, color: "#8b5cf6" },
-  { name: "Magenta", start: 8, end: 9, color: "#d946ef" },
-  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc" },
-  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc" },
-  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc" },
+  { name: "Red", start: 0, end: 1, color: "#ef4444", sign: "Aries", symbol: "\u2648\uFE0E" },
+  { name: "Orange", start: 1, end: 2, color: "#f97316", sign: "Taurus", symbol: "\u2649\uFE0E" },
+  { name: "Yellow", start: 2, end: 3, color: "#facc15", labelColor: "#f8fafc", sign: "Gemini", symbol: "\u264A\uFE0E" },
+  { name: "Green", start: 3, end: 4, color: "#22c55e", sign: "Cancer", symbol: "\u264B\uFE0E" },
+  { name: "Turquoise", start: 4, end: 5, color: "#2dd4bf", sign: "Leo", symbol: "\u264C\uFE0E" },
+  { name: "Blue", start: 5, end: 6, color: "#3b82f6", sign: "Virgo", symbol: "\u264D\uFE0E" },
+  { name: "Indigo", start: 6, end: 7, color: "#6366f1", sign: "Libra", symbol: "\u264E\uFE0E" },
+  { name: "Violet", start: 7, end: 8, color: "#8b5cf6", sign: "Scorpio", symbol: "\u264F\uFE0E" },
+  { name: "Magenta", start: 8, end: 9, color: "#d946ef", sign: "Sagittarius", symbol: "\u2650\uFE0E" },
+  { name: "Omni", start: 9, end: 10, color: "#fafafa", labelColor: "#f8fafc", sign: "Capricorn", symbol: "\u2651\uFE0E" },
+  { name: "Elemental", start: 10, end: 11, color: "#a5f3fc", labelColor: "#f8fafc", sign: "Aquarius", symbol: "\u2652\uFE0E" },
+  { name: "ALL", start: 11, end: 12, color: "#7dd3fc", labelColor: "#f8fafc", sign: "Pisces", symbol: "\u2653\uFE0E" },
 ];
 
 // Luna Ray Windows — 12 Ray frequencies mapped across the synodic month (~29.53 days).
@@ -2599,8 +2613,9 @@ const RAY_READINGS: Record<string, RayReading> = {
   },
 };
 
-// Sol dial anchor: ALL Ray points north (top), Red follows at 1 o'clock.
-const SOL_TOP_INDEX = RAY_WINDOWS.findIndex((r) => r.name === "ALL");
+// Sol dial anchor: Indigo/Libra at top (North), matching Mabon (180° ecliptic).
+// This aligns the Sol Ray Dial with the Luna Ray Dial and the LGS Ray Dial.
+const SOL_TOP_INDEX = RAY_WINDOWS.findIndex((r) => r.name === "Indigo");
 
 // Helper: robust ray-index selection with modulo wrap & FP tolerance
 function rayIndexForAUT(hours: number): number {
@@ -3731,8 +3746,9 @@ export default function AUTClock() {
   const [activePanel, setActivePanel] = useState<PanelId>("clock");
   const [clockDialMode, setClockDialMode] = useState<"luna" | "gaia" | "sol">("gaia");
   const [gaiaActiveRay, setGaiaActiveRay] = useState<{ name: string; color: string } | null>(null);
-  const [solDialOrientation, setSolDialOrientation] = useState<"heartlight" | "zenith">("zenith");
-  const [lunaDialOrientation, setLunaDialOrientation] = useState<"heartlight" | "zenith">("heartlight");
+  const [dialOrientation, setDialOrientation] = useState<"heartlight" | "zenith">("zenith");
+  const [dialDate, setDialDate] = useState<Date>(new Date());
+  const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [_showCoords, _setShowCoords] = useState(false);
   void _showCoords;
   void _setShowCoords; // kept for future coordinate-toggle UI
@@ -4228,26 +4244,46 @@ export default function AUTClock() {
     return () => window.removeEventListener("deviceorientation", handler, true);
   }, [compassStatus]);
 
+  /* ── Sol effective date: always follows dialDate (user controls time navigation) ── */
+  const solEffectiveDate = dialDate;
+  /* ── Luna effective date: same pattern, shared with luna computations ── */
+  const lunaEffectiveDate = dialDate;
+
+  /* ── Samhain Radiant Glow ──
+     Gradual iridescent glow building from Oct 12 to Oct 31 (traditional threshold).
+     Fades out over the following 3 days (Nov 1-3). */
+  const samhainGlowIntensity = useMemo(() => {
+    const date = solEffectiveDate;
+    const year = date.getFullYear();
+    const oct12 = new Date(year, 9, 12).getTime();
+    const oct31 = new Date(year, 9, 31).getTime();
+    const nov3 = new Date(year, 10, 3).getTime();
+    const t = date.getTime();
+    if (t < oct12 || t > nov3) return 0;
+    if (t <= oct31) return Math.min(1, (t - oct12) / (oct31 - oct12));
+    return Math.max(0, (nov3 - t) / (nov3 - oct31));
+  }, [solEffectiveDate.toDateString()]);
+
   const data = useMemo<AUTResult>(
-    () => computeAUT(now, coords.lat, coords.lon),
-    [now, coords]
+    () => computeAUT(solEffectiveDate, coords.lat, coords.lon),
+    [solEffectiveDate, coords]
   );
   const smoothClock = useSmoothAUT(data.autHours, data.cycleLenMin);
 
   const sol = useMemo(() => {
     try {
-      return SolRuntime.now(coords.lat, coords.lon, now);
+      return SolRuntime.now(coords.lat, coords.lon, solEffectiveDate);
     } catch {
       return null;
     }
-  }, [coords.lat, coords.lon, now]);
+  }, [coords.lat, coords.lon, solEffectiveDate]);
   const luna = useMemo(() => {
     try {
-      return LunaRuntime.now(coords.lat, coords.lon, now);
+      return LunaRuntime.now(coords.lat, coords.lon, lunaEffectiveDate);
     } catch {
       return null;
     }
-  }, [coords.lat, coords.lon, now]);
+  }, [coords.lat, coords.lon, lunaEffectiveDate]);
   const solArc = useMemo(() => buildHorizonArc(sol?.track ?? [], now), [sol, now]);
   const moonArc = useMemo(() => buildHorizonArc(luna?.tonight ?? [], now), [luna, now]);
   const pct = Math.max(0, Math.min(100, Math.round(data.progress * 100)));
@@ -4318,7 +4354,51 @@ export default function AUTClock() {
   const moonAzStr = luna ? `${((luna.azDeg + 360) % 360).toFixed(1)}°` : "—";
   const moonIllumPct = luna ? Math.round(luna.illum * 100) : null;
   const moonPhaseName = luna?.phaseName ?? "—";
-  const solsticeLinked = !!luna && Math.abs(luna.decDeg) >= 23.44;
+  const moonDecStr = luna ? `${luna.decDeg >= 0 ? "+" : ""}${luna.decDeg.toFixed(2)}°` : "—";
+  const [hemisphere, setHemisphere] = useState<Hemisphere>(coords.lat >= 0 ? "northern" : "southern");
+  useEffect(() => {
+    setHemisphere(coords.lat >= 0 ? "northern" : "southern");
+  }, [coords.lat]);
+  const lunaSolSeason = useMemo(() => {
+    return getLunaSolSeasonInfo(solEffectiveDate, hemisphere);
+  }, [solEffectiveDate.toDateString(), hemisphere]);
+  const colignyReading = useMemo(() => {
+    return getColignyReading(now);
+  }, [now.toDateString()]);
+  const lunation = getCurrentLunationProgress(now);
+
+  const lunaColignyReading = useMemo(() => {
+    return getColignyReading(lunaEffectiveDate);
+  }, [lunaEffectiveDate.toDateString()]);
+
+  /* ── Heartlight Alignment mode: Coligny month + Sol ecliptic for dialDate ── */
+  const heartlightColignyMonth = useMemo(() => {
+    if (dialOrientation !== "heartlight") return null;
+    return getCurrentColignyMonth(dialDate);
+  }, [dialDate, dialOrientation]);
+
+  /* Live Sol zodiac placement for Sol Ray Dial header + Celtic gates (both modes) */
+  const solZodiacPlacement = useMemo(() => {
+    try {
+      const effectiveDate = dialOrientation === "heartlight" ? dialDate : now;
+      return getSunRayFrequency(effectiveDate, coords.lat, coords.lon);
+    } catch {
+      return null;
+    }
+  }, [dialOrientation, dialDate, now, coords.lat, coords.lon]);
+
+  /* Celtic gate data for Sol Ray Dial Heartlight mode */
+  const HEARTLIGHT_GATE_DATA = [
+    { name: "Ostara", eclipticDeg: 0, color: "#ef4444" },
+    { name: "Beltane", eclipticDeg: 45, color: "#f97316" },
+    { name: "Litha", eclipticDeg: 90, color: "#facc15" },
+    { name: "Lughnasadh", eclipticDeg: 135, color: "#2dd4bf" },
+    { name: "Mabon", eclipticDeg: 180, color: "#6366f1" },
+    { name: "Samhain", eclipticDeg: 225, color: "#8b5cf6" },
+    { name: "Yule", eclipticDeg: 270, color: "#d946ef" },
+    { name: "Imbolc", eclipticDeg: 315, color: "#a5f3fc" },
+  ];
+
   const solRiseAut = sol?.rise ? computeAUT(sol.rise, coords.lat, coords.lon).autClock : "—";
   const solTransitAut = sol?.transit
     ? computeAUT(sol.transit, coords.lat, coords.lon).autClock
@@ -4695,9 +4775,14 @@ export default function AUTClock() {
   }, [uiTheme, activeRay?.color, gaiaActiveRay?.color, clockDialMode, sparkleEnabled]);
   const segmentAngle = (2 * Math.PI) / RAY_WINDOWS.length;
   const progressPct = Math.round(rayProgress * 100);
+
+  /* dialDate + pendingDate are controlled by the DateTimeSelector.
+     Set applies the selected date, Current snaps back to live now.
+     No auto-sync to now — the user controls time navigation. */
+
   const ringSizeClass = PRESENT_ONLY
-    ? "max-w-[16rem] sm:max-w-[19rem] xl:max-w-[22rem]"
-    : "max-w-[18rem] sm:max-w-[20rem] lg:max-w-[24rem] xl:max-w-[26rem]";
+    ? "max-w-[20rem] sm:max-w-[24rem] xl:max-w-[28rem]"
+    : "max-w-[24rem] sm:max-w-[28rem] lg:max-w-[32rem] xl:max-w-[36rem]";
   const weekRingSizeClass =
     "max-w-[18rem] sm:max-w-[21rem] lg:max-w-[23rem]";
   const weekRingLayoutClass = "flex flex-col items-center justify-center gap-6";
@@ -4830,9 +4915,9 @@ export default function AUTClock() {
   const [openRayIdx, setOpenRayIdx] = useState(() => rayIndex);
   const dialSegments = useMemo(() => {
     const count = RAY_WINDOWS.length;
-    // Anchor cycle boundaries at clock-hour positions: ALL/Red boundary at 12 o'clock,
-    // so 1 o'clock = Red/Orange, 2 o'clock = Orange/Yellow (start of Yellow), etc.
-    const offset = -Math.PI / 2 - segmentAngle;
+    // Anchor Indigo/Libra at top (12 o'clock, -PI/2 in SVG polar convention),
+    // matching Luna and Gaia dials. Blue/Indigo cusp = North.
+    const offset = -Math.PI / 2;
     return RAY_WINDOWS.map((ray, index) => {
       const dialPosition = ((index - SOL_TOP_INDEX + count) % count + count) % count;
       const startAngle = offset + dialPosition * segmentAngle;
@@ -4878,11 +4963,12 @@ export default function AUTClock() {
       };
     });
   }, []);
-  // Sol cycle boundary ticks and AUT hour numbers (0/12 at north, 1-11 clockwise).
+  // Sol cycle boundary ticks and AUT hour numbers (6 at north, matching Indigo/Libra anchor).
   const solCycleTicks = useMemo(() => {
     return Array.from({ length: 13 }, (_, i) => {
-      const hour = i; // 0..12, with 0/12 at north
-      const angle = -Math.PI / 2 + (hour / 12) * (2 * Math.PI);
+      const hour = i; // 0..12
+      // Shift so hour 6 (Indigo start) is at north (-PI/2), matching the dial segment anchor
+      const angle = -Math.PI / 2 + ((hour - 6) / 12) * (2 * Math.PI);
       // Tick marks with breathing room outside the colored ring
       const inner = polarToCartesian(RING_OUTER_RADIUS + 0.5, angle);
       const outer = polarToCartesian(RING_OUTER_RADIUS + 5, angle);
@@ -4910,11 +4996,11 @@ export default function AUTClock() {
   // currently occupies, and each sign maps to a Ray frequency.
   const lunaMoonRayInfo = useMemo(() => {
     try {
-      return getMoonRayFrequency(now, coords.lat, coords.lon);
+      return getMoonRayFrequency(lunaEffectiveDate, coords.lat, coords.lon);
     } catch {
       return null;
     }
-  }, [now, coords.lat, coords.lon]);
+  }, [lunaEffectiveDate, coords.lat, coords.lon]);
 
   // The Moon's ecliptic longitude in degrees [0..360).
   const lunaMoonLon = lunaMoonRayInfo?.longitude ?? 0;
@@ -4937,6 +5023,24 @@ export default function AUTClock() {
 
   const lunaRayProgressPct = Math.round(lunaRayProgress * 100);
 
+  /* ── Coligny month outer ring offset ──
+     Positions the outer month ring so the current month's midpoint
+     aligns with the Moon's actual ecliptic position on the inner ring.
+     This creates the unique alignment visible each Luna Year. */
+  const colignyMonthIndex = heartlightColignyMonth
+    ? COLIGNY_MONTHS.findIndex((m) => m.name === heartlightColignyMonth.name)
+    : COLIGNY_MONTHS.findIndex((m) => m.name === lunaSolSeason.currentMonth.name);
+  const colignyMonthOffset = useMemo(() => {
+    // Moon's angle on the inner ring (degrees clockwise from top)
+    // Indigo/Libra (180 degrees ecliptic) is at top
+    const moonAngleFromTop = ((normalizeDegrees(lunaMoonLon) - 180 + 360) % 360);
+    // Current month midpoint in a sequential 12-sector layout
+    const idx = colignyMonthIndex >= 0 ? colignyMonthIndex : 0;
+    const monthMidpoint = (idx + 0.5) * 30; // 30 degrees per sector
+    // Offset so current month midpoint = Moon angle
+    return (moonAngleFromTop - monthMidpoint + 360) % 360;
+  }, [lunaMoonLon, colignyMonthIndex]);
+
   // Days remaining in this zodiac sector (approximate based on Moon's orbital speed).
   // Moon moves ~13.2°/day, so 30° takes ~2.27 days.
   const MOON_DEG_PER_DAY = 13.2;
@@ -4945,11 +5049,11 @@ export default function AUTClock() {
   // Lunar age for display (phase angle → days through synodic month).
   const lunaPhaseAngle = useMemo(() => {
     try {
-      return getMoonPhaseAngle(now);
+      return getMoonPhaseAngle(lunaEffectiveDate);
     } catch {
       return 0;
     }
-  }, [now]);
+  }, [lunaEffectiveDate]);
   const lunarAgeDays = useMemo(
     () => (normalizeDegrees(lunaPhaseAngle) / 360) * SYNODIC_MONTH_DAYS,
     [lunaPhaseAngle]
@@ -5034,11 +5138,11 @@ export default function AUTClock() {
 
   const upcomingMoonPhases = useMemo(() => {
     try {
-      return getUpcomingMoonPhases(now, 4);
+      return getUpcomingMoonPhases(lunaEffectiveDate, 4);
     } catch {
       return [];
     }
-  }, [now]);
+  }, [lunaEffectiveDate.toDateString()]);
 
   const atmosphereSample = atmosphere.sample;
   const atmosphereStatusLine = (() => {
@@ -6201,31 +6305,43 @@ export default function AUTClock() {
             {/* ── Luna Ray Dial ── */}
             {clockDialMode === "luna" && (
             <div className="mt-1 space-y-3">
+              <div className="flex justify-center">
+                  <DateTimeSelector
+                    pendingDate={pendingDate}
+                    onPendingChange={setPendingDate}
+                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onCurrent={() => {
+                      const liveNow = new Date(now);
+                      setDialDate(liveNow);
+                      setPendingDate(liveNow);
+                    }}
+                  />
+                </div>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div />
                 <div className="text-center space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
                   <div className="text-[10px] text-zinc-400">
-                    A 24-hour lunar phase dial from New Moon to Full Moon.
+                    Our Moon's ecliptic journey through the 12 sacred Ray frequencies.
                   </div>
                   <div className="text-lg font-semibold" style={{ color: lunaActiveRay.color }}>
                     {lunaActiveRay.sign} {lunaActiveRay.symbol} {lunaActiveRay.name} Ray
                   </div>
                   <div className="text-sm text-zinc-300">
-                    {moonIllumPct ?? "—"}% Illuminated · {lunaRayProgressPct}% through {lunaActiveRay.sign}
+                    Luna Day {lunaColignyReading.day} of {lunaColignyReading.ciallos.active ? lunaColignyReading.ciallos.totalDays : (lunaColignyReading.monthType === "MAT" ? 30 : 29)} of {lunaColignyReading.month.name}{lunaColignyReading.ciallos.active ? " (Ciallos)" : ""}
                   </div>
                 </div>
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() => setLunaDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
+                    onClick={() => setDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
                     className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
-                    title={lunaDialOrientation === "heartlight" ? "Switch to Zenith (Ray Key faces upward)" : "Switch to Heartlight Alignment (Intuitive compass orientation)"}
+                    title={dialOrientation === "heartlight" ? "Switch to Zenith Mode (live present-moment tracking)" : "Switch to Heartlight Alignment (date navigation + celestial rings)"}
                   >
                     <img
                       src="/ray-dial-compass-toggle.png"
-                      alt={lunaDialOrientation === "heartlight" ? "Heartlight mode compass" : "Zenith mode compass"}
-                      className={`h-8 w-8 object-contain transition-transform duration-300 ${lunaDialOrientation === "zenith" ? "rotate-0" : "rotate-45"}`}
+                      alt={dialOrientation === "heartlight" ? "Heartlight mode compass" : "Zenith mode compass"}
+                      className={`h-8 w-8 object-contain transition-transform duration-300 ${dialOrientation === "zenith" ? "rotate-0" : "rotate-45"}`}
                     />
                   </button>
                 </div>
@@ -6236,6 +6352,7 @@ export default function AUTClock() {
                   <svg
                     viewBox={ringViewBox}
                     className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                    style={{ overflow: "visible" }}
                   >
                     <defs>
                       <radialGradient id="lunaSpotlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse">
@@ -6243,6 +6360,17 @@ export default function AUTClock() {
                         <stop offset="55%" stopColor="#f8fafc" stopOpacity="0.12" />
                         <stop offset="100%" stopColor="#f8fafc" stopOpacity="0" />
                       </radialGradient>
+                      {samhainGlowIntensity > 0 && (
+                        <radialGradient id="samhainGlowLuna" cx="0" cy="0" r={RING_OUTER_RADIUS + 40} gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#d946ef" stopOpacity={1.0 * samhainGlowIntensity}>
+                            <animate attributeName="stopColor" values="#d946ef;#8b5cf6;#7dd3fc;#d946ef" dur="8s" repeatCount="indefinite" />
+                          </stop>
+                          <stop offset="35%" stopColor="#8b5cf6" stopOpacity={0.7 * samhainGlowIntensity}>
+                            <animate attributeName="stopColor" values="#8b5cf6;#7dd3fc;#d946ef;#8b5cf6" dur="8s" repeatCount="indefinite" />
+                          </stop>
+                          <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0" />
+                        </radialGradient>
+                      )}
                     </defs>
                     <circle
                       cx="0"
@@ -6253,8 +6381,13 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
+                    {samhainGlowIntensity > 0 && (
+                      <circle cx="0" cy="0" r={RING_OUTER_RADIUS + 40} fill="url(#samhainGlowLuna)">
+                        <animate attributeName="opacity" values={`${samhainGlowIntensity * 0.7};${samhainGlowIntensity};${samhainGlowIntensity * 0.7}`} dur="4s" repeatCount="indefinite" />
+                      </circle>
+                    )}
                     {/* Rotating ring group: in zenith mode the dial rotates so active Ray aligns under fixed north key */}
-                    <g transform={lunaDialOrientation === "zenith" ? `rotate(${-(lunaPointerAngle * 180) / Math.PI - 90})` : undefined}>
+                    <g transform={dialOrientation === "zenith" ? `rotate(${-(lunaPointerAngle * 180) / Math.PI - 90})` : undefined}>
                       {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
                       <g>
                         {lunaConicWedges.map((wedge, i) => (
@@ -6291,7 +6424,7 @@ export default function AUTClock() {
                           />
                         </>
                       ) : null}
-                      {/* Labels outside the ring: zodiac symbols inside, names outside */}
+                      {/* Labels: zodiac symbols inside ring, Ray names tangent to outer edge */}
                       {lunaDialSegments.map((segment) => (
                         <g key={`label-${segment.index}`}>
                           <text
@@ -6302,6 +6435,7 @@ export default function AUTClock() {
                             fontSize="5.2"
                             fill={segment.ray.labelColor ?? "#e2e8f0"}
                             style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                            transform={dialOrientation === "zenith" ? `rotate(${((lunaPointerAngle * 180) / Math.PI + 90)}, ${segment.symbolX.toFixed(3)}, ${segment.symbolY.toFixed(3)})` : undefined}
                           >
                             {segment.ray.symbol}
                           </text>
@@ -6311,7 +6445,7 @@ export default function AUTClock() {
                             textAnchor="middle"
                             dominantBaseline="middle"
                             fontSize="4.0"
-                            fill="#e2e8f0"
+                            fill={segment.ray.labelColor ?? "#e2e8f0"}
                             style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
                             transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
                           >
@@ -6319,9 +6453,79 @@ export default function AUTClock() {
                           </text>
                         </g>
                       ))}
+
+                      {/* ── Coligny month outer ring ──
+                          Rotates WITH the inner ring in Zenith mode; stays fixed
+                          in Heartlight Alignment mode. Current month aligns with
+                          the Ray Key at top. */}
+                      {(() => {
+                        const outerR = RING_OUTER_RADIUS + 22;
+                        const outerInnerR = RING_OUTER_RADIUS + 12;
+                        const offsetDeg = colignyMonthOffset;
+                        const offsetRad = offsetDeg * (Math.PI / 180);
+                        const currentName = heartlightColignyMonth?.name ?? lunaSolSeason.currentMonth.name;
+                        return (
+                          <g>
+                            {COLIGNY_MONTHS.map((month, i) => {
+                              const sectorStart = -Math.PI / 2 + offsetRad + i * (2 * Math.PI / 12);
+                              const sectorEnd = sectorStart + (2 * Math.PI / 12);
+                              const midAngle = (sectorStart + sectorEnd) / 2;
+                              const isCurrent = month.name === currentName;
+                              const innerStart = polarToCartesian(outerInnerR, sectorStart);
+                              const outerStart = polarToCartesian(outerR, sectorStart);
+                              const innerEnd = polarToCartesian(outerInnerR, sectorEnd);
+                              const outerEnd = polarToCartesian(outerR, sectorEnd);
+                              const largeArc = (2 * Math.PI / 12) <= Math.PI ? "0" : "1";
+                              const path = [
+                                `M ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+                                `L ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
+                                `A ${outerR} ${outerR} 0 ${largeArc} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
+                                `L ${innerEnd.x.toFixed(3)} ${innerEnd.y.toFixed(3)}`,
+                                `A ${outerInnerR} ${outerInnerR} 0 ${largeArc} 0 ${innerStart.x.toFixed(3)} ${innerStart.y.toFixed(3)}`,
+                                "Z",
+                              ].join(" ");
+                              const labelPos = polarToCartesian((outerR + outerInnerR) / 2, midAngle);
+                              const labelDeg = (midAngle * 180) / Math.PI + 90;
+                              return (
+                                <g key={`cm-${month.name}`}>
+                                  <path
+                                    d={path}
+                                    fill={isCurrent ? "rgba(125,211,252,0.12)" : "rgba(30,41,59,0.3)"}
+                                    stroke={isCurrent ? "rgba(125,211,252,0.5)" : "rgba(100,116,139,0.2)"}
+                                    strokeWidth={isCurrent ? "0.6" : "0.3"}
+                                  />
+                                  {isCurrent && (
+                                    <path
+                                      d={path}
+                                      fill="none"
+                                      stroke="rgba(125,211,252,0.25)"
+                                      strokeWidth="1.5"
+                                      filter="url(#gateGlow)"
+                                    />
+                                  )}
+                                  <text
+                                    x={labelPos.x.toFixed(3)}
+                                    y={labelPos.y.toFixed(3)}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fontSize={isCurrent ? "3.4" : "2.8"}
+                                    fontWeight={isCurrent ? "bold" : "normal"}
+                                    fill={isCurrent ? "#f8fafc" : "rgba(226,232,240,0.40)"}
+                                    style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                                    transform={`rotate(${labelDeg.toFixed(1)}, ${labelPos.x.toFixed(3)}, ${labelPos.y.toFixed(3)})`}
+                                  >
+                                    {month.name}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                          </g>
+                        );
+                      })()}
                     </g>
+
                     {/* Fixed north Ray Key pointer image in zenith mode; points to active Ray in Heartlight mode */}
-                    <g transform={lunaDialOrientation === "zenith" ? "rotate(0) scale(0.035)" : `rotate(${(lunaPointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                    <g transform={dialOrientation === "zenith" ? "rotate(0) scale(0.035)" : `rotate(${(lunaPointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
                       <image
                         href="/ray-key.png"
                         x="-744.7"
@@ -6339,32 +6543,54 @@ export default function AUTClock() {
                 </div>
               </div>
 
-              <div className="themed-subcard p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
-                    style={{ backgroundColor: lunaActiveRay.color }}
-                  />
-                  <div className="space-y-2">
-                    <div className="text-base font-semibold text-zinc-50">
-                      {RAY_READINGS[lunaActiveRay.name]?.title ?? `${lunaActiveRay.sign} ${lunaActiveRay.symbol} ${lunaActiveRay.name} Ray`}
-                    </div>
-                    {RAY_READINGS[lunaActiveRay.name] ? (
-                      <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
-                        <div><span className="font-semibold text-zinc-100">Core Energetic Signature: </span>{RAY_READINGS[lunaActiveRay.name].core}</div>
-                        <div><span className="font-semibold text-zinc-100">Gifts: </span>{RAY_READINGS[lunaActiveRay.name].gifts}</div>
-                        <div><span className="font-semibold text-zinc-100">Ideal For: </span>{RAY_READINGS[lunaActiveRay.name].ideal}</div>
-                        <div><span className="font-semibold text-zinc-100">Affirmation: </span>{RAY_READINGS[lunaActiveRay.name].affirmation}</div>
+              {/* Luna Ray Frequency */}
+              {lunaMoonRayInfo && (
+                <div className="themed-subcard p-4 space-y-2">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Frequency</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{lunaMoonRayInfo.zodiacSymbol}</span>
+                    <div>
+                      <div className="text-lg font-semibold" style={{ color: lunaMoonRayInfo.color }}>
+                        {lunaMoonRayInfo.zodiacSign} {lunaMoonRayInfo.name} Ray
                       </div>
-                    ) : (
-                      <p className="text-sm leading-relaxed text-zinc-200">
-                        Ray reading unavailable for this cycle.
-                      </p>
-                    )}
-                    <div className="text-base font-semibold text-cyan-200 pt-1">
-                      Moon Phase: {moonPhaseName} • {moonIllumPct ?? "—"}% Illuminated
+                      <div className="text-sm text-zinc-300">
+                        {lunaMoonRayInfo.longitude.toFixed(1)}° ecliptic · {Math.round(lunaRayProgress * 100)}% through {lunaMoonRayInfo.zodiacSign}
+                      </div>
                     </div>
                   </div>
+                  {RAY_READINGS[lunaMoonRayInfo.name] && (
+                    <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                      <div><span className="font-semibold text-zinc-100">Core: </span>{RAY_READINGS[lunaMoonRayInfo.name].core}</div>
+                      <div><span className="font-semibold text-zinc-100">Gifts: </span>{RAY_READINGS[lunaMoonRayInfo.name].gifts}</div>
+                      <div><span className="font-semibold text-zinc-100">Ideal: </span>{RAY_READINGS[lunaMoonRayInfo.name].ideal}</div>
+                      <div><span className="font-semibold text-zinc-100">Affirmation: </span>{RAY_READINGS[lunaMoonRayInfo.name].affirmation}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Luna Month Info */}
+              <div className="themed-subcard p-4 space-y-2">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Threshold</div>
+                <div className="text-base font-semibold text-zinc-50">
+                  Luna Day {lunaColignyReading.day} of {lunaColignyReading.ciallos.active ? lunaColignyReading.ciallos.totalDays : (lunaColignyReading.monthType === "MAT" ? 30 : 29)} of {lunaColignyReading.month.name}{lunaColignyReading.ciallos.active ? " (Ciallos)" : ""}
+                </div>
+                <div className="text-sm text-zinc-300">
+                  {lunaColignyReading.month.meaning}
+                </div>
+                <div className="text-xs text-zinc-400">
+                  <span style={{ color: lunaColignyReading.month.fromColor }}>{lunaColignyReading.month.fromRay}</span> flowing into <span style={{ color: lunaColignyReading.month.toColor }}>{lunaColignyReading.month.toRay}</span> · {lunaColignyReading.monthType}
+                </div>
+                <div className="text-xs text-zinc-400">
+                  Last New Moon: {lunaColignyReading.lunationStart.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                </div>
+                {lunaColignyReading.nextNewMoon && (
+                  <div className="text-xs text-zinc-400">
+                    Next New Moon: {lunaColignyReading.nextNewMoon.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  </div>
+                )}
+                <div className="text-sm text-cyan-200 pt-1">
+                  {moonPhaseName} · {moonIllumPct ?? "—"}% Illuminated
                 </div>
               </div>
             </div>
@@ -6373,41 +6599,48 @@ export default function AUTClock() {
             {/* ── Sol Ray Dial (when toggled to Sol) ── */}
             {clockDialMode === "sol" && (
             <div className="mt-1 space-y-3">
+              <div className="flex justify-center">
+                  <DateTimeSelector
+                    pendingDate={pendingDate}
+                    onPendingChange={setPendingDate}
+                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onCurrent={() => {
+                      const liveNow = new Date(now);
+                      setDialDate(liveNow);
+                      setPendingDate(liveNow);
+                    }}
+                  />
+                </div>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div />
                 <div className="text-center space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Sol Ray Dial</div>
                   <div className="text-[10px] text-zinc-400">
-                    A 12-hour solar dial from dusk to dawn.
+                    Our Sun's revolution through the 12 sacred Ray frequencies.
                   </div>
+                  {solZodiacPlacement && (
+                    <div className="text-lg font-semibold" style={{ color: solZodiacPlacement.color }}>
+                      {solZodiacPlacement.zodiacSign} {solZodiacPlacement.zodiacSymbol} {solZodiacPlacement.name} Ray
+                    </div>
+                  )}
                   <div className="text-lg font-semibold" style={{ color: activeRay.color }}>
                     Active Cycle: <span className="underline decoration-dotted">{activeRay.name}</span>
                   </div>
                   <div className="text-[10px] uppercase tracking-wide text-zinc-400">
-                    Sol AUT
+                    Sol AUT <span className="text-sm text-zinc-300 tabular-nums">{smoothClock}</span>
                   </div>
-                  <div className="text-sm text-zinc-300">
-                    {smoothClock}
-                  </div>
-                  {rayWindowTimes ? (
-                    <div className="text-[10px] text-zinc-400 whitespace-nowrap">
-                      AUT {rayWindowTimes.start.aut} → {rayWindowTimes.end.aut}
-                      <span className="mx-1 text-zinc-500">|</span>
-                      Local {rayWindowTimes.start.local} → {rayWindowTimes.end.local}
-                    </div>
-                  ) : null}
                 </div>
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    onClick={() => setSolDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
+                    onClick={() => setDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
                     className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
-                    title={solDialOrientation === "heartlight" ? "Switch to Zenith (Ray Key faces upward)" : "Switch to Heartlight Alignment (Intuitive compass orientation)"}
+                    title={dialOrientation === "heartlight" ? "Switch to Zenith Mode (live present-moment tracking)" : "Switch to Heartlight Alignment (date navigation + celestial rings)"}
                   >
                     <img
                       src="/ray-dial-compass-toggle.png"
-                      alt={solDialOrientation === "heartlight" ? "Heartlight mode compass" : "Zenith mode compass"}
-                      className={`h-8 w-8 object-contain transition-transform duration-300 ${solDialOrientation === "zenith" ? "rotate-0" : "rotate-45"}`}
+                      alt={dialOrientation === "heartlight" ? "Heartlight mode compass" : "Zenith mode compass"}
+                      className={`h-8 w-8 object-contain transition-transform duration-300 ${dialOrientation === "zenith" ? "rotate-0" : "rotate-45"}`}
                     />
                   </button>
                 </div>
@@ -6418,6 +6651,7 @@ export default function AUTClock() {
                   <svg
                     viewBox={ringViewBox}
                     className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+                    style={{ overflow: "visible" }}
                   >
                     <defs>
                       <radialGradient id="solSpotlight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse">
@@ -6425,6 +6659,17 @@ export default function AUTClock() {
                         <stop offset="55%" stopColor="#f8fafc" stopOpacity="0.12" />
                         <stop offset="100%" stopColor="#f8fafc" stopOpacity="0" />
                       </radialGradient>
+                      {samhainGlowIntensity > 0 && (
+                        <radialGradient id="samhainGlowSol" cx="0" cy="0" r={RING_OUTER_RADIUS + 40} gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#d946ef" stopOpacity={1.0 * samhainGlowIntensity}>
+                            <animate attributeName="stopColor" values="#d946ef;#8b5cf6;#7dd3fc;#d946ef" dur="8s" repeatCount="indefinite" />
+                          </stop>
+                          <stop offset="35%" stopColor="#8b5cf6" stopOpacity={0.7 * samhainGlowIntensity}>
+                            <animate attributeName="stopColor" values="#8b5cf6;#7dd3fc;#d946ef;#8b5cf6" dur="8s" repeatCount="indefinite" />
+                          </stop>
+                          <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0" />
+                        </radialGradient>
+                      )}
                     </defs>
                     <circle
                       cx="0"
@@ -6435,8 +6680,13 @@ export default function AUTClock() {
                       stroke="#1e293b"
                       strokeWidth="0.8"
                     />
+                    {samhainGlowIntensity > 0 && (
+                      <circle cx="0" cy="0" r={RING_OUTER_RADIUS + 40} fill="url(#samhainGlowSol)">
+                        <animate attributeName="opacity" values={`${samhainGlowIntensity * 0.7};${samhainGlowIntensity};${samhainGlowIntensity * 0.7}`} dur="4s" repeatCount="indefinite" />
+                      </circle>
+                    )}
                     {/* Rotating ring group: in zenith mode the dial rotates so active Ray aligns under fixed north key */}
-                    <g transform={solDialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                    <g transform={dialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
                       {/* Conic-gradient ring: 360 smoothly interpolated thin wedges */}
                       <g>
                         {solConicWedges.map((wedge, i) => (
@@ -6473,25 +6723,102 @@ export default function AUTClock() {
                           />
                         </>
                       ) : null}
-                      {/* Labels outside the ring */}
-                      {dialSegments.map((segment) => (
-                        <text
-                          key={`label-${segment.index}`}
-                          x={segment.labelX.toFixed(3)}
-                          y={segment.labelY.toFixed(3)}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fontSize="4.4"
-                          fill={segment.ray.labelColor ?? "#e2e8f0"}
-                          style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
-                          transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
-                        >
-                          {segment.ray.name}
-                        </text>
-                      ))}
+                      {/* Labels outside the ring: zodiac symbols inside, names outside */}
+                      {dialSegments.map((segment) => {
+                        const symbolPos = polarToCartesian((RING_OUTER_RADIUS + RING_INNER_RADIUS) / 2, segment.midAngle);
+                        return (
+                        <g key={`label-${segment.index}`}>
+                          <text
+                            x={symbolPos.x.toFixed(3)}
+                            y={symbolPos.y.toFixed(3)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="5.2"
+                            fill={segment.ray.labelColor ?? "#e2e8f0"}
+                            style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                            transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${symbolPos.x.toFixed(3)}, ${symbolPos.y.toFixed(3)})`}
+                          >
+                            {segment.ray.symbol}
+                          </text>
+                          <text
+                            x={segment.labelX.toFixed(3)}
+                            y={segment.labelY.toFixed(3)}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="4.0"
+                            fill={segment.ray.labelColor ?? "#e2e8f0"}
+                            style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                            transform={`rotate(${(segment.midAngle * 180) / Math.PI + 90}, ${segment.labelX.toFixed(3)}, ${segment.labelY.toFixed(3)})`}
+                          >
+                            {segment.ray.name}
+                          </text>
+                        </g>
+                        );
+                      })}
+                      {/* ── Celtic gate ring + Sol position image (inside rotating group, both modes) ── */}
+                      {solZodiacPlacement && (() => {
+                        const gateInner = RING_OUTER_RADIUS + 6;
+                        const gateOuter = RING_OUTER_RADIUS + 10;
+                        const gateLabelR = RING_OUTER_RADIUS + 14;
+                        const solOrbitR = 52;
+                        const solAngle = -Math.PI / 2 + (normalizeDegrees(solZodiacPlacement.longitude) - 180) * (Math.PI / 180);
+                        const solX = solOrbitR * Math.cos(solAngle);
+                        const solY = solOrbitR * Math.sin(solAngle);
+                        return (
+                          <g>
+                            {/* Sol orbit */}
+                            <circle r={solOrbitR} fill="none" stroke="rgba(245,158,11,0.10)" strokeWidth="0.4" />
+                            {/* Sol planet image */}
+                            <image
+                              href="/hsm-planets/Sun.png"
+                              x={solX - 4}
+                              y={solY - 4}
+                              width={8}
+                              height={8}
+                              preserveAspectRatio="xMidYMid slice"
+                              opacity={0.95}
+                            />
+                            {/* Celtic gates */}
+                            {HEARTLIGHT_GATE_DATA.map((gate) => {
+                              const ecl = gate.eclipticDeg;
+                              const angle = -Math.PI / 2 + (ecl - 180) * (Math.PI / 180);
+                              const t1 = polarToCartesian(gateInner, angle);
+                              const t2 = polarToCartesian(gateOuter, angle);
+                              const lp = polarToCartesian(gateLabelR, angle);
+                              const deg = (angle * 180) / Math.PI + 90;
+                              return (
+                                <g key={gate.name}>
+                                  <line
+                                    x1={t1.x.toFixed(3)}
+                                    y1={t1.y.toFixed(3)}
+                                    x2={t2.x.toFixed(3)}
+                                    y2={t2.y.toFixed(3)}
+                                    stroke={gate.color}
+                                    strokeWidth="0.9"
+                                    opacity="0.65"
+                                  />
+                                  <text
+                                    x={lp.x.toFixed(3)}
+                                    y={lp.y.toFixed(3)}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fontSize="3.4"
+                                    fill={gate.color}
+                                    opacity="0.7"
+                                    style={{ textShadow: "0 1px 2px rgba(15,23,42,0.8)" }}
+                                    transform={`rotate(${deg.toFixed(1)}, ${lp.x.toFixed(3)}, ${lp.y.toFixed(3)})`}
+                                  >
+                                    {gate.name}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                          </g>
+                        );
+                      })()}
                     </g>
                     {/* Sol AUT cycle boundary ticks and numbers — rotate with the dial but stay upright like a Ferris wheel */}
-                    <g transform={solDialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
+                    <g transform={dialOrientation === "zenith" ? `rotate(${-(pointerAngle * 180) / Math.PI - 90})` : undefined}>
                       {solCycleTicks.map((tick) => (
                         <g key={`tick-${tick.hour}`}>
                           <line
@@ -6512,7 +6839,7 @@ export default function AUTClock() {
                             fontSize={tick.isCardinal ? "4.6" : "3.6"}
                             fill="#e2e8f0"
                             style={{ textShadow: "0 1px 2px rgba(15,23,42,0.9)" }}
-                            transform={solDialOrientation === "zenith" ? `rotate(${(pointerAngle * 180) / Math.PI + 90}, ${tick.labelX.toFixed(3)}, ${tick.labelY.toFixed(3)})` : undefined}
+                            transform={dialOrientation === "zenith" ? `rotate(${(pointerAngle * 180) / Math.PI + 90}, ${tick.labelX.toFixed(3)}, ${tick.labelY.toFixed(3)})` : undefined}
                           >
                             {tick.label}
                           </text>
@@ -6520,7 +6847,7 @@ export default function AUTClock() {
                       ))}
                     </g>
                     {/* Fixed north Ray Key pointer image in zenith mode; points to active Ray in Heartlight mode */}
-                    <g transform={solDialOrientation === "zenith" ? "rotate(0) scale(0.035)" : `rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
+                    <g transform={dialOrientation === "zenith" ? "rotate(0) scale(0.035)" : `rotate(${(pointerAngle * 180) / Math.PI + 90}) scale(0.035)`}>
                       <image
                         href="/ray-key.png"
                         x="-744.7"
@@ -6534,50 +6861,117 @@ export default function AUTClock() {
                 </div>
               </div>
 
-              <div className="themed-subcard p-4 space-y-3">
+              {/* Sol Ray Frequency */}
+              {solZodiacPlacement && (
+                <div className="themed-subcard p-4 space-y-2">
+                  <div className="text-xs uppercase tracking-wide text-zinc-400">Sol Ray Frequency</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{solZodiacPlacement.zodiacSymbol}</span>
+                    <div>
+                      <div className="text-lg font-semibold" style={{ color: solZodiacPlacement.color }}>
+                        {solZodiacPlacement.zodiacSign} {solZodiacPlacement.name} Ray
+                      </div>
+                      <div className="text-sm text-zinc-300">
+                        {solZodiacPlacement.longitude.toFixed(1)}° ecliptic · {Math.round(((solZodiacPlacement.longitude % 30 + 30) % 30) / 30 * 100)}% through {solZodiacPlacement.zodiacSign}
+                      </div>
+                    </div>
+                  </div>
+                  {RAY_READINGS[solZodiacPlacement.name] && (
+                    <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
+                      <div><span className="font-semibold text-zinc-100">Core: </span>{RAY_READINGS[solZodiacPlacement.name].core}</div>
+                      <div><span className="font-semibold text-zinc-100">Gifts: </span>{RAY_READINGS[solZodiacPlacement.name].gifts}</div>
+                      <div><span className="font-semibold text-zinc-100">Ideal: </span>{RAY_READINGS[solZodiacPlacement.name].ideal}</div>
+                      <div><span className="font-semibold text-zinc-100">Affirmation: </span>{RAY_READINGS[solZodiacPlacement.name].affirmation}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Active Cycle + Sol AUT */}
+              <div className="themed-subcard p-4 space-y-2">
                 <div className="flex items-start gap-3">
                   <div
                     className="mt-1 h-3 w-3 rounded-full ring-2 ring-white/25"
                     style={{ backgroundColor: activeRay.color }}
                   />
-                  <div className="space-y-2">
+                  <div className="space-y-1 w-full">
                     <div className="text-base font-semibold text-zinc-50">
-                      {rayReading?.title ?? activeRay.name}
+                      Active Cycle: {activeRay.name}
                     </div>
-                    {rayReading ? (
-                      <div className="space-y-1 text-sm leading-relaxed text-zinc-200">
-                        <div><span className="font-semibold text-zinc-100">Core Energetic Signature: </span>{rayReading.core}</div>
-                        <div><span className="font-semibold text-zinc-100">Gifts: </span>{rayReading.gifts}</div>
-                        <div><span className="font-semibold text-zinc-100">Ideal For: </span>{rayReading.ideal}</div>
-                        <div><span className="font-semibold text-zinc-100">Affirmation: </span>{rayReading.affirmation}</div>
-                      </div>
-                    ) : (
-                      <p className="text-sm leading-relaxed text-zinc-200">
-                        Ray reading unavailable for this cycle.
-                      </p>
-                    )}
-                    <div className="text-[10px] text-zinc-400">
-                      AUT {rayWindowTimes?.start.aut} → {rayWindowTimes?.end.aut} • Local {rayWindowTimes?.start.local} → {rayWindowTimes?.end.local}
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-400">Sol AUT</span>
+                      <span className="text-sm font-semibold text-zinc-100 tabular-nums">{smoothClock}</span>
+                      {rayWindowTimes ? (
+                        <span className="text-[10px] text-zinc-400">
+                          {rayWindowTimes.start.aut} to {rayWindowTimes.end.aut}
+                          <span className="mx-1 text-zinc-500">|</span>
+                          Local {rayWindowTimes.start.local} to {rayWindowTimes.end.local}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Current Season + Celtic Threshold */}
+              <div className="themed-subcard p-4 space-y-2">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Season + Celtic Threshold</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div
+                    className="text-lg font-semibold"
+                    style={{ color: lunaSolSeason.currentGate.rayColor }}
+                  >
+                    {lunaSolSeason.currentGate.name}{lunaSolSeason.currentGate.celticName !== lunaSolSeason.currentGate.name ? `, ${lunaSolSeason.currentGate.celticName}` : ""}
+                  </div>
+                </div>
+                <div className="text-sm text-zinc-300">
+                  {lunaSolSeason.currentGate.meaning}
+                </div>
+                <div className="text-xs text-zinc-400">
+                  {lunaSolSeason.currentGate.rayName} Ray · {lunaSolSeason.nextGate.daysUntil} days until {lunaSolSeason.nextGate.name}
+                </div>
+                {lunaSolSeason.nextGate.traditionalDate && (
+                  <div className="text-xs text-zinc-500">
+                    Traditional Threshold: {lunaSolSeason.nextGate.traditionalDate.toLocaleDateString(undefined, { month: "long", day: "numeric" })}
+                    {typeof lunaSolSeason.nextGate.traditionalDaysUntil === "number" && (
+                      <> · {lunaSolSeason.nextGate.traditionalDaysUntil === 0 ? "Today" : `${lunaSolSeason.nextGate.traditionalDaysUntil} days away`}</>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             )}
 
             {/* ── Gaia Ray Dial (when toggled to Gaia) ── */}
             {clockDialMode === "gaia" && (
-            <div className="mt-1 space-y-3"
-            >
-              <GaiaRayDial
-                lat={coords.lat}
-                lon={coords.lon}
-                sunriseDate={data.sunriseLocal}
-                sunsetDate={data.sunsetLocal}
-                now={now}
-                rayReadings={RAY_READINGS}
-                onActiveRayChange={setGaiaActiveRay}
-              />
+            <div className="mt-1 space-y-3">
+              <div className="flex justify-center">
+                  <DateTimeSelector
+                    pendingDate={pendingDate}
+                    onPendingChange={setPendingDate}
+                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onCurrent={() => {
+                      const liveNow = new Date(now);
+                      setDialDate(liveNow);
+                      setPendingDate(liveNow);
+                    }}
+                  />
+                </div>
+              <div className="flex justify-center">
+                <GaiaRayDial
+                  lat={coords.lat}
+                  lon={coords.lon}
+                  sunriseDate={data.sunriseLocal}
+                  sunsetDate={data.sunsetLocal}
+                  now={dialDate}
+                  orientation={dialOrientation}
+                  onOrientationChange={setDialOrientation}
+                  rayReadings={RAY_READINGS}
+                  onActiveRayChange={setGaiaActiveRay}
+                  dialSizeClass={ringSizeClass}
+                  samhainGlowIntensity={samhainGlowIntensity}
+                />
+              </div>
             </div>
             )}
 
@@ -6952,13 +7346,9 @@ export default function AUTClock() {
                 <div className="text-xs uppercase tracking-wide text-zinc-400">
                   Phase <span className="text-zinc-200 normal-case">{moonPhaseName}</span>
                 </div>
-                {solsticeLinked ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-200">
-                    Solstice-Linked Arc
-                  </span>
-                ) : (
-                  <span className="text-xs text-zinc-400">|δₘ| &lt; 23.44°</span>
-                )}
+                <span className="text-xs text-zinc-400">
+                  δₘ {moonDecStr}
+                </span>
               </div>
             </div>
           </div>
@@ -7148,6 +7538,248 @@ export default function AUTClock() {
           </div>
         </section>
           </>
+        )}
+
+        {activePanel === "lunaSolSeason" && (
+          <section className="p-4 sm:p-6 space-y-5">
+            {/* Header: Luna Sol Year and threshold identity */}
+            <div className="space-y-1">
+              <div className="text-xs uppercase tracking-wide text-zinc-400">
+                Luna Sol Ray Dial
+              </div>
+              <div className="text-2xl font-bold" style={{ color: lunaSolSeason.currentGate.rayColor }}>
+                {lunaSolSeason.currentGate.name}, {lunaSolSeason.currentGate.celticName}
+              </div>
+              <div className="text-xs text-zinc-500">
+                {lunaSolSeason.currentGate.meaning}
+              </div>
+              <div className="text-xs text-zinc-600">
+                Luna Sol Year {lunaSolSeason.lunaSolYear}
+              </div>
+            </div>
+
+            {/* LGS Ray Dial */}
+            <LunaGaiaSolRayDial
+              lat={coords.lat}
+              lon={coords.lon}
+              date={now}
+              currentMonth={lunaSolSeason.currentMonth}
+              currentMonthProgress={lunation?.progress}
+              ciallosActive={lunaSolSeason.ciallosActive}
+            />
+
+            {/* Ciallos indicator */}
+            {lunaSolSeason.ciallosActive && (
+              <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 p-3 text-center">
+                <div className="text-xs uppercase tracking-wide text-cyan-200/80">Ciallos is breathing this year</div>
+                <div className="text-sm text-cyan-100 mt-0.5">
+                  Luna Sol Year {lunaSolSeason.ciallosYearInCycle} of 3
+                </div>
+                <div className="text-xs text-cyan-200/60 mt-0.5">
+                  Time pauses so Moon and Sun may realign.
+                </div>
+              </div>
+            )}
+
+            {/* Current Coligny Month card — threshold display */}
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Coligny Month: Threshold {lunaSolSeason.currentMonth.position}</div>
+                <span className="text-[10px] uppercase tracking-wide text-zinc-500">{lunaSolSeason.currentMonth.daysLabel}</span>
+              </div>
+              <div className="text-2xl font-semibold">
+                <span style={{ color: lunaSolSeason.currentMonth.thresholdRays.fromColor }}>
+                  {lunaSolSeason.currentMonth.thresholdRays.fromRay}
+                </span>
+                <span className="text-zinc-500 mx-1">→</span>
+                <span style={{ color: lunaSolSeason.currentMonth.thresholdRays.toColor }}>
+                  {lunaSolSeason.currentMonth.thresholdRays.toRay}
+                </span>
+              </div>
+              <div className="text-lg font-medium text-zinc-100">
+                {lunaSolSeason.currentMonth.name}
+              </div>
+              <div className="text-sm text-zinc-300">
+                {lunaSolSeason.currentMonth.meaning}
+              </div>
+              <div className="text-xs text-zinc-500">
+                {lunaSolSeason.currentMonth.fromSign} dissolving into {lunaSolSeason.currentMonth.toSign}
+              </div>
+            </div>
+
+            {/* Hemisphere toggle */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs uppercase tracking-wide text-zinc-400">Hemisphere</span>
+              <button
+                type="button"
+                className={`themed-button rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${hemisphere === "northern" ? "opacity-100" : "opacity-60"}`}
+                onClick={() => setHemisphere("northern")}
+              >
+                Northern
+              </button>
+              <button
+                type="button"
+                className={`themed-button rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${hemisphere === "southern" ? "opacity-100" : "opacity-60"}`}
+                onClick={() => setHemisphere("southern")}
+              >
+                Southern
+              </button>
+            </div>
+
+            {/* Wheel of the Year — upcoming gates */}
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-wide text-zinc-400">Wheel of the Year</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {lunaSolSeason.allGates
+                  .filter((g) => g.daysUntil > 0)
+                  .sort((a, b) => a.daysUntil - b.daysUntil)
+                  .slice(0, 4)
+                  .map((gate) => (
+                    <div
+                      key={gate.name}
+                      className="rounded-xl border border-zinc-700/40 bg-zinc-900/30 p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: gate.rayColor }}
+                        />
+                        <span className="text-sm text-zinc-400">{gate.name}</span>
+                      </div>
+                      <div className="text-base font-semibold" style={{ color: gate.rayColor }}>
+                        {gate.celticName}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {gate.date.toLocaleDateString(undefined, { month: "long", day: "numeric" })}
+                        {gate.daysUntil <= 0
+                          ? ", Now"
+                          : gate.daysUntil === 1
+                            ? ", Tomorrow"
+                            : `, in ${gate.daysUntil} days`}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 leading-snug mt-1">
+                        {gate.meaning}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Live New Moon tracker */}
+            <div className="rounded-xl border border-zinc-700/30 bg-zinc-900/20 p-4 text-center">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-400 mb-1.5">
+                Next New Moon
+              </div>
+              <div className="text-sm text-zinc-200">
+                {lunaSolSeason.nextNewMoon.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Synodic months since anchor: {lunaSolSeason.synodicMonthsSinceAnchor.toLocaleString("en-US")}
+              </div>
+            </div>
+
+            {/* Equal Number note */}
+            <div className="rounded-xl border border-zinc-700/20 bg-zinc-900/10 p-4">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500 mb-2">
+                The Equal Number
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                19 solar years ≈ 235 synodic months. Luna provides 7 extra months across that span.
+                These are Ciallos, the breath that heals the drift. On average, 12.368 synodic
+                months occur per solar year. Some Luna Years have 12 months. Some have 13.
+                The 12/0 gate is where Luna and Sol remember they are one rhythm.
+              </p>
+            </div>
+
+            {/* Epoch footer */}
+            <div className="text-[10px] text-zinc-600 text-center">
+              Anchor: March 26, 5 CE · New Moon Solar Eclipse in Aries · Luna Sol Year 0
+            </div>
+          </section>
+        )}
+
+        {activePanel === "coligny" && colignyReading && (
+          <section className="p-4 sm:p-6 space-y-5">
+            {/* Luna Gaia Sol Coligny Calendar Panel */}
+            <div className="space-y-1">
+              <div className="text-xs uppercase tracking-wide text-zinc-400">
+                Luna Gaia Sol Coligny Calendar
+              </div>
+              <div className="text-2xl font-bold text-zinc-100">
+                {colignyReading.month.name}
+              </div>
+              <div className="text-sm text-zinc-300">
+                {colignyReading.month.meaning}
+              </div>
+            </div>
+
+            {/* Coligny Month Card */}
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Month {colignyReading.month.position} of 12</div>
+                <span className="text-[10px] uppercase tracking-wide text-zinc-500">{colignyReading.monthType}</span>
+              </div>
+              <div className="text-2xl font-semibold text-zinc-100">
+                {colignyReading.month.name}
+              </div>
+              <div className="text-sm text-zinc-300">
+                {colignyReading.month.meaning}
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                Day {colignyReading.day} of {colignyReading.month.name}
+              </div>
+              <div className="text-xs text-zinc-500">
+                Synodic length: {colignyReading.synodicLength.toFixed(2)} days
+              </div>
+            </div>
+
+            {/* Luna in the Sky */}
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4 space-y-2">
+              <div className="text-xs uppercase tracking-wide text-zinc-400">Luna in the Sky</div>
+              <div className="flex items-center gap-2 text-lg font-semibold">
+                <span style={{ color: colignyReading.moonColor }}>
+                  {colignyReading.moonSign}
+                </span>
+                <span className="text-zinc-500">:</span>
+                <span className="text-zinc-300">{colignyReading.moonRay} Ray</span>
+              </div>
+              <div className="text-sm text-zinc-400">
+                {colignyReading.moonPhase}
+              </div>
+            </div>
+
+            {/* Ciallos Indicator */}
+            {colignyReading.ciallos.active && (
+              <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 p-3 text-center">
+                <div className="text-xs uppercase tracking-wide text-cyan-200/80">Ciallos is breathing this year</div>
+                <div className="text-sm text-cyan-100 mt-0.5">
+                  Luna Sol Year {colignyReading.ciallos.yearInCycle} of 3
+                </div>
+                <div className="text-xs text-cyan-200/60 mt-0.5">
+                  Time pauses so Luna and Sol may realign.
+                </div>
+              </div>
+            )}
+
+            {/* Epoch Info */}
+            <div className="rounded-xl border border-zinc-700 bg-zinc-900/40 p-4 space-y-1">
+              <div className="text-xs uppercase tracking-wide text-zinc-400">Epoch</div>
+              <div className="text-sm text-zinc-300">
+                March 26, 5 CE · New Moon Solar Eclipse in Aries
+              </div>
+              <div className="text-xs text-zinc-500">
+                Luna Sol Year {colignyReading.lunaSolYear}
+              </div>
+              <div className="text-xs text-zinc-500">
+                New moons since epoch: {colignyReading.newMoonsSinceEpoch}
+              </div>
+            </div>
+          </section>
         )}
 
         {activePanel === "compass" && (

@@ -15,8 +15,12 @@ type Props = {
   sunriseDate: Date;
   sunsetDate: Date;
   now: Date;
+  orientation?: "heartlight" | "zenith";
+  onOrientationChange?: (orientation: "heartlight" | "zenith") => void;
   onActiveRayChange?: (ray: { name: string; color: string }) => void;
   rayReadings: Record<string, { title: string; core: string; gifts: string; ideal: string; affirmation: string }>;
+  dialSizeClass?: string;
+  samhainGlowIntensity?: number;
 };
 
 /* ── Ray + zodiac data (copied from index.tsx) ─────────────────────────── */
@@ -37,7 +41,7 @@ const GAIA_RAY_WINDOWS = [
 
 const RING_OUTER_RADIUS = 62;
 const RING_INNER_RADIUS = 22;
-const RING_VIEWBOX_PADDING = 18;
+const RING_VIEWBOX_PADDING = 44;
 const RING_VIEWBOX_MIN = -RING_OUTER_RADIUS - RING_VIEWBOX_PADDING;
 const RING_VIEWBOX_SIZE = (RING_OUTER_RADIUS + RING_VIEWBOX_PADDING) * 2;
 
@@ -99,8 +103,13 @@ function readingKey(rayName: string): string {
   return rayName.replace(" Ray", "").split(" / ")[0].trim();
 }
 
-export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, rayReadings, onActiveRayChange }: Props) {
-  const [orientation, setOrientation] = useState<"heartlight" | "zenith">("zenith");
+export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, orientation: externalOrientation, onOrientationChange, rayReadings, onActiveRayChange, dialSizeClass, samhainGlowIntensity }: Props) {
+  const [internalOrientation, setInternalOrientation] = useState<"heartlight" | "zenith">("zenith");
+  const orientation = externalOrientation ?? internalOrientation;
+  const setOrientation = (val: "heartlight" | "zenith") => {
+    setInternalOrientation(val);
+    onOrientationChange?.(val);
+  };
 
   const liveChart = useMemo(() => computeLiveAlignments(lat, lon, now), [lat, lon, now]);
   const zenith = useMemo(() => computeZenith(now, lat, lon), [now, lat, lon]);
@@ -190,7 +199,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full space-y-2">
       {/* Header */}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div />
@@ -198,24 +207,24 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
           <div className="text-xs uppercase tracking-wide text-zinc-400">
             Astro Gaia Ray Dial
           </div>
-          <div className="text-lg font-semibold" style={{ color: gaiaRay.color }}>
-            {gaiaRay.sign} {gaiaRay.symbol} {gaiaRay.name} Ray
-          </div>
           <div className="text-[10px] text-zinc-400">
             The Ray Key faces your zenith, the constellation directly overhead.
+          </div>
+          <div className="text-lg font-semibold" style={{ color: gaiaRay.color }}>
+            {gaiaRay.sign} {gaiaRay.symbol} {gaiaRay.name} Ray
           </div>
         </div>
         <div className="flex justify-end">
           <button
             type="button"
             onClick={() =>
-              setOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))
+              setOrientation(orientation === "heartlight" ? "zenith" : "heartlight")
             }
             className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 p-2 transition hover:bg-zinc-800"
             title={
               orientation === "heartlight"
-                ? "Switch to Zenith (Ray Key faces upward)"
-                : "Switch to Heartlight Alignment (Intuitive compass orientation)"
+                ? "Switch to Zenith Mode (live present-moment tracking)"
+                : "Switch to Heartlight Alignment (date navigation + celestial rings)"
             }
           >
             <img
@@ -233,12 +242,13 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
         </div>
       </div>
 
-      {/* SVG Gaia dial */}
+      {/* SVG Gaia dial — constrained to match Luna/Sol dial sizing */}
       <div className="flex justify-center mt-1">
-        <div className="relative aspect-square w-full max-w-[360px]">
+        <div className={`relative aspect-square w-full ${dialSizeClass ?? ""}`}>
           <svg
             viewBox={`${RING_VIEWBOX_MIN} ${RING_VIEWBOX_MIN} ${RING_VIEWBOX_SIZE} ${RING_VIEWBOX_SIZE}`}
             className="block h-auto w-full text-zinc-100 drop-shadow-[0_10px_26px_rgba(15,23,42,0.55)]"
+            style={{ overflow: "visible" }}
           >
             <defs>
               <radialGradient
@@ -252,6 +262,17 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
                 <stop offset="55%" stopColor="#f8fafc" stopOpacity="0.12" />
                 <stop offset="100%" stopColor="#f8fafc" stopOpacity="0" />
               </radialGradient>
+              {samhainGlowIntensity && samhainGlowIntensity > 0 && (
+                <radialGradient id="samhainGlowGaia" cx="0" cy="0" r={RING_OUTER_RADIUS + 40} gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#d946ef" stopOpacity={1.0 * samhainGlowIntensity}>
+                    <animate attributeName="stopColor" values="#d946ef;#8b5cf6;#7dd3fc;#d946ef" dur="8s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="35%" stopColor="#8b5cf6" stopOpacity={0.7 * samhainGlowIntensity}>
+                    <animate attributeName="stopColor" values="#8b5cf6;#7dd3fc;#d946ef;#8b5cf6" dur="8s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0" />
+                </radialGradient>
+              )}
             </defs>
             <circle
               cx="0"
@@ -262,6 +283,11 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, ra
               stroke="#1e293b"
               strokeWidth="0.8"
             />
+            {samhainGlowIntensity && samhainGlowIntensity > 0 && (
+              <circle cx="0" cy="0" r={RING_OUTER_RADIUS + 40} fill="url(#samhainGlowGaia)">
+                <animate attributeName="opacity" values={`${samhainGlowIntensity * 0.7};${samhainGlowIntensity};${samhainGlowIntensity * 0.7}`} dur="4s" repeatCount="indefinite" />
+              </circle>
+            )}
 
             <g
               transform={
