@@ -756,13 +756,6 @@ function HeartlightSystemMap() {
     return (profile.birthTimeAccurateDST ?? true) ? det.accurateOffsetMinutes : det.standardOffsetMinutes;
   }, []);
 
-  const formatUtcOffset = useCallback((minutes: number): string => {
-    const sign = minutes < 0 ? "UTC-" : "UTC+";
-    const h = Math.abs(Math.floor(minutes / 60));
-    const m = Math.abs(minutes % 60);
-    return m === 0 ? `${sign}${h}` : `${sign}${h}:${m.toString().padStart(2, "0")}`;
-  }, []);
-
   const applySolarReturn = useCallback(() => {
     if (!activeProfile) return;
     const tzOffset = resolveProfileOffset(activeProfile);
