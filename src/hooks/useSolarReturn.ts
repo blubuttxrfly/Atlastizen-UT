@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { estimateFromLongitude } from "../lib/timezone";
+import { detectTimezoneSync } from "../lib/timezone";
 
 const SOLAR_RETURN_KEY_V1 = "aut-solar-return";
 const SOLAR_RETURN_KEY_V2 = "aut-solar-returns-v2";
@@ -52,7 +52,11 @@ function migrateV1(): SolarReturnStore | null {
       birthPlaceLabel: string;
     };
     const standardOffset =
-      old.birthTimezoneOffset ?? estimateFromLongitude(old.birthLon);
+      old.birthTimezoneOffset ?? detectTimezoneSync(
+        old.birthLat, old.birthLon,
+        old.birthYear ?? 2000, old.birthMonth, old.birthDay,
+        old.birthHour ?? 12, old.birthMinute ?? 0
+      ).standardOffsetMinutes;
     const profile: SolarReturnProfile = {
       id: generateId(),
       name: "My Solar Return",
@@ -80,15 +84,20 @@ function normalizeProfile(p: SolarReturnProfile): SolarReturnProfile {
     p.birthTimeAccurateDST == null ||
     p.birthTimezoneLabel == null
   ) {
+    const det = detectTimezoneSync(
+      p.birthLat, p.birthLon,
+      p.birthYear ?? 2000, p.birthMonth, p.birthDay,
+      p.birthHour ?? 12, p.birthMinute ?? 0
+    );
     const standardOffset =
-      p.birthTimezoneOffset ?? estimateFromLongitude(p.birthLon);
+      p.birthTimezoneOffset ?? det.standardOffsetMinutes;
     return {
       ...p,
       birthTimezoneOffsetStandard:
         p.birthTimezoneOffsetStandard ?? standardOffset,
       birthTimeAccurateDST: p.birthTimeAccurateDST ?? true,
       birthTimezoneLabel:
-        p.birthTimezoneLabel ?? `Longitude estimate (${formatUtcOffset(standardOffset)})`,
+        p.birthTimezoneLabel ?? det.label ?? `Longitude estimate (${formatUtcOffset(standardOffset)})`,
     };
   }
   return p;

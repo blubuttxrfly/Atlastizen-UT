@@ -24,6 +24,10 @@ import GaiaRayDial from "./components/GaiaRayDial";
 import { LunaGaiaSolRayDial } from "./components/LunaGaiaSolRayDial";
 import { DateTimeSelector } from "./components/DateTimeSelector";
 import { useSmoothAUT } from "./hooks/useSmoothAUT";
+import { useSolarReturn } from "./hooks/useSolarReturn";
+import { makeBirthDateUTC } from "./lib/extendedChart";
+import { detectTimezoneSync } from "./lib/timezone";
+import tzLookup from "tz-lookup";
 
 import { Crosshair, Settings, Moon, Sun } from "lucide-react";
 import { getMoonRayFrequency, getMoonPhaseAngle, getUpcomingEclipses, getUpcomingMoonPhases, getSunRayFrequency } from "./lib/lunaEvents";
@@ -2175,7 +2179,7 @@ function useAliceAndPWA() {
 
     // Manifest via Blob
     const manifest = {
-      name: "AUT — Atlastizen Universal Time",
+      name: "AUT Time & Tools",
       short_name: "AUT",
       start_url: ".",
       display: "standalone",
@@ -3578,6 +3582,8 @@ export default function AUTClock() {
   const fallback = useMemo<Coordinates>(() => ({ lat: 35.25, lon: -80.8 }), []);
   const { coords, status, setCoords, handleRecenter } = useGeolocation(fallback);
   const { placeLabel, placeStatus } = useReverseGeocode(coords, status, FALLBACK_PLACE_LABEL);
+  // Solar Return profiles (shared with Ray Astrology page)
+  const { activeProfile: solarReturnActiveProfile } = useSolarReturn();
   // Legacy zip lookup state removed — Location Lookup now uses useForwardGeocode dropdown
   const [lookupQuery, setLookupQuery] = useState("");
   const [selectedLookupLocation, setSelectedLookupLocation] = useState<{ lat: number; lon: number; displayName: string } | null>(null);
@@ -3746,6 +3752,7 @@ export default function AUTClock() {
   const [gaiaActiveRay, setGaiaActiveRay] = useState<{ name: string; color: string } | null>(null);
   const [dialOrientation, setDialOrientation] = useState<"heartlight" | "zenith">("zenith");
   const [dialDate, setDialDate] = useState<Date>(new Date());
+  const [dialLive, setDialLive] = useState<boolean>(true);
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [_showCoords, _setShowCoords] = useState(false);
   void _showCoords;
@@ -3983,6 +3990,40 @@ export default function AUTClock() {
     return () => clearInterval(id);
   }, []);
 
+  /* Live mode: when dialLive is true, dialDate continuously tracks now
+     so the Ray Dials keep flowing through the cycles. */
+  useEffect(() => {
+    if (dialLive) setDialDate(new Date());
+  }, [dialLive, now]);
+
+  /* ── Gaia Birth 💫 — jump to active Solar Return profile's birth moment + location ── */
+  const [gaiaBirthActive, setGaiaBirthActive] = useState(false);
+  const applyGaiaBirth = useCallback(() => {
+    if (!solarReturnActiveProfile) return;
+    const profile = solarReturnActiveProfile;
+    // Always detect timezone from coordinates using tz-lookup (sync, offline).
+    // Don't trust stored offsets, which may be stale from the old longitude estimate.
+    const det = detectTimezoneSync(
+      profile.birthLat, profile.birthLon,
+      profile.birthYear ?? 2000, profile.birthMonth, profile.birthDay,
+      profile.birthHour ?? 12, profile.birthMinute ?? 0
+    );
+    const tzOffset = (profile.birthTimeAccurateDST ?? true) ? det.accurateOffsetMinutes : det.standardOffsetMinutes;
+    const natalDate = makeBirthDateUTC(
+      profile.birthYear ?? 2000,
+      profile.birthMonth,
+      profile.birthDay,
+      profile.birthHour ?? 12,
+      profile.birthMinute ?? 0,
+      tzOffset
+    );
+    setDialDate(natalDate);
+    setPendingDate(natalDate);
+    setDialLive(false);
+    setCoords({ lat: profile.birthLat, lon: profile.birthLon });
+    setGaiaBirthActive(true);
+  }, [solarReturnActiveProfile, setCoords]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("DeviceOrientationEvent" in window)) {
@@ -4151,6 +4192,35 @@ export default function AUTClock() {
     if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
       return;
     }
+
+    // Try sync tz-lookup first for immediate timezone display
+    const syncZone = (() => {
+      try {
+        const z = tzLookup(coords.lat, coords.lon);
+        return typeof z === "string" && z.length > 0 ? z : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (syncZone) {
+      // Compute offset for current date using Intl
+      const nowDate = new Date();
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: syncZone, timeZoneName: "shortOffset" });
+      const parts = fmt.formatToParts(nowDate);
+      const tzPart = parts.find((p) => p.type === "timeZoneName");
+      let offsetMinutes: number | undefined;
+      if (tzPart && tzPart.value.startsWith("GMT")) {
+        offsetMinutes = Math.round(parseFloat(tzPart.value.slice(3)) * 60);
+      }
+      setTimeZoneInfo({ timeZone: syncZone, abbreviation: undefined, offsetMinutes });
+      setTimeZoneStatus("success");
+      setTimeZoneError(null);
+    }
+
+    // If sync tz-lookup succeeded, skip the async fetch entirely.
+    // The sync result is sufficient for timezone-aware display.
+    if (syncZone) return;
+
     timeZoneControllerRef.current?.abort();
     const controller = new AbortController();
     timeZoneControllerRef.current = controller;
@@ -4375,15 +4445,15 @@ export default function AUTClock() {
     return getCurrentColignyMonth(dialDate);
   }, [dialDate, dialOrientation]);
 
-  /* Live Sol zodiac placement for Sol Ray Dial header + Celtic gates (both modes) */
+  /* Sol zodiac placement for Sol Ray Dial — always uses dialDate
+     (which tracks now when live, or frozen date when Set/Gaia Birth) */
   const solZodiacPlacement = useMemo(() => {
     try {
-      const effectiveDate = dialOrientation === "heartlight" ? dialDate : now;
-      return getSunRayFrequency(effectiveDate, coords.lat, coords.lon);
+      return getSunRayFrequency(dialDate, coords.lat, coords.lon);
     } catch {
       return null;
     }
-  }, [dialOrientation, dialDate, now, coords.lat, coords.lon]);
+  }, [dialDate, coords.lat, coords.lon]);
 
   /* Celtic gate data for Sol Ray Dial Heartlight mode */
   const HEARTLIGHT_GATE_DATA = [
@@ -4775,8 +4845,9 @@ export default function AUTClock() {
   const progressPct = Math.round(rayProgress * 100);
 
   /* dialDate + pendingDate are controlled by the DateTimeSelector.
-     Set applies the selected date, Current snaps back to live now.
-     No auto-sync to now — the user controls time navigation. */
+     Set applies the selected date (exits live mode, dial stays frozen).
+     Current snaps to live now and enters live mode (dial flows continuously).
+     When dialLive is true, dialDate auto-syncs to now via useEffect. */
 
   const ringSizeClass = PRESENT_ONLY
     ? "max-w-[24rem] sm:max-w-[28rem] xl:max-w-[32rem]"
@@ -5543,7 +5614,7 @@ export default function AUTClock() {
       style={{ fontFamily: themePreset.fontFamily }}
     >
       <div
-        className={`w-full max-w-5xl rounded-2xl shadow-xl p-4 sm:p-5 md:p-6 space-y-3 panel-surface ${panelClass}`}
+        className={`w-full max-w-5xl rounded-2xl shadow-xl p-4 sm:p-5 md:p-6 space-y-2 panel-surface ${panelClass}`}
       >
         <header className="relative flex flex-col gap-2">
           {/* Header: Title left, buttons right */}
@@ -6257,9 +6328,9 @@ export default function AUTClock() {
         )}
 
         {activePanel === "clock" && (
-          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-6 shadow-inner">
+          <section className="rounded-2xl border border-zinc-700 bg-gradient-to-br from-indigo-800/40 via-cyan-700/30 to-emerald-700/20 p-4 sm:p-5 shadow-inner">
             {/* Gaia Luna / Sol toggle — Luna first, centered */}
-            <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
+            <div className="flex flex-wrap items-center justify-center gap-2 mb-2">
               <button
                 type="button"
                 aria-pressed={clockDialMode === "luna"}
@@ -6307,12 +6378,31 @@ export default function AUTClock() {
                   <DateTimeSelector
                     pendingDate={pendingDate}
                     onPendingChange={setPendingDate}
-                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onSet={() => { setDialDate(new Date(pendingDate)); setDialLive(false); }}
                     onCurrent={() => {
                       const liveNow = new Date(now);
                       setDialDate(liveNow);
                       setPendingDate(liveNow);
+                      setDialLive(true);
+                      setGaiaBirthActive(false);
                     }}
+                    displayTimeZone={locationTimeZoneId ?? undefined}
+                    trailing={
+                      solarReturnActiveProfile ? (
+                        <button
+                          type="button"
+                          onClick={applyGaiaBirth}
+                          title={`Gaia Birth 💫 ${solarReturnActiveProfile.name}`}
+                          className={`inline-flex items-center rounded-lg border px-2 py-1 text-sm leading-none transition ${
+                            gaiaBirthActive
+                              ? "border-fuchsia-400/60 bg-fuchsia-500/20 shadow-md shadow-fuchsia-500/20"
+                              : "border-fuchsia-600/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
+                          }`}
+                        >
+                          💫
+                        </button>
+                      ) : null
+                    }
                   />
                 </div>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -6345,7 +6435,7 @@ export default function AUTClock() {
                 </div>
               </div>
 
-              <div className="flex justify-center mt-1">
+              <div className="flex justify-center">
                 <div className={`relative aspect-square w-full ${ringSizeClass}`}>
                   <svg
                     viewBox={ringViewBox}
@@ -6601,12 +6691,31 @@ export default function AUTClock() {
                   <DateTimeSelector
                     pendingDate={pendingDate}
                     onPendingChange={setPendingDate}
-                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onSet={() => { setDialDate(new Date(pendingDate)); setDialLive(false); }}
                     onCurrent={() => {
                       const liveNow = new Date(now);
                       setDialDate(liveNow);
                       setPendingDate(liveNow);
+                      setDialLive(true);
+                      setGaiaBirthActive(false);
                     }}
+                    displayTimeZone={locationTimeZoneId ?? undefined}
+                    trailing={
+                      solarReturnActiveProfile ? (
+                        <button
+                          type="button"
+                          onClick={applyGaiaBirth}
+                          title={`Gaia Birth 💫 ${solarReturnActiveProfile.name}`}
+                          className={`inline-flex items-center rounded-lg border px-2 py-1 text-sm leading-none transition ${
+                            gaiaBirthActive
+                              ? "border-fuchsia-400/60 bg-fuchsia-500/20 shadow-md shadow-fuchsia-500/20"
+                              : "border-fuchsia-600/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
+                          }`}
+                        >
+                          💫
+                        </button>
+                      ) : null
+                    }
                   />
                 </div>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -6644,7 +6753,7 @@ export default function AUTClock() {
                 </div>
               </div>
 
-              <div className="flex justify-center mt-1">
+              <div className="flex justify-center">
                 <div className={`relative aspect-square w-full ${ringSizeClass}`}>
                   <svg
                     viewBox={ringViewBox}
@@ -6947,12 +7056,31 @@ export default function AUTClock() {
                   <DateTimeSelector
                     pendingDate={pendingDate}
                     onPendingChange={setPendingDate}
-                    onSet={() => setDialDate(new Date(pendingDate))}
+                    onSet={() => { setDialDate(new Date(pendingDate)); setDialLive(false); setGaiaBirthActive(false); }}
                     onCurrent={() => {
                       const liveNow = new Date(now);
                       setDialDate(liveNow);
                       setPendingDate(liveNow);
+                      setDialLive(true);
+                      setGaiaBirthActive(false);
                     }}
+                    displayTimeZone={locationTimeZoneId ?? undefined}
+                    trailing={
+                      solarReturnActiveProfile ? (
+                        <button
+                          type="button"
+                          onClick={applyGaiaBirth}
+                          title={`Gaia Birth 💫 ${solarReturnActiveProfile.name}`}
+                          className={`inline-flex items-center rounded-lg border px-2 py-1 text-sm leading-none transition ${
+                            gaiaBirthActive
+                              ? "border-fuchsia-400/60 bg-fuchsia-500/20 shadow-md shadow-fuchsia-500/20"
+                              : "border-fuchsia-600/40 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
+                          }`}
+                        >
+                          💫
+                        </button>
+                      ) : null
+                    }
                   />
                 </div>
               <div className="flex justify-center">

@@ -199,7 +199,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
   }, []);
 
   return (
-    <div className="mx-auto w-full space-y-2">
+    <div className="mx-auto w-full">
       {/* Header */}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div />
@@ -243,7 +243,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
       </div>
 
       {/* SVG Gaia dial — constrained to match Luna/Sol dial sizing */}
-      <div className="flex justify-center mt-1">
+      <div className="flex justify-center">
         <div className={`relative aspect-square w-full ${dialSizeClass ?? ""}`}>
           <svg
             viewBox={`${RING_VIEWBOX_MIN} ${RING_VIEWBOX_MIN} ${RING_VIEWBOX_SIZE} ${RING_VIEWBOX_SIZE}`}

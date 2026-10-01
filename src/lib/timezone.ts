@@ -1,7 +1,10 @@
 /**
  * Timezone helpers for birth-chart calculations.
- * Sync longitude estimate + async HTTP lookup via api.geo-tz.com.
+ * Primary: tz-lookup (sync, offline, bundled IANA boundary data).
+ * Fallback: longitude-based estimate.
  */
+
+import tzLookup from "tz-lookup";
 
 const GEO_TZ_API = "https://api.geo-tz.com/v1/timezone";
 
@@ -19,8 +22,81 @@ export type TimezoneDetection = {
 };
 
 /**
- * Async: look up timezone offset from lat/lon via HTTP API.
- * Falls back to longitude-based estimate on failure.
+ * Sync: look up timezone from lat/lon using bundled tz-lookup library.
+ * Returns IANA zone name (e.g., "America/Indiana/Indianapolis") or null.
+ */
+function lookupZoneFromCoordinates(lat: number, lon: number): string | null {
+  try {
+    const zone = tzLookup(lat, lon);
+    return typeof zone === "string" && zone.length > 0 ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sync: detect timezone from lat/lon using bundled tz-lookup + Intl API.
+ * No network calls, no external API dependencies.
+ * Falls back to longitude-based estimate only if tz-lookup fails.
+ */
+export function detectTimezoneSync(
+  lat: number,
+  lon: number,
+  year: number,
+  month: number, // 0-11
+  day: number,
+  hour: number = 12,
+  minute: number = 0
+): TimezoneDetection {
+  const zone = lookupZoneFromCoordinates(lat, lon);
+  if (!zone) return estimateTimezoneDetection(lon);
+
+  const date = new Date(Date.UTC(year, month, day, hour, minute));
+  const accurateOffsetMinutes = getOffsetMinutesForDate(zone, date);
+  const standardOffsetMinutes = getStandardOffsetMinutes(zone, date);
+  const label = formatTimezoneLabel(zone, accurateOffsetMinutes, standardOffsetMinutes);
+
+  return {
+    zone,
+    label,
+    accurateOffsetMinutes,
+    standardOffsetMinutes,
+    hasDst: accurateOffsetMinutes !== standardOffsetMinutes,
+  };
+}
+
+/**
+ * Get the UTC offset (in minutes) for a given IANA zone and date.
+ * Uses Intl.DateTimeFormat with shortOffset.
+ */
+function getOffsetMinutesForDate(zone: string, date: Date): number {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      timeZoneName: "shortOffset",
+    });
+    const parts = fmt.formatToParts(date);
+    const tzPart = parts.find((p) => p.type === "timeZoneName");
+    if (!tzPart) return 0;
+    return parseGmtOffset(tzPart.value);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Parse a GMT offset string (e.g., "GMT-5", "GMT+5:30") into minutes.
+ */
+function parseGmtOffset(tzName: string): number {
+  if (!tzName.startsWith("GMT")) return 0;
+  const hours = parseFloat(tzName.slice(3));
+  if (isNaN(hours)) return 0;
+  return Math.round(hours * 60);
+}
+
+/**
+ * Async: look up timezone offset from lat/lon.
+ * Primary: tz-lookup (sync, bundled). Fallback: geo-tz API, then longitude estimate.
  */
 export async function fetchTimezoneDetection(
   lat: number,
@@ -31,6 +107,11 @@ export async function fetchTimezoneDetection(
   hour: number = 12,
   minute: number = 0
 ): Promise<TimezoneDetection> {
+  // Primary: use bundled tz-lookup (no network needed)
+  const syncResult = detectTimezoneSync(lat, lon, year, month, day, hour, minute);
+  if (syncResult.zone) return syncResult;
+
+  // Fallback: try the external API (for edge cases where tz-lookup data is stale)
   const fallback = estimateTimezoneDetection(lon);
   try {
     const resp = await fetch(`${GEO_TZ_API}?lat=${lat}&lon=${lon}`);
@@ -40,21 +121,7 @@ export async function fetchTimezoneDetection(
     if (!zone) throw new Error("no timezone in response");
 
     const date = new Date(Date.UTC(year, month, day, hour, minute));
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      timeZoneName: "shortOffset",
-    });
-    const parts = fmt.formatToParts(date);
-    const tzPart = parts.find((p) => p.type === "timeZoneName");
-    if (!tzPart) return fallback;
-
-    const tzName = tzPart.value; // e.g. "GMT-5"
-    let accurateOffsetMinutes = fallback.accurateOffsetMinutes;
-    if (tzName.startsWith("GMT")) {
-      const hours = parseFloat(tzName.slice(3));
-      if (!isNaN(hours)) accurateOffsetMinutes = Math.round(hours * 60);
-    }
-
+    const accurateOffsetMinutes = getOffsetMinutesForDate(zone, date);
     const standardOffsetMinutes = getStandardOffsetMinutes(zone, date);
     const label = formatTimezoneLabel(zone, accurateOffsetMinutes, standardOffsetMinutes);
     return {
@@ -86,6 +153,7 @@ export async function fetchTimezoneOffset(
 /**
  * Sync: rough longitude-based timezone detection.
  * Each 15° of longitude ≈ 1 hour. Rounded to nearest hour.
+ * Only used as last resort when tz-lookup and API both fail.
  */
 export function estimateTimezoneDetection(lon: number): TimezoneDetection {
   const accurateOffsetMinutes = Math.round(lon / 15) * 60;
@@ -113,18 +181,7 @@ function getStandardOffsetMinutes(zone: string, date: Date): number {
   try {
     // January 1 of the same year is almost always in standard time for Northern Hemisphere zones.
     const standardProbe = new Date(Date.UTC(date.getUTCFullYear(), 0, 1, 12, 0, 0));
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      timeZoneName: "shortOffset",
-    });
-    const parts = fmt.formatToParts(standardProbe);
-    const tzPart = parts.find((p) => p.type === "timeZoneName");
-    if (!tzPart) return 0;
-    const tzName = tzPart.value;
-    if (tzName.startsWith("GMT")) {
-      const hours = parseFloat(tzName.slice(3));
-      if (!isNaN(hours)) return Math.round(hours * 60);
-    }
+    return getOffsetMinutesForDate(zone, standardProbe);
   } catch {
     // ignore
   }

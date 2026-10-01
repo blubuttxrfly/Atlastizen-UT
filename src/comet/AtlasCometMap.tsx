@@ -14,7 +14,7 @@ import {
   makeBirthDateUTC,
   findSolarReturnMoment,
 } from "../lib/extendedChart";
-import { estimateFromLongitude } from "../lib/timezone";
+import { detectTimezoneSync } from "../lib/timezone";
 import { fetchTimezoneDetection, type TimezoneDetection } from "../lib/timezone";
 type Vec2 = { x: number; y: number };
 
@@ -728,23 +728,32 @@ function HeartlightSystemMap() {
     setEditTimeStr(`${hStr}:${minStr}`);
     setEditLocationQuery("");
     setEditSelectedLocation({ lat: profile.birthLat, lon: profile.birthLon, displayName: profile.birthPlaceLabel });
-    const usedOffset = resolveProfileOffset(profile);
+    // Always detect timezone from coordinates for display
+    const displayDet = detectTimezoneSync(
+      profile.birthLat, profile.birthLon,
+      profile.birthYear ?? 2000, profile.birthMonth, profile.birthDay,
+      profile.birthHour ?? 12, profile.birthMinute ?? 0
+    );
     setEditTimezoneDetection({
-      zone: profile.birthTimezoneLabel ?? null,
-      label: profile.birthTimezoneLabel ?? `Longitude estimate (${formatUtcOffset(usedOffset)})`,
-      accurateOffsetMinutes: profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon),
-      standardOffsetMinutes: profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon),
-      hasDst: (profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon)) !==
-              (profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon)),
+      zone: displayDet.zone,
+      label: displayDet.label,
+      accurateOffsetMinutes: displayDet.accurateOffsetMinutes,
+      standardOffsetMinutes: displayDet.standardOffsetMinutes,
+      hasDst: displayDet.hasDst,
     });
     setEditAccurateDST(profile.birthTimeAccurateDST ?? true);
     setEditingId(profile.id);
   }, []);
 
   const resolveProfileOffset = useCallback((profile: SolarReturnProfile): number => {
-    const accurate = profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon);
-    const standard = profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon);
-    return (profile.birthTimeAccurateDST ?? true) ? accurate : standard;
+    // Always detect from coordinates using tz-lookup (sync, offline).
+    // Don't trust stored offsets, which may be stale from the old longitude estimate.
+    const det = detectTimezoneSync(
+      profile.birthLat, profile.birthLon,
+      profile.birthYear ?? 2000, profile.birthMonth, profile.birthDay,
+      profile.birthHour ?? 12, profile.birthMinute ?? 0
+    );
+    return (profile.birthTimeAccurateDST ?? true) ? det.accurateOffsetMinutes : det.standardOffsetMinutes;
   }, []);
 
   const formatUtcOffset = useCallback((minutes: number): string => {
@@ -1988,9 +1997,13 @@ function ChartPanel({
   }, [extChartMode, activeProfile, srTargetYear, liveLocation]);
 
   function resolveActiveOffset(profile: SolarReturnProfile): number {
-    const accurate = profile.birthTimezoneOffset ?? estimateFromLongitude(profile.birthLon);
-    const standard = profile.birthTimezoneOffsetStandard ?? estimateFromLongitude(profile.birthLon);
-    return (profile.birthTimeAccurateDST ?? true) ? accurate : standard;
+    // Always detect from coordinates using tz-lookup (sync, offline).
+    const det = detectTimezoneSync(
+      profile.birthLat, profile.birthLon,
+      profile.birthYear ?? 2000, profile.birthMonth, profile.birthDay,
+      profile.birthHour ?? 12, profile.birthMinute ?? 0
+    );
+    return (profile.birthTimeAccurateDST ?? true) ? det.accurateOffsetMinutes : det.standardOffsetMinutes;
   }
 
   function formatOffset(minutes: number): string {
@@ -2011,9 +2024,15 @@ function ChartPanel({
   const p = activeProfile;
   const hasTime = p.birthHour != null && p.birthMinute != null;
   const activeOffset = resolveActiveOffset(p);
-  const activeLabel = p.birthTimezoneLabel ?? `Longitude estimate (${formatOffset(activeOffset)})`;
-  const accurateOffset = p.birthTimezoneOffset ?? estimateFromLongitude(p.birthLon);
-  const standardOffset = p.birthTimezoneOffsetStandard ?? estimateFromLongitude(p.birthLon);
+  // Always detect timezone from coordinates for display
+  const displayDet = detectTimezoneSync(
+      p.birthLat, p.birthLon,
+      p.birthYear ?? 2000, p.birthMonth, p.birthDay,
+      p.birthHour ?? 12, p.birthMinute ?? 0
+    );
+  const activeLabel = displayDet.label;
+  const accurateOffset = displayDet.accurateOffsetMinutes;
+  const standardOffset = displayDet.standardOffsetMinutes;
   const dstNote =
   accurateOffset !== standardOffset
   ? (p.birthTimeAccurateDST ?? true)
