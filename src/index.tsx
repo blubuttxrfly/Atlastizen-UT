@@ -6117,14 +6117,6 @@ export default function AUTClock() {
                       >
                         {cesSignInBusy ? "Signing in…" : "Enter Co-Creation Space"}
                       </button>
-                      <a
-                        href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-3 py-2 text-xs text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40 flex items-center gap-2"
-                      >
-                        <span>Auth Sign In</span>
-                      </a>
                       {/* Refresh session: helpful when signed in elsewhere but not detected here */}
                       <button
                         type="button"
@@ -6247,16 +6239,8 @@ export default function AUTClock() {
                             onClick={() => startCesSignIn()}
                             disabled={cesSignInBusy}
                           >
-                            Sign in
+                            {cesSignInBusy ? "Signing in…" : "Sign in"}
                           </button>
-                          <a
-                            href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-2 py-1 text-[10px] uppercase tracking-wide text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40"
-                          >
-                            Auth Sign In
-                          </a>
                         </div>
                         <button
                           type="button"
