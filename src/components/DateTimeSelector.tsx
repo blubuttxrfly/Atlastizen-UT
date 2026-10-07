@@ -112,7 +112,7 @@ function parseDateTimeInZone(dateStr: string, timeStr: string, timeZone?: string
 export function DateTimeSelector({ pendingDate, onPendingChange, onSet, onCurrent, displayTimeZone, trailing }: Props) {
   const tz = displayTimeZone;
   return (
-    <div className="flex items-center gap-2 overflow-x-auto">
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
       {/* Date picker — native input, directly clickable */}
       <input
         type="date"
@@ -123,7 +123,7 @@ export function DateTimeSelector({ pendingDate, onPendingChange, onSet, onCurren
           const newDate = parseDateTimeInZone(e.target.value, timeStr, tz, pendingDate);
           onPendingChange(newDate);
         }}
-        className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-300 cursor-pointer"
+        className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 px-1.5 py-1 text-xs text-zinc-300 cursor-pointer"
       />
       {/* Time picker */}
       <input
@@ -135,14 +135,14 @@ export function DateTimeSelector({ pendingDate, onPendingChange, onSet, onCurren
           const newDate = parseDateTimeInZone(dateStr, e.target.value, tz, pendingDate);
           onPendingChange(newDate);
         }}
-        className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-300 cursor-pointer"
+        className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900/60 px-1.5 py-1 text-xs text-zinc-300 cursor-pointer"
       />
-      {/* Now + Set + trailing (💫 Gaia Birth) — grouped so they stay on the same line on mobile */}
-      <div className="flex shrink-0 items-center gap-2">
+      {/* Now + Set + trailing (💫 Gaia Birth) — grouped so they stay together on any screen */}
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={onCurrent}
-          className="rounded-lg border border-cyan-600/40 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-200 transition hover:bg-cyan-500/20"
+          className="rounded-lg border border-cyan-600/40 bg-cyan-500/10 px-1.5 py-1 text-xs text-cyan-200 transition hover:bg-cyan-500/20"
           title="Reset to current live time"
         >
           Now
@@ -150,7 +150,7 @@ export function DateTimeSelector({ pendingDate, onPendingChange, onSet, onCurren
         <button
           type="button"
           onClick={onSet}
-          className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-200 transition hover:bg-amber-500/20"
+          className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-1.5 py-1 text-xs text-amber-200 transition hover:bg-amber-500/20"
           title="Apply selected date and time to the Ray Dial"
         >
           Set
