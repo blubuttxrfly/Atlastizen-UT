@@ -3944,6 +3944,42 @@ export default function AUTClock() {
     return () => { cancelled = true; };
   }, []);
 
+  /* ── Re-check session when window regains focus (user returns from Heartlight tab) ── */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let lastCheck = 0;
+    const onFocus = () => {
+      // Throttle: don't re-check more than once every 5 seconds
+      const now = Date.now();
+      if (now - lastCheck < 5000) return;
+      lastCheck = now;
+      // Only re-check if not already signed in
+      if (passkeySignedIn) return;
+      (async () => {
+        try {
+          const res = await fetch("/api/session", { credentials: "same-origin" });
+          if (!res.ok) return;
+          const data = (await res.json()) as { signedIn?: boolean; ces?: string };
+          if (data.signedIn && data.ces) {
+            setPasskeySignedIn(true);
+            setPasskeyStatus("Session restored.");
+            setCoreProfile((prev) => ({ ...prev, code: data.ces ?? prev.code }));
+          }
+        } catch {
+          // silently ignore
+        }
+      })();
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") onFocus();
+    });
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [passkeySignedIn]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -5503,6 +5539,32 @@ export default function AUTClock() {
     void refreshCommunity();
   }, [refreshCommunity]);
 
+  /* ── Manual session refresh (used by Community panel "Refresh session" button) ── */
+  const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const refreshSession = useCallback(async () => {
+    setSessionRefreshing(true);
+    try {
+      const res = await fetch("/api/session", { credentials: "same-origin" });
+      if (!res.ok) {
+        setPasskeyStatus("Session check failed.");
+        return;
+      }
+      const data = (await res.json()) as { signedIn?: boolean; ces?: string };
+      if (data.signedIn && data.ces) {
+        setPasskeySignedIn(true);
+        setPasskeyStatus("Session restored.");
+        setCoreProfile((prev) => ({ ...prev, code: data.ces ?? prev.code }));
+      } else {
+        setPasskeySignedIn(false);
+        setPasskeyStatus("Not signed in. Use Sign in below.");
+      }
+    } catch {
+      setPasskeyStatus("Could not reach session server.");
+    } finally {
+      setSessionRefreshing(false);
+    }
+  }, []);
+
   const onPostSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -6137,19 +6199,34 @@ export default function AUTClock() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 flex-wrap justify-end">
-                    {!passkeySignedIn ? (
-                      <div className="flex items-center gap-2 text-[11px] text-amber-300">
-                        <span>Sign in to post.</span>
+                    {passkeySignedIn ? (
+                      <div className="flex items-center gap-2 text-[11px] text-emerald-300">
+                        <span>Signed in</span>
+                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-2 text-[11px] text-amber-300">
+                          <span>Sign in to post.</span>
+                          <button
+                            type="button"
+                            className="rounded-full border border-white/20 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-50 hover:bg-white/10 disabled:opacity-50"
+                            onClick={() => startCesSignIn()}
+                            disabled={cesSignInBusy}
+                          >
+                            Sign in
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          className="rounded-full border border-white/20 px-2 py-1 text-[10px] uppercase tracking-wide text-amber-50 hover:bg-white/10 disabled:opacity-50"
-                          onClick={() => startCesSignIn()}
-                          disabled={cesSignInBusy}
+                          className="text-[10px] text-zinc-400 underline-offset-2 hover:underline disabled:opacity-50"
+                          onClick={refreshSession}
+                          disabled={sessionRefreshing}
                         >
-                          Sign in
+                          {sessionRefreshing ? "Checking session…" : "Refresh session"}
                         </button>
                       </div>
-                    ) : null}
+                    )}
                     {showPostRequirement ? <div className="text-[11px] text-amber-300">CES Profile required to post</div> : null}
                   </div>
                 </div>
