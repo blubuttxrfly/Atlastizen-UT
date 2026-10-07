@@ -7038,7 +7038,7 @@ export default function AUTClock() {
                   {lunaSolSeason.currentGate.rayName} Ray · {lunaSolSeason.nextGate.daysUntil} days until {lunaSolSeason.nextGate.name}
                 </div>
                 {lunaSolSeason.nextGate.traditionalDate && (
-                  <div className="text-xs text-zinc-500">
+                  <div className="text-xs" style={{ color: lunaSolSeason.nextGate.rayColor }}>
                     Traditional Threshold: {lunaSolSeason.nextGate.traditionalDate.toLocaleDateString(undefined, { month: "long", day: "numeric" })}
                     {typeof lunaSolSeason.nextGate.traditionalDaysUntil === "number" && (
                       <> · {lunaSolSeason.nextGate.traditionalDaysUntil === 0 ? "Today" : `${lunaSolSeason.nextGate.traditionalDaysUntil} days away`}</>
