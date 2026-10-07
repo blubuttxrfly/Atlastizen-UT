@@ -93,11 +93,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
     await kv.set(`ces:user:${cesNum}`, updatedProfile);
 
-    // ── Sync to central C.E.S. profile store (shared auth) ──
+    // ── Sync to central C.E.S. profile store + create shared session ──
     const sharedAuthOrigin = process.env.SHARED_AUTH_ORIGIN || "https://auth.atlasisland.co";
     const bridgeSecret = process.env.INTERNAL_BRIDGE_SECRET || "";
+    let sharedCookieHeader: string | null = null;
     if (sharedAuthOrigin && bridgeSecret) {
       try {
+        // Sync profile
         await fetch(`${sharedAuthOrigin}/api/profile/${cesNum}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -111,14 +113,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         console.warn("[auth-signin] Central store sync failed (non-blocking):", err);
       }
+      // Bridge: create shared atl_session_v2 cookie
+      try {
+        const bridgeRes = await fetch(`${sharedAuthOrigin}/api/auth/bridge`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${bridgeSecret}`,
+          },
+          body: JSON.stringify({ ces: cesNum, name: profile.name || "" }),
+        });
+        if (bridgeRes.ok) {
+          const bridgeData = (await bridgeRes.json()) as { setCookieHeader?: string };
+          if (bridgeData.setCookieHeader) {
+            sharedCookieHeader = bridgeData.setCookieHeader;
+          }
+        }
+      } catch (err) {
+        console.warn("[auth-signin] Bridge session creation failed (non-blocking):", err);
+      }
     }
 
-    // Set local session cookie
+    // Set local session cookie + shared session cookie (if bridged)
     const isSecure = process.env.NODE_ENV !== "development";
-    res.setHeader(
-      "Set-Cookie",
-      `aut_session=${sessionToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${isSecure ? "; Secure" : ""}`
-    );
+    const localCookie = `aut_session=${sessionToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}${isSecure ? "; Secure" : ""}`;
+    if (sharedCookieHeader) {
+      // Set both cookies: local aut_session + shared atl_session_v2
+      res.setHeader("Set-Cookie", [localCookie, sharedCookieHeader]);
+    } else {
+      res.setHeader("Set-Cookie", localCookie);
+    }
 
     res.status(200).json({
       success: true,
