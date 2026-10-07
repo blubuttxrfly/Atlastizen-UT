@@ -5587,6 +5587,7 @@ export default function AUTClock() {
         const res = await fetch("/api/community", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
           body: JSON.stringify({
             name,
             code: cleanCode,
@@ -5597,7 +5598,16 @@ export default function AUTClock() {
             imageName: draftPost.imageName ?? "",
           }),
         });
-        if (!res.ok) throw new Error(`Post failed (${res.status})`);
+        if (res.status === 401) {
+          // Session expired or missing, update sign-in state
+          setPasskeySignedIn(false);
+          setCommunityError("Your session has expired. Please sign in again.");
+          return;
+        }
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.error || `Post failed (${res.status})`);
+        }
         await refreshCommunity();
         setDraftPost({ message: "", imageData: "", imageName: "" });
       } catch (err) {
@@ -6216,6 +6226,14 @@ export default function AUTClock() {
                           >
                             Sign in
                           </button>
+                          <a
+                            href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-full border border-lavender-400/30 bg-lavender-500/5 px-2 py-1 text-[10px] uppercase tracking-wide text-lavender-200 transition hover:bg-lavender-500/10 hover:border-lavender-400/40"
+                          >
+                            Auth Sign In
+                          </a>
                         </div>
                         <button
                           type="button"
