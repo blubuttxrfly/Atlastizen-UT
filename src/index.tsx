@@ -4318,17 +4318,17 @@ export default function AUTClock() {
   const lunaEffectiveDate = dialDate;
 
   /* ── Samhain Radiant Glow ──
-     Gradual iridescent glow building from Oct 12 to Oct 31 (traditional threshold).
+     Gradual iridescent glow building from Oct 6 to Oct 31 (25-day threshold glow).
      Fades out over the following 3 days (Nov 1-3). */
   const samhainGlowIntensity = useMemo(() => {
     const date = solEffectiveDate;
     const year = date.getFullYear();
-    const oct12 = new Date(year, 9, 12).getTime();
+    const oct6 = new Date(year, 9, 6).getTime();
     const oct31 = new Date(year, 9, 31).getTime();
     const nov3 = new Date(year, 10, 3).getTime();
     const t = date.getTime();
-    if (t < oct12 || t > nov3) return 0;
-    if (t <= oct31) return Math.min(1, (t - oct12) / (oct31 - oct12));
+    if (t < oct6 || t > nov3) return 0;
+    if (t <= oct31) return Math.min(1, (t - oct6) / (oct31 - oct6));
     return Math.max(0, (nov3 - t) / (nov3 - oct31));
   }, [solEffectiveDate.toDateString()]);
 
