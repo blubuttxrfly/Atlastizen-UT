@@ -6082,17 +6082,31 @@ export default function AUTClock() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  {/* Session status indicator */}
+                  <div className="flex items-center gap-2 text-xs">
+                    {passkeySignedIn ? (
+                      <span className="flex items-center gap-1.5 text-emerald-300">
+                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                        Signed in
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-amber-300">
+                        <span className="inline-block h-2 w-2 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50" />
+                        Not signed in
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Sign out: always available when signed in */}
                   {passkeySignedIn ? (
-                    <>
-                      <button
-                        type="button"
-                        className="rounded-full border border-rose-400/40 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-400/15 disabled:opacity-60"
-                        onClick={startPasskeySignOut}
-                        disabled={passkeyBusy}
-                      >
-                        Sign out
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-400/40 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-400/15 disabled:opacity-60"
+                      onClick={startPasskeySignOut}
+                      disabled={passkeyBusy}
+                    >
+                      {passkeyBusy ? "Signing out…" : "Sign out"}
+                    </button>
                   ) : (
                     <>
                       <button
@@ -6101,7 +6115,7 @@ export default function AUTClock() {
                         onClick={startCesSignIn}
                         disabled={cesSignInBusy}
                       >
-                        Enter Co-Creation Space
+                        {cesSignInBusy ? "Signing in…" : "Enter Co-Creation Space"}
                       </button>
                       <a
                         href={`${import.meta.env.VITE_HEARTLIGHT_BASE_URL || 'https://heartlight.atlasisland.co'}/sign-in?autReturn=1&returnTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
@@ -6111,6 +6125,15 @@ export default function AUTClock() {
                       >
                         <span>Auth Sign In</span>
                       </a>
+                      {/* Refresh session: helpful when signed in elsewhere but not detected here */}
+                      <button
+                        type="button"
+                        className="text-xs text-zinc-400 underline-offset-2 hover:underline disabled:opacity-50"
+                        onClick={refreshSession}
+                        disabled={sessionRefreshing}
+                      >
+                        {sessionRefreshing ? "Checking…" : "Refresh session"}
+                      </button>
                     </>
                   )}
                   {passkeyStatus ? (
