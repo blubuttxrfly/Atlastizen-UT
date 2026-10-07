@@ -208,7 +208,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
             Astro Gaia Ray Dial
           </div>
           <div className="text-[10px] text-zinc-400">
-            The Ray Key faces your zenith, the constellation directly overhead.
+            The Ray Key tracks your zenith, the ecliptic point directly overhead.
           </div>
           <div className="text-lg font-semibold" style={{ color: gaiaRay.color }}>
             {gaiaRay.sign} {gaiaRay.symbol} {gaiaRay.name} Ray
@@ -465,7 +465,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
       </div>
 
       {/* ── Live Local Astro Ray Alignments ── */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-3">
         <div className="text-xs uppercase tracking-wide text-zinc-400">
           Live Local Astro Ray Alignments
         </div>
@@ -528,7 +528,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
       </div>
 
       {/* ── Dawn & Dusk Alignments ── */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-4">
         <div className="text-xs uppercase tracking-wide text-zinc-400">
           Dawn & Dusk Alignments
         </div>
@@ -559,7 +559,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
               {ZODIAC_RAY_ESSENCE[dawnFacing.signIndex]}
             </div>
             <div className="mt-1 text-[0.65rem] italic text-white">
-              Zenith at dawn: The constellation directly overhead as day begins.
+              Zenith at dawn: The ecliptic point directly overhead as day begins.
             </div>
           </div>
 
@@ -586,7 +586,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
               {ZODIAC_RAY_ESSENCE[duskFacing.signIndex]}
             </div>
             <div className="mt-1 text-[0.65rem] italic text-white">
-              Zenith at dusk: The constellation directly overhead as day completes.
+              Zenith at dusk: The ecliptic point directly overhead as day completes.
             </div>
           </div>
         </div>
