@@ -201,8 +201,8 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
   return (
     <div className="mx-auto w-full">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div />
+      <div className="flex flex-col items-center gap-2 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
+        <div className="hidden sm:block" />
         <div className="text-center space-y-1 min-w-0">
           <div className="text-xs uppercase tracking-wide text-zinc-400">
             Astro Gaia Ray Dial
@@ -214,7 +214,7 @@ export default function GaiaRayDial({ lat, lon, sunriseDate, sunsetDate, now, or
             {gaiaRay.sign} {gaiaRay.symbol} {gaiaRay.name} Ray
           </div>
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-center sm:justify-end">
           <button
             type="button"
             onClick={() =>
