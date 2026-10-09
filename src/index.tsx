@@ -6507,8 +6507,8 @@ export default function AUTClock() {
                     }
                   />
                 </div>
-              <div className="flex flex-col items-center gap-2 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
-                <div className="hidden sm:block" />
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1">
+                <div />
                 <div className="text-center space-y-1 min-w-0">
                   <div className="text-xs uppercase tracking-wide text-zinc-400">Luna Ray Dial</div>
                   <div className="text-[10px] text-zinc-400">
@@ -6521,7 +6521,7 @@ export default function AUTClock() {
                     Luna Day {lunaColignyReading.day} of {lunaColignyReading.ciallos.active ? lunaColignyReading.ciallos.totalDays : (lunaColignyReading.monthType === "MAT" ? 30 : 29)} of {lunaColignyReading.month.name}{lunaColignyReading.ciallos.active ? " (Ciallos)" : ""}
                   </div>
                 </div>
-                <div className="flex justify-center sm:justify-end">
+                <div className="flex items-center justify-end self-end pb-1">
                   <button
                     type="button"
                     onClick={() => setDialOrientation((prev) => (prev === "heartlight" ? "zenith" : "heartlight"))}
